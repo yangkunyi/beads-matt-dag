@@ -695,6 +695,12 @@ The new pack is validated in a throwaway lab under `/tmp`, never against a live 
 3. closure never crosses domains, so a decision issue can never release implementation work (§10.4);
 4. the merge precedes the stamp, and a kill between the two leaves a state the repair path fixes.
 
+**Accepted 2026-09-12** (pack `ef11f13`): all four held in real runs, each named with its run id
+and its artifacts in `.scratch/beads-dag/issues/11-acceptance-in-a-lab.md` — which also records the
+one thing the acceptance could not produce (a property it had to reach through staged state) and
+what it noticed without covering (§13.1). The pack was frozen for the acceptance: the ticket's
+commit changes no file under `.archon/`.
+
 `/data3/yky/endo_label` is not touched while its drain is live.
 
 ### 10.7 The skill set for a store-backed flow
