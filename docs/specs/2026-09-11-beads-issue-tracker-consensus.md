@@ -23,6 +23,13 @@ predecessor system's vocabulary; read the two as synonyms.
 > a copy at `/tmp/reverted-issue-tracker-beads.md`) and every command in it was verified against the
 > real binary, so the verification in §5 stands and is not thrown away. Writing these files is a
 > decision for step 2 of §13.
+>
+> **Superseded 2026-09-11 (§10.7).** The two files below were this document's opening scope: one
+> template, plus one line in `setup-matt-pocock-skills`. Designing the migration grew the deliverable
+> — the tracker template turns out to be the centre of a **skill set** sourced in *this* repo (§10.7)
+> — and the scope question §13 used to carry ("may these files be written at all, and where?") is
+> now answered. What survives from this section is the template's section shape and the fact that
+> every command in the reverted draft was verified against the real binary.
 
 Two files, both under the skills source repo `/data3/yky/pi-agent-config/`:
 
@@ -36,10 +43,13 @@ Two files, both under the skills source repo `/data3/yky/pi-agent-config/`:
 2. **`skills/setup-matt-pocock-skills/SKILL.md` Section A** — list beads as a first-class
    tracker option (currently only GitHub / GitLab / Local markdown / Other).
 
-No other skill changes. The rest of the family reaches the tracker indirectly through
-`docs/agents/issue-tracker.md`, which `setup-matt-pocock-skills` generates from the template.
+**Superseded (§10.7):** the rest of the family *does* reach the tracker indirectly through
+`docs/agents/issue-tracker.md`, and that is why the set is a delta rather than a copy — but the delta
+is larger than one file: six skills carry the old shape in their own text.
 
-**Setup target repo (for exercising it):** `/data3/yky/beads-matt-dag` (currently empty).
+**Setup target repo:** the build's acceptance runs in a throwaway lab under `/tmp` (§10.6), never
+against a live Target. This repo runs the local-markdown tracker itself, so it is not the setup
+target either.
 
 ---
 
@@ -652,6 +662,61 @@ The new pack is validated in a throwaway lab under `/tmp`, never against a live 
 
 `/data3/yky/endo_label` is not touched while its drain is live.
 
+### 10.7 The skill set for a store-backed flow
+
+Settled 2026-09-11. The tracker template of §1 is the centre of a *set*, not a file to drop in.
+
+- **A delta, not a copy.** Of the 26 non-`lark` skills, 7 mention the tracker at all (`triage` 23
+  mentions, `setup-matt-pocock-skills` 20, `to-tickets` 11, `ask-matt` 5, `code-review` 3, `to-spec`
+  2, `implement` 1); the other 19 have no tracker surface whatever and are referenced, not
+  duplicated. Copying the family whole would put one instruction in two places — the failure ADR-0005
+  exists to forbid — and prose has no test that catches two copies drifting apart: what a reader gets
+  would depend on which copy happens to be installed.
+- **One copy per machine, under the same names.** pi warns on a name collision and *keeps the first
+  skill found*, and the installed `~/.pi/agent/skills/` is searched before a project's `.pi/skills/`
+  or `.agents/skills/`. A project-level revision of `to-tickets` would therefore be shadowed by the
+  installed one and silently do nothing. Same names ⇒ exactly one copy ⇒ no `beads-` prefix.
+- **Sourced here, installed as an action.** The set is authored under `skills/` in this repo — not a
+  discovery path, so authoring changes nothing about the running agent — and installing it is a copy
+  into `pi-agent-config/skills/`, the same rule the pack follows into `~/.archon/workflows/`. Writing
+  the installed skills is a change to live tooling, so it stays a separate, reviewable step.
+- **Entry points keep their filenames; the prose speaks §10.2's words** (`issue`, `handle`, `drain`).
+  The names are the interface — muscle memory and cross-references — and a prefix buys nothing a
+  sentence cannot.
+- **What the set contains:** the beads tracker config (the fourth `docs/agents/issue-tracker.md`,
+  and the only file that spells out store commands and the boundaries they may be used across, as the
+  local template does today); edits to `to-tickets`, `implement`, `to-spec`, `triage`,
+  `setup-matt-pocock-skills` and `ask-matt` so each reads the tracker config instead of assuming a
+  file shape; and one new skill for the operator's surface. `code-review` needs no edit — its three
+  mentions are pointers to the config and a spec-path heuristic that still holds. `wayfinder` needs
+  none either: nothing in it names a tracker shape today, which is why the decision-issue rules
+  belong in the tracker config.
+- **Two owners, one subject each.** The tracker config owns *how to talk to the store*; the operator
+  skill owns *how to drive the pack and what to do when it breaks*, in two sections — a day section
+  (run a drain, read its reports, brake an issue, let it back in) and an accident section (restore
+  from the Dolt remote, recompute blocked-ness, reconcile leftovers). A third file that also builds
+  store commands would be the duplication this section exists to prevent.
+- **There is no retry command.** A failed issue is retried by the next drain by construction (§10.4),
+  so the operator's "retry" is running another drain: pulling the gate label is the only action that
+  needs a human hand.
+- **The pack's agent personas are not part of the set.** They are the pack's own text; the set is
+  what a human or an interactive agent uses.
+- **`bd` is part of the flow, not an installation detail.** It is not on `PATH` even on the machine
+  where it is installed (`/data3/yky/.local/node-v24.19.0-linux-x64/bin/bd`), so a Target either puts
+  it on `PATH` or sets the pack's `store:` key — and preflight failing is the flow saying which one
+  was forgotten.
+- **Derived, not decided** — recorded so the set's author does not have to guess: a triage brief
+  posted after publish cannot enter a frozen body (§10.5), so it is a store comment.
+
+**Sequencing:** the set is written *after* the build's acceptance (§10.6). The pack's command surface
+is still growing — the pick report and the drain-end reports arrive with later tickets — and a skill
+documenting a shape the pack has not settled would be a second, wrong record.
+
+**Acceptance of the set, on its own terms:** prose is not accepted by reading it. Another agent, in a
+`/tmp` lab, runs the whole loop using only the set — publish an issue, drain it, read the close, brake
+one, drain again — and its observations join §10.6's list. The pack's four properties and the set's
+executability are separate claims and must be able to fail separately.
+
 ---
 
 ## 11. Historical baggage
@@ -705,18 +770,13 @@ shows the status and not the body, §6).
 
 ## 13. Next steps
 
-1. **Build the flow** (§10): the new pack's source in this repo, installed by copy, validated per
-   §10.6 in a `/tmp` lab. Nothing in this step touches the skills repo.
-2. **Decide whether §1's two files may be written at all, and where.** The tracker template only
-   functions inside `skills/setup-matt-pocock-skills/` (that is where `setup-matt-pocock-skills` reads
-   its seed templates from), but that is a live repo whose `skills/` is symlinked as this agent's own
-   skills — so writing there is a real change to working tooling, not a scratch edit. The reverted
-   draft is at `/tmp/reverted-issue-tracker-beads.md`; it predates §10 and must be rewritten against it.
-3. **Fix the pre-existing `to-tickets` hardcoding** (§9) — also an edit outside this repo, so also its
-   own approval.
-4. **Follow the wording this design changed, in the two skills that still carry the old shape.**
-   `to-tickets/SKILL.md` writes a `Status:` line into every ticket it publishes, and `implement/SKILL.md`
-   ends by saying to leave that line unchanged. On a store-backed Target the body has no `Status:` line at
-   all (§10.5), so one of those sentences is stale and the other has become a no-op. Also edits outside
-   this repo, also each needing its own approval.
-5. Retire §9's unverified items as they are resolved.
+1. **Build the flow** (§10): source in this repo, installed by copy, validated per §10.6 in a `/tmp`
+   lab. Nothing in this step touches a skills directory. *In progress:* the pack exists at
+   `.archon/workflows/beads-dag/` and is being built ticket by ticket under `.scratch/beads-dag/issues/`.
+2. **Write the skill set** (§10.7) — after step 1's acceptance, sourced in this repo, installed by
+   copy. This absorbs what used to be three separate items here (whether §1's template may be written
+   and where; the `to-tickets` hardcoding of §9; the stale wording in `to-tickets` and `implement`):
+   they are all edits to the same set, and §10.7 settles them together.
+3. **Accept the set on its own terms** (§10.7): another agent walks the loop in a `/tmp` lab using
+   only the set, and its observations are added to §10.6's list.
+4. Retire §9's unverified items as they are resolved.
