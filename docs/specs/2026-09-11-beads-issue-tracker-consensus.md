@@ -587,6 +587,18 @@ Four statuses, three of them beads' own:
 | done | `closed` | closed **only** with MERGED semantics (§10.4) |
 | failed | `failed` (custom) | never closed, never in `bd ready` |
 
+**Registration.** `failed` is not a built-in status. Measured 2026-09-11: `bd update <id> -s failed`
+answers `invalid status "failed" (built-in: open, in_progress, blocked, deferred, closed, pinned,
+hooked; or configure custom statuses via 'bd config set status.custom')` and exits 1; after
+`bd config set status.custom "failed:wip"` the whole path works — `bd ready` stays clean, the issue is
+still visible in `bd list`, `bd list -s failed` finds it, and `bd history` records every transition.
+§5.6's example predates this section and registers three custom statuses §10.3 retires; the flow needs
+exactly one. The registration is **store state, not a file**: `bd config get status.custom` reads it
+back from the database and `.beads/config.yaml` stays comment-only, so it travels with the Dolt remote
+(§12) and is *absent from a freshly `bd init`ed store*. A drain must therefore refuse to start on a
+store that cannot express `failed` — naming the command — rather than dying at its first failure, which
+may be hours in. Labels and issue types need nothing: labels are free text and `decision` is native.
+
 `BLOCKED` and `READY` become **derived** (`is_blocked`, `status='open'`). `MERGING`, `CONFLICT` and
 `RESOLVING` are **retired**: merging and resolving are steps *inside* a running issue, and the
 worktree's own git state (`MERGE_HEAD`, unmerged paths) is what records them. The old machine had 8
@@ -603,7 +615,12 @@ guards Main's git writes only.
 
 **Retry.** A FAILED issue is not retried inside the drain that failed it; the next drain may start it.
 The cap is per-run and lives in the run's own `attempted-ids.json` — drain bookkeeping does not enter
-the store (ADR-0032).
+the store (ADR-0032). Across runs there is **no cap at all**: a deterministic failure is retried by
+every drain that follows and costs a worker slot each time, and the brake (§10.4) is the only thing
+that ends it. A brake nobody is prompted to pull is not a cap, so **the drain-end report must say how
+many times each failed issue has been attempted** — `bd history` already records every transition
+(measured), so that is a reading, not new state. This build does not change what the report says (the
+build spec puts that out of scope); this paragraph is the requirement for whoever does.
 
 ### 10.4 Frontier, claim, closure
 
@@ -696,9 +713,15 @@ Settled 2026-09-11. The tracker template of §1 is the centre of a *set*, not a 
   (run a drain, read its reports, brake an issue, let it back in) and an accident section (restore
   from the Dolt remote, recompute blocked-ness, reconcile leftovers). A third file that also builds
   store commands would be the duplication this section exists to prevent.
-- **There is no retry command.** A failed issue is retried by the next drain by construction (§10.4),
-  so the operator's "retry" is running another drain: pulling the gate label is the only action that
-  needs a human hand.
+- **There is no retry command, and no lever that narrows a drain to one issue.** Retry is a
+  consequence of the query rather than a verb (§10.3), so the operator's "retry" is running another
+  drain — and that drain also starts every other eligible issue. Wanting *only* the one issue back
+  means braking its neighbours, which mutates triage state to express a transient wish; running the
+  per-issue workflow by hand is not the cheap way out either, because it bypasses the opening node's
+  reconciliation of the previous attempt's leftovers. Recorded as a known cost rather than solved: the
+  lever to add later is a narrowing input to the drain, not a retry verb. Pulling the gate label stays
+  the one action that needs a human hand (§10.4), and per §10.3 it only works as a cap if the report
+  says how often the issue has burned.
 - **The pack's agent personas are not part of the set.** They are the pack's own text; the set is
   what a human or an interactive agent uses.
 - **`bd` is part of the flow, not an installation detail.** It is not on `PATH` even on the machine
@@ -761,7 +784,9 @@ shows the status and not the body, §6).
   still show that `<feature>/<NN>` was merged, not that it failed twice first. So the Dolt remote is
   **load-bearing, not optional**: `bd dolt remote add …` plus `bd dolt push` — a Dolt-native path,
   distinct from the JSONL hydration `bd repo sync` performs (§5.10). Size is not a concern: measured
-  at ~75 KB per issue including Dolt history, so a 99-issue repo is roughly 7–8 MB.
+  at ~75 KB per issue including Dolt history, so a 99-issue repo is roughly 7–8 MB. The custom status
+  registration travels the same way: `status.custom` is store state (§10.3), so a restored store still
+  knows what `failed` means while a fresh `bd init` does not.
 - **A restore re-opens the `is_blocked` staleness window** (§7.5): after a pull, run
   `bd recompute-blocked`. With no remote configured there is no pull, and the window does not exist.
 - When the two disagree, **git wins**: beads' `closed` is a cache that `hasTicketMergeCommit` repairs.
