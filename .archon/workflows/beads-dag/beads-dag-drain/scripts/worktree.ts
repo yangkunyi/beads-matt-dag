@@ -8,26 +8,13 @@
  * what a resumed attempt needs is Main brought into it.
  *
  * This module writes no part of Main. It creates a branch and a working tree, and merges Main *into*
- * that working tree; merging the issue's branch into Main is the settlement's step and belongs where
- * the Main-write lock lives.
+ * that working tree; merging the issue's branch into Main is the settlement's step and lives in
+ * main-writes.ts, where the Main-write lock is.
  */
-import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { git, gitOrThrow } from "./git.ts";
 import type { IssueNames } from "./naming.ts";
-
-/** One git command, run where the caller says. Any failure comes back as a reason, never as a throw. */
-function git(cwd: string, args: string[]): { ok: boolean; out: string } {
-  const r = spawnSync("git", ["-C", cwd, ...args], { encoding: "utf8" });
-  if (r.error) return { ok: false, out: r.error.message };
-  return { ok: r.status === 0, out: `${r.stdout ?? ""}${r.stderr ?? ""}`.trim() };
-}
-
-function gitOrThrow(cwd: string, args: string[]): string {
-  const r = git(cwd, args);
-  if (!r.ok) throw new Error(`git ${args.join(" ")} failed in ${cwd}: ${r.out}`);
-  return r.out;
-}
 
 /**
  * The Target's main branch: what merges land on. The drain runs in the Target's own checkout, so the

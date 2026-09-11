@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /** Shared Target fixture for the repro scripts: a temp git repo, a real store, store helpers, git, expects. */
 import { execFileSync, spawnSync } from "node:child_process";
-import { accessSync, constants, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { accessSync, chmodSync, constants, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 
@@ -217,6 +217,78 @@ export function storeIssue(root: string, id: string): Record<string, any> {
   const shown = JSON.parse(bd(root, "show", id, "--json"));
   if (!Array.isArray(shown) || shown.length !== 1) throw new Error(`store show ${id}: unexpected shape`);
   return shown[0];
+}
+
+/** The comments the store holds for one issue, in the store's own order. */
+export function storeComments(root: string, id: string): { text: string; author: string }[] {
+  return JSON.parse(bd(root, "comments", id, "--json"));
+}
+
+/** Await a rejection and check its reason; a call that does not throw is the failure. */
+export async function expectReject(
+  name: string,
+  fn: () => unknown | Promise<unknown>,
+  re: RegExp,
+): Promise<void> {
+  let error: unknown;
+  try {
+    await fn();
+  } catch (e) {
+    error = e;
+  }
+  if (error === undefined) throw new Error(`${name}: did not throw`);
+  const message = error instanceof Error ? error.message : String(error);
+  if (!re.test(message)) throw new Error(`${name}: reason does not match ${re}: ${message}`);
+}
+
+/**
+ * A store that is also a probe. Every command the pack asks the store is recorded first, with two facts
+ * read at that moment: whether the process that spawned the store held the Main lock (the lock file's
+ * pid against the wrapper's own parent), and how many parents Main's tip had (3 is a merge commit).
+ * The pack never sees the record; the test reads it. Both files live in the run's artifacts, so the
+ * Target only ever holds what the pack put there.
+ */
+export function writeProbeStore(root: string, artifacts: string): { probe: string; wrapper: string } {
+  const wrapper = join(artifacts, "store-that-records-what-it-saw");
+  const probe = join(artifacts, "store-probe.log");
+  writeFileSync(
+    wrapper,
+    [
+      "#!/bin/sh",
+      `REAL=${JSON.stringify(storeBinary())}`,
+      `PROBE=${JSON.stringify(probe)}`,
+      `LOCK=${JSON.stringify(join(root, ".git", "beads-dag.lock"))}`,
+      "mine=no",
+      '[ -f "$LOCK" ] && [ "$(cat "$LOCK")" = "$PPID" ] && mine=yes',
+      'parents=$(git -C "$(pwd)" rev-list --parents -1 main 2>/dev/null | wc -w)',
+      "printf '%s mine=%s parents=%s\\n' \"$1\" \"$mine\" \"$parents\" >> \"$PROBE\"",
+      'exec "$REAL" "$@"',
+      "",
+    ].join("\n"),
+  );
+  chmodSync(wrapper, 0o755);
+  writeTargetConfig(root, `store: ${wrapper}\n`);
+  return { probe, wrapper };
+}
+
+export type ProbeLine = { command: string; mine: boolean; parents: number };
+
+/** The probe's record, read as the test's own evidence. */
+export function probeLines(probe: string): ProbeLine[] {
+  if (!existsSync(probe)) return [];
+  return readFileSync(probe, "utf8")
+    .split("\n")
+    .filter((line) => line.trim() !== "")
+    .map((line) => {
+      const m = /^(\S+) mine=(yes|no) parents=(\d+)$/.exec(line.trim());
+      if (!m) throw new Error(`unreadable probe line: ${line}`);
+      return { command: m[1]!, mine: m[2] === "yes", parents: Number(m[3]) };
+    });
+}
+
+/** The Target's own read of whether a worktree made its checkout dirty. */
+export function worktreeDirt(root: string): string {
+  return gitC(root, "status", "--porcelain", "--", "worktrees").trim();
 }
 
 /** Write the Target's config - the store override lives here. */

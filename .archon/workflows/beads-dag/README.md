@@ -95,6 +95,33 @@ where this flow records a merge under way.
 The implementer's whole brief is the body's **path** (absolute, and the Target's own published copy, not
 a checkout of it): one tool call reads the whole issue. No node writes the body; state lives in the store.
 
+## The settlement: merge, then record
+
+An issue's turn ends in one of two settlements, and there is only one order in which either can happen.
+
+**Merged.** The issue's branch is merged into Main first - a real merge (`--no-ff`), so the merge commit
+exists on Main to be found later - and only once that has landed is the issue closed in the store, with
+`merged <branch>` as the reason. The worktree and its branch are dropped last, and only because Main now
+carries the merge. So `closed` always has its merge commit behind it, and the one dangerous
+interleaving - a store saying the work is done while Main is missing it, releasing dependents against
+nothing - cannot arise. The other interleaving is safe and repairable: a run killed between the merge and
+the record leaves the issue `in_progress` while its work is in Main, and the next drain's opening
+reconcile reads git and closes it.
+
+**Failed.** Nothing merged, so nothing closes. The reason becomes a comment - `attempt N failed: <reason>`
+- and the issue goes back to `open`, which is the retry channel itself: the next drain works it exactly
+like fresh work, and the run that failed it is kept off by its own `attempted-ids.json`. Nothing was
+closed, so its dependents stay blocked exactly where they were, and the worktree and branch are left for
+the report.
+
+**The lock guards git, not the store** (ADR-0002). Every function that writes Main (`main-writes.ts`)
+refuses to run unless the caller holds the Main-write lock; the store write that records an outcome is
+deliberately outside it, under the store's own transaction. The lock is one file in the Target's git
+directory (`beads-dag.lock`): a second process waits for it, a call made while this process holds it
+joins the same transaction, and a lock left behind by a killed run (its pid gone) is stolen rather than
+waited for. `main-writes.ts` also writes the one `.gitignore` line a Target needs to keep its checkout
+clean while a worktree exists (`/worktrees/`), idempotently, under the same lock.
+
 ## The agent roles
 
 `roles.ts` is the single declaration of each agent role: the arguments it takes, the session key it runs
@@ -150,7 +177,11 @@ The modules the two workflows share, all in the drain's `scripts/`:
 |---|---|
 | `store.ts` | every store command: the binary, its arguments, its working directory |
 | `naming.ts` | the one derivation of an issue's branch, worktree and body path |
+| `git.ts` | git plumbing: the two calls the readers and writers share |
 | `worktree.ts` | the issue's worktree: create, resume, bring Main in |
+| `lock.ts` | the Main-write lock: one writer at a time on the Target's branch |
+| `main-writes.ts` | every git write to Main: the merge, the ignore line, the removal after a merge |
+| `settle.ts` | the one order: merge then record, or record the failure and reopen |
 | `roles.ts` | the role table: a role's arguments, session key, persona, brief, wall clock |
 | `prompt.ts` | the personas themselves |
 | `agent.ts` | the agent seam: one turn in, one session's report out |

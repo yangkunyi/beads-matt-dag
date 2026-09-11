@@ -9,13 +9,14 @@
  *
  * The executor is driven the way a run drives it. The turn itself is the fixture's stub agent: it
  * records the options it was handed and commits the way an implementer would. The live session arrives
- * with the runner work; everything before and after the turn is this ticket's.
+ * with the runner work; everything before and after the turn is this ticket's - and after it, the
+ * settlement merges the branch into Main, records it, and drops the worktree (ticket 05).
  */
 import { existsSync, mkdirSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { executeIssue } from "../../beads-dag-execute/scripts/execute.ts";
 import type { PackAgentOpts, PackAgentResult } from "../scripts/agent.ts";
-import { FAILED } from "../scripts/node-outcomes.ts";
+import { FAILED, MERGED } from "../scripts/node-outcomes.ts";
 import {
   GATE_LABEL,
   bd,
@@ -30,13 +31,15 @@ import {
   writeStoreConfig,
 } from "./target.ts";
 
-/** The stub agent: it records what it was handed, and commits what an implementer would. */
+/** The stub agent: it records what it was handed, observes where it is, and commits what an implementer would. */
 function recorder(
   turns: PackAgentOpts[],
   commits: { file: string; content: string; message: string }[] = [],
+  observe?: (opts: PackAgentOpts) => void,
 ): (opts: PackAgentOpts) => Promise<PackAgentResult> {
   return async (opts) => {
     turns.push(opts);
+    observe?.(opts);
     for (const c of commits) commitFile(opts.cwd, c.file, c.content, c.message);
     return { sessionFile: "", answer: { kind: "text", text: "done" }, lastError: undefined };
   };
@@ -53,7 +56,8 @@ function isAncestor(root: string, ancestor: string, descendant: string): boolean
 }
 
 try {
-  // The worktree and its branch are named from the issue, and the implementer's commits end on them.
+  // The worktree and its branch are named from the issue, the implementer's commits are made there,
+  // and the settlement lands them in Main and drops the worktree.
   await withTarget(async (root, artifacts) => {
     writeStoreConfig(root);
     const issue = publishIssue(root, {
@@ -62,38 +66,40 @@ try {
       slug: "one-worktree",
       labels: [GATE_LABEL],
     });
-    const mainTip = gitC(root, "rev-parse", "HEAD");
     const turns: PackAgentOpts[] = [];
+    let atTurn = { branch: "", main: "" };
 
     const outcome = await executeIssue(root, issue.handle, {
       artifactsDir: artifacts,
-      runAgent: recorder(turns, [{ file: "work.txt", content: "the work\n", message: "the implementer's commit" }]),
+      runAgent: recorder(
+        turns,
+        [{ file: "work.txt", content: "the work\n", message: "the implementer's commit" }],
+        (opts) => {
+          atTurn = {
+            branch: gitC(opts.cwd, "rev-parse", "--abbrev-ref", "HEAD"),
+            main: gitC(root, "rev-parse", "main"),
+          };
+        },
+      ),
     });
 
     const worktree = join(root, "worktrees", "feat-07-one-worktree");
     const branch = "beads/feat/07-one-worktree";
-    expect("the worktree is where the issue's names put it", existsSync(worktree), worktree);
+    expectEqual("the turn ran in the issue's own worktree", turns[0]?.cwd, worktree);
+    expectEqual("which had the issue's branch checked out", atTurn.branch, branch);
+    expectEqual("and was created off Main", atTurn.main.length > 0, true);
+    expectEqual("a clean merge settles the issue", outcome, MERGED);
+    const tip = gitC(root, "rev-parse", "main");
     expectEqual(
-      "git has that worktree registered, on that branch",
-      gitC(root, "worktree", "list", "--porcelain").includes(`${worktree}`) &&
-        gitC(root, "worktree", "list", "--porcelain").includes(branch),
-      true,
-    );
-    expectEqual("the branch is named from the issue too", gitC(worktree, "rev-parse", "--abbrev-ref", "HEAD"), branch);
-    expectEqual("the branch is off Main", gitC(root, "merge-base", branch, "main"), mainTip);
-    expectEqual(
-      "the worktree ends holding the implementer's commits",
-      gitC(worktree, "log", "-1", "--format=%s"),
+      "the implementer's commit became Main's second parent",
+      gitC(root, "log", "-1", "--format=%s", `${tip}^2`),
       "the implementer's commit",
     );
-    expectEqual("the commit is on the branch the worktree is on", gitC(root, "log", "-1", "--format=%s", branch), "the implementer's commit");
-    expectEqual("and Main still has them not", gitC(root, "rev-parse", "main"), mainTip);
-    expectEqual("the turn ran in that worktree", turns[0]?.cwd, worktree);
-    expectEqual(
-      "the executor reports the issue's work is not in Main",
-      outcome,
-      FAILED,
-    );
+    expectEqual("made on a branch that came off Main", gitC(root, "rev-parse", `${tip}^2^`), atTurn.main);
+    expectEqual("so the work is in Main now", gitC(root, "show", "main:work.txt"), "the work");
+    expect("the merge commit names the issue's branch", gitC(root, "log", "-1", "--format=%s", tip).includes(branch));
+    expectEqual("the worktree is dropped once the merge landed", existsSync(worktree), false);
+    expectEqual("and its branch with it", gitC(root, "branch", "--list", branch), "");
   });
 
   // A worktree is not found by listing a directory: an issue's own names decide, whatever is there.
@@ -131,25 +137,49 @@ try {
     const branch = "beads/feat/08-worked-twice";
     const worktree = join(root, "worktrees", "feat-08-worked-twice");
 
-    await executeIssue(root, issue.handle, {
+    // The first attempt commits, then fails: its work stays on the issue's branch, in its worktree,
+    // which is what a resumed attempt has to build on rather than throw away.
+    const first = await executeIssue(root, issue.handle, {
       artifactsDir: artifacts,
-      runAgent: recorder([], [{ file: "first.txt", content: "1\n", message: "the first attempt" }]),
+      runAgent: async (opts): Promise<PackAgentResult> => {
+        commitFile(opts.cwd, "first.txt", "1\n", "the first attempt");
+        return { sessionFile: "", answer: { kind: "none" }, lastError: "the first attempt did not land" };
+      },
     });
-    // While the issue is worked, something else lands on Main.
+    expectEqual("the first attempt did not land", first, FAILED);
+    expectEqual("its worktree is left where it was", existsSync(worktree), true);
+    expectEqual("holding its commit", gitC(root, "log", "-1", "--format=%s", branch), "the first attempt");
+    expectEqual("which Main has not got", gitC(root, "rev-list", "--count", `main..${branch}`), "1");
+
+    // While the issue waits, something else lands on Main.
     commitFile(root, "landed.txt", "a dependency\n", "a dependency landed");
     const mainTip = gitC(root, "rev-parse", "main");
+    let sawMainInTheWorktree = false;
+    let oneWorktree = false;
 
-    await executeIssue(root, issue.handle, {
+    const second = await executeIssue(root, issue.handle, {
       artifactsDir: artifacts,
-      runAgent: recorder([], [{ file: "second.txt", content: "2\n", message: "the second attempt" }]),
+      runAgent: async (opts): Promise<PackAgentResult> => {
+        sawMainInTheWorktree = isAncestor(opts.cwd, mainTip, "HEAD");
+        oneWorktree = readdirSync(join(root, "worktrees")).length === 1;
+        expectEqual("the second attempt runs in the issue's own worktree", opts.cwd, worktree);
+        commitFile(opts.cwd, "second.txt", "2\n", "the second attempt");
+        return { sessionFile: "", answer: { kind: "text", text: "done" }, lastError: undefined };
+      },
     });
 
-    expectEqual("the issue keeps one worktree", readdirSync(join(root, "worktrees")), ["feat-08-worked-twice"]);
-    expectEqual("the worktree is the issue's own path", existsSync(worktree), true);
-    expectEqual("Main was brought into the worktree", isAncestor(root, mainTip, branch), true);
-    const subjects = gitC(root, "log", "--format=%s", branch);
-    expect("both attempts are on the branch", subjects.includes("the first attempt") && subjects.includes("the second attempt"), subjects);
-    expect("Main has no attempt on it", !gitC(root, "log", "--format=%s", "main").includes("the second attempt"));
+    expectEqual("there was still one worktree to resume", oneWorktree, true);
+    expectEqual("Main was brought into it", sawMainInTheWorktree, true);
+    expectEqual("the second attempt settles the issue", second, MERGED);
+    const subjects = gitC(root, "log", "--format=%s", "main");
+    expect(
+      "both attempts are in Main",
+      subjects.includes("the first attempt") && subjects.includes("the second attempt"),
+      subjects,
+    );
+    expect("and so is what landed while it waited", subjects.includes("a dependency landed"), subjects);
+    expectEqual("the worktree is dropped after the merge", existsSync(worktree), false);
+    expectEqual("and the branch with it", gitC(root, "branch", "--list", branch), "");
   });
 
   // An issue the store cannot name in git fails the node loudly, naming what was missing.

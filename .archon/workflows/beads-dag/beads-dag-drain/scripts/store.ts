@@ -242,3 +242,56 @@ export function recomputeBlocked(store: Store, target: string): void {
 export function pushStore(store: Store, target: string): void {
   runStore(store, target, ["dolt", "push"]);
 }
+
+/**
+ * Close an issue as merged: the one closure this pack writes, and it means the work is in Main.
+ *
+ * The caller has the merge behind it (settle.ts merges first, then records), and the reason names the
+ * branch that landed, so a reader of the store can see what the closure means without asking git. The
+ * restriction is ADR-0004: closing an issue releases whatever waits on it, so a closure that could mean
+ * anything else would release work against a dependency that was not delivered.
+ */
+export function closeIssue(store: Store, target: string, id: string, reason: string): void {
+  runStore(store, target, ["close", id, "--reason", reason]);
+}
+
+/** One comment the store holds, as this module reads it back. */
+type StoreComment = { text: string };
+
+/** The failure records the plainest reading of them: one comment per failed attempt. */
+const FAILURE_COMMENT = /^attempt \d+ failed:/;
+
+/** The failures already recorded on an issue, from its own comments. */
+function recordedFailures(store: Store, target: string, id: string): number {
+  const command = `comments ${id} --json`;
+  const parsed = parseJSON(command, runStore(store, target, ["comments", id, "--json"]));
+  if (!Array.isArray(parsed)) {
+    throw new Error(`${command} answered with something that is not a list of comments: ${JSON.stringify(parsed)}`);
+  }
+  return parsed.filter(
+    (raw): raw is StoreComment =>
+      typeof raw === "object" && raw !== null && typeof (raw as { text?: unknown }).text === "string",
+  ).filter((comment) => FAILURE_COMMENT.test(comment.text)).length;
+}
+
+/**
+ * Record a failed attempt: the reason as a comment, then the issue back to `open`. Nothing is closed.
+ *
+ * This is the whole of the pack's failure policy (§10.3). A failure is an event, not a status: the
+ * reason persists in a comment, the issue returns to the only set that can start, and the retry channel
+ * is `bd ready` itself - so the next drain works it exactly like fresh work, and this one is kept from
+ * it by its own `attempted-ids.json`. Its dependents stay blocked where they were, because nothing
+ * merged and nothing was closed.
+ *
+ * `attempt N` is the ordinal of this failure record - one plus the failures already on the issue - so
+ * the comment reads as a history even though the store keeps only one comment's worth of text.
+ *
+ * The two writes are separate transactions, and deliberately in this order: a crash between them leaves
+ * the reason recorded and the issue still in progress, which the next drain's repair can read. The
+ * other order would leave an issue that looks untouched with no reason anywhere.
+ */
+export function recordFailedAttempt(store: Store, target: string, id: string, reason: string): void {
+  const attempt = 1 + recordedFailures(store, target, id);
+  runStore(store, target, ["comment", id, `attempt ${attempt} failed: ${reason}`]);
+  runStore(store, target, ["update", id, "-s", "open"]);
+}

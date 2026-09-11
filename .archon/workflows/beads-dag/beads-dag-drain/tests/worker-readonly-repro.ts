@@ -22,6 +22,7 @@ import {
   expectEqual,
   publishIssue,
   storeBinary,
+  storeComments,
   storeIssue,
   withTarget,
   writeStoreConfig,
@@ -65,7 +66,10 @@ try {
     expectEqual("the worker's environment carries the store's read-only mode", seen[0]?.env(process.env)[READONLY_ENV], "1");
     expect("the worker's write attempt was refused", write !== undefined && write.status !== 0, write);
     expect("and the store said why", /read-only mode/.test(write?.output ?? ""), write?.output);
-    expectEqual("the issue is exactly where the claim left it", storeIssue(root, issue.id).status, "in_progress");
+    expectEqual("the worker's write did not close it", storeIssue(root, issue.id).status, "open");
+    expectEqual("and the only record on the issue is the settlement's reason", storeComments(root, issue.id).map((c) => c.text), [
+      "attempt 1 failed: the worker tried to write the store",
+    ]);
     expectEqual("the worker's read was not blocked", read?.status, 0);
     expectEqual("the outcome is the honest one for a turn with no answer", outcome, FAILED);
   });
