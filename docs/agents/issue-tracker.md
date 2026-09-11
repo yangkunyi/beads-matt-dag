@@ -5,7 +5,7 @@ Issues and specs for this repo live as markdown files in `.scratch/`.
 ## Conventions
 
 - One feature per directory: `.scratch/<feature-slug>/`
-- The spec is `.scratch/<feature-slug>/spec.md`
+- One spec per effort: `docs/specs/<date>-<slug>.md` — a document, in git, with the rest of this repo's long-form thinking
 - Implementation issues are one file per ticket at `.scratch/<feature-slug>/issues/<NN>-<slug>.md`, numbered from `01` — never a single combined tickets file
 - `Status:` near the top of each issue file: implementation tickets use the lifecycle below; wayfinder tickets use `claimed`/`resolved`; incoming triage uses `triage-labels.md`
 - Comments and conversation history append to the bottom of the file under a `## Comments` heading
