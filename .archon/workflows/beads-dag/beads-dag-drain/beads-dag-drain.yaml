@@ -1,0 +1,59 @@
+name: beads-dag-drain
+description: |
+  Drain implementation issues on this Target: ask the store what can start, run one issue per worktree,
+  merge it into Main, and record the outcome in the store only after the merge landed. Copy the
+  beads-dag pack folder to ~/.archon/workflows/ (copy, not a symlink). The Target does not commit
+  .archon/.
+worktree:
+  enabled: false
+inputs:
+  config:
+    default: .scratch/beads-dag.yaml
+    description: Path to YAML with model, thinkingLevel, concurrency, runner
+nodes:
+  - id: open
+    script: open
+    runtime: bun
+    always_run: true
+    with:
+      config: $INPUTS.config
+  - id: drain
+    depends_on: [open]
+    loop_group:
+      max_iterations: 500
+      until_bash: test $pick.output = "[]"
+      nodes:
+        - id: pick
+          script: pick
+          runtime: bun
+          with:
+            config: $INPUTS.config
+        - id: execute
+          include: beads-dag-execute
+          depends_on: [pick]
+          with:
+            config: $INPUTS.config
+          fan_out:
+            # The throttle is config.concurrency: pick prints at most that many issue handles, so this
+            # launches the batch the pool can take, not everything that is startable.
+            items: "$pick.output"
+            as: issue
+            # all_success, deliberately: an issue's own outcome is exit 0 (merged and failed are both
+            # results), so an instance only fails when a node THREW - a runner that cannot start, or a
+            # pack bug. Under all_done that is just an archon_failed marker in this node's output and the
+            # run still reports success, which is how a misconfigured runner once drained a whole backlog.
+            join: all_success
+  - id: review
+    script: review
+    runtime: bun
+    timeout: 2000000
+    depends_on: [drain]
+    with:
+      config: $INPUTS.config
+  - id: summary
+    script: summary
+    runtime: bun
+    timeout: 2000000
+    depends_on: [review]
+    with:
+      config: $INPUTS.config

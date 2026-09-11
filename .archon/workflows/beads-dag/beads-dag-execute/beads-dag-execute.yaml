@@ -1,0 +1,26 @@
+name: beads-dag-execute
+description: |
+  One issue, start to finish: implement it in its own worktree, bring Main into that worktree, merge it
+  into Main, and resolve a conflict in this same execution. Not a public drain entry: the issue input is
+  required.
+mutates_checkout: false
+# No `returns:` here, deliberately. The predecessor needed it because its last node sat behind a `when:`,
+# and archon reads an instance whose last node was skipped as "stopped without a terminal state", which
+# failed the drain's fan-out node and skipped the drain-end readers. This workflow is one node that
+# always runs, so the instance is terminal by construction and there is no node to name.
+inputs:
+  issue:
+    required: true
+    description: Issue handle (feature/NN, as carried on the issue)
+  config:
+    default: .scratch/beads-dag.yaml
+    description: Path to YAML with model, thinkingLevel, concurrency, runner
+nodes:
+  - id: execute
+    script: execute
+    runtime: bun
+    # Long enough for both turns: the implementer, then the conflict agent if the merge conflicted.
+    timeout: 7500000
+    with:
+      issue: $INPUTS.issue
+      config: $INPUTS.config

@@ -4,7 +4,9 @@ Lab repo for building and validating the beads-based issue-tracker flow for the 
 engineering skills. Design record: `docs/specs/2026-09-11-beads-issue-tracker-consensus.md`.
 
 > This repo's own tracker is the local-markdown convention below, not beads. The flow itself is
-designed (`docs/specs/…` §10, `docs/adr/`) but not built: no beads store, no drain, no `.archon/` pack yet.
+designed (`docs/specs/…`, `docs/adr/`) and is being built ticket by ticket in
+`.scratch/beads-dag/issues/`; so far that means the pack at `.archon/workflows/beads-dag/`, whose README
+installs it, documents it and names its gates.
 
 ## Agent skills
 
@@ -19,3 +21,10 @@ The five canonical triage roles, each label string equal to its name. See `docs/
 ### Domain docs
 
 Single-context: one `docs/CONTEXT.md` plus `docs/adr/`. See `docs/agents/domain.md`.
+
+### The drain pack's gates
+
+The pack is copied to `~/.archon/workflows/beads-dag`. Its two local gates run from this repository and
+live in it, never in the pack: the repro suite
+(`bun .archon/workflows/beads-dag/beads-dag-drain/tests/run-all.ts`) and the typecheck
+(`./node_modules/.bin/tsc -p tsconfig.pack.json`).
