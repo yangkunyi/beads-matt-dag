@@ -825,8 +825,18 @@ shows the status and not the body, §6).
 ## 13. Next steps
 
 1. **Build the flow** (§10): source in this repo, installed by copy, validated per §10.6 in a `/tmp`
-   lab. Nothing in this step touches a skills directory. *In progress:* the pack exists at
-   `.archon/workflows/beads-dag/` and is being built ticket by ticket under `.scratch/beads-dag/issues/`.
+   lab. Nothing in this step touches a skills directory. **Done 2026-09-12** (pack `ef11f13` at
+   `.archon/workflows/beads-dag/`: 18 node-level repros, typecheck clean, installed copy byte-identical):
+   a lab acceptance produced the four properties in real runs — only eligible issues start; decision
+   issues and issues without the gate label never do; a failure is retried by the next drain and never
+   by the one that failed it; closure never crosses domains; and a kill between the merge and the record
+   is repaired by the next open. `.scratch/beads-dag/issues/11-acceptance-in-a-lab.md` holds the run ids
+   and the artifact behind each. Three operator-visible consequences came out of it and are recorded
+   rather than fixed: the drain-end report still does not say which attempts failed and how many times
+   (§10.3 — this build was told not to change what the report says); a merge repaired after a kill sits
+   inside **no** run's review range, so the next drain closes it with nobody having reviewed it; and a
+   first drain's range can consist only of the pack's own housekeeping commit, which a reviewer then
+   reviews.
 2. **Write the skill set** (§10.7) — after step 1's acceptance, sourced in this repo, installed by
    copy. This absorbs what used to be three separate items here (whether §1's template may be written
    and where; the `to-tickets` hardcoding of §9; the stale wording in `to-tickets` and `implement`):
