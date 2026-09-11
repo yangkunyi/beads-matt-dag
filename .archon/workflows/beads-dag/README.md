@@ -65,6 +65,55 @@ this step left out is written to `pick-exclusions.json` in the run's artifacts, 
 excluded it — so a drain that did nothing can say why. The file is rewritten each cycle: it describes the
 cycle that just ran, and the cycles before it are in the store's own history.
 
+## One issue, one worktree, one brief
+
+An issue's git identity comes from its two metadata keys, and from nothing else:
+
+| Key | Carries |
+|---|---|
+| `handle` | `<feature>/<NN>`, the human-readable identifier |
+| `slug` | the one path segment the names end with |
+
+From those two, `naming.ts` derives every name the issue has in git:
+
+```
+branch        beads/<feature>/<NN>-<slug>
+worktree      worktrees/<feature>-<NN>-<slug>
+body          .scratch/<feature>/issues/<NN>-<slug>.md
+```
+
+The bead's own id never appears in git, so the store can be restored or rewritten without invalidating
+the code's history. A name is computed, never discovered: nothing lists `worktrees/` looking for a
+candidate, and an issue whose metadata cannot name a place fails the node instead of starting work
+somewhere nobody can name.
+
+`worktree.ts` creates that worktree from Main (`git worktree add -b <branch> <path> <main>`), or resumes
+the one an earlier attempt left - the branch is the issue's, so re-creating it would throw that attempt
+away - and brings Main into it. A merge that conflicts is left standing: the worktree's own git state is
+where this flow records a merge under way.
+
+The implementer's whole brief is the body's **path** (absolute, and the Target's own published copy, not
+a checkout of it): one tool call reads the whole issue. No node writes the body; state lives in the store.
+
+## The agent roles
+
+`roles.ts` is the single declaration of each agent role: the arguments it takes, the session key it runs
+under, its persona, the brief its prompt is, and how long it may run. A node names its role and hands it
+the role's own arguments - nothing else about the role is spelled at a call site. The workflow's `timeout`
+is the other half of that agreement and the same test checks it: it must outlast the wall clock of every
+role the node's script names (two turns in one node means the sum).
+
+| Role | Turn | Wall clock |
+|---|---|---|
+| `implement` | one issue, in its worktree, from the body's path | 2 h |
+
+**A worker cannot write issue state**, and the mechanism is the store's own read-only mode rather than a
+sentence in a persona: `workerEnv` (worker-env.ts) adds `BD_READONLY=1` to the environment the drain hands
+the runner, and the store then refuses every write operation for that whole process tree - a shell, a
+child, a command through a tool - while reads keep working. The pi and dsh sessions arrive with the runner
+work; until they do, the seam starts nothing, and the honest outcome for an issue whose work is not in
+Main is that it did not land.
+
 ## Gates
 
 All three run from this repository, cheapest first.
@@ -94,3 +143,15 @@ A workflow folder holds its YAML, its `scripts/` (each entry script is a node th
 and, for the drain, its `tests/`. `backup.ts` sits beside the YAML rather than in `scripts/` because it is
 an operator command, not a node. A module may be imported across the two folders; a node body may not,
 because the folder whose YAML declares a node is where that node's script resolves.
+
+The modules the two workflows share, all in the drain's `scripts/`:
+
+| Module | Owns |
+|---|---|
+| `store.ts` | every store command: the binary, its arguments, its working directory |
+| `naming.ts` | the one derivation of an issue's branch, worktree and body path |
+| `worktree.ts` | the issue's worktree: create, resume, bring Main in |
+| `roles.ts` | the role table: a role's arguments, session key, persona, brief, wall clock |
+| `prompt.ts` | the personas themselves |
+| `agent.ts` | the agent seam: one turn in, one session's report out |
+| `worker-env.ts` | the environment a worker runs under (the store's read-only mode) |

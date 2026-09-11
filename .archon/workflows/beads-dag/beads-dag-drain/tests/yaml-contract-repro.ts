@@ -19,6 +19,7 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { DEFAULT_CONFIG_REL } from "../scripts/config.ts";
+import { ROLES } from "../scripts/roles.ts";
 import { drain, execute, expect, expectEqual } from "./target.ts";
 
 const nodeEntry = readFileSync(join(drain.dir, "scripts/node-entry.ts"), "utf8");
@@ -31,6 +32,8 @@ type YamlNode = {
   dependsOn: string[];
   fanOutAs?: string;
   fanOutJoin?: string;
+  /** The node's own time budget, where the runner would kill a turn its agent is still on. */
+  timeout?: number;
   /** True when the node declares a `when:` - a node that can be skipped is not a terminal state. */
   hasWhen: boolean;
   /** Every `$<name>.output` this node's own keys read. */
@@ -40,15 +43,17 @@ type YamlNode = {
 /** The INPUTS_* names the node protocol reads. Archon owns the mapping; this is the other end of it. */
 const inputsRead = new Set(nodeEntry.match(/INPUTS_[A-Z_]+/g) ?? []);
 
-/** What one workflow folder's own scripts/ offers, keyed by script name: whether it is a CLI entry. */
-const scriptsByDir = new Map<string, Map<string, boolean>>();
+/** What one workflow folder's own scripts/ offers, keyed by script name: the roles it names, and
+ * whether it is a CLI entry. The roles are read out of the source (`role: "implement"`), which is the
+ * one place a node says which role it runs. */
+const scriptsByDir = new Map<string, Map<string, { entry: boolean; source: string }>>();
 for (const dir of [drain.dir, execute.dir]) {
-  const byName = new Map<string, boolean>();
+  const byName = new Map<string, { entry: boolean; source: string }>();
   for (const file of readdirSync(join(dir, "scripts"))) {
     if (!file.endsWith(".ts")) continue;
     const source = readFileSync(join(dir, "scripts", file), "utf8");
     // The file `script: <name>` names does not resolve without an entry block: nothing would run.
-    byName.set(file.replace(/\.ts$/, ""), /if \(import\.meta\.main\)/.test(source));
+    byName.set(file.replace(/\.ts$/, ""), { entry: /if \(import\.meta\.main\)/.test(source), source });
   }
   scriptsByDir.set(dir, byName);
 }
@@ -90,6 +95,7 @@ function scanNodes(yaml: string): YamlNode[] {
     const key = kv[1]!;
     const value = kv[2]!;
     if (key === "when" && value) node.hasWhen = true;
+    if (key === "timeout" && value) node.timeout = Number(value);
     // Any key's value may read another node's output, the fan-out and loop keys included.
     for (const name of refs(value)) node.reads.push(name);
     if (block) {
@@ -164,7 +170,6 @@ try {
         declaredScripts.add(node.script);
         expect(`${file}: script ${node.script} exists in ${folder}/scripts`, scripts.has(node.script));
       }
-
       // Every name this node depends on, and every node whose output it reads, is declared here.
       for (const name of [...node.dependsOn, ...node.reads]) {
         expect(`${file}: ${node.id} names a declared node`, ids.has(name), name);
@@ -212,8 +217,8 @@ try {
     // A node is a script this workflow can run, and a script it can run is a node: the two directions
     // must agree inside one folder, so a dead entry and a library masquerading as a node both fail here,
     // and a body left in the other folder cannot stand in for either.
-    for (const [name, entry] of scripts) {
-      if (!entry) continue;
+    for (const [name, fact] of scripts) {
+      if (!fact.entry) continue;
       expect(
         `entry script ${name} in ${folder}/scripts is declared as a node`,
         declaredScripts.has(name),
@@ -223,8 +228,26 @@ try {
     for (const name of declaredScripts) {
       expect(
         `declared script ${name} in ${folder}/scripts has an entry`,
-        scripts.get(name) === true,
+        scripts.get(name)?.entry === true,
         [...scripts.keys()].sort().join(" "),
+      );
+    }
+
+    // The node's timeout is the runner's side of the role's wall clock: a node names the roles it runs,
+    // the role table says how long each may run, and the node's own budget has to cover all of them
+    // (ticket 08 runs two turns in one node, so the sum, not the maximum).
+    for (const node of nodes) {
+      if (!node.script) continue;
+      const roles = [...(scripts.get(node.script)?.source ?? "").matchAll(/role:\s*"([a-z]+)"/g)].map((m) => m[1]!);
+      for (const role of roles) {
+        expect(`${file}: ${node.id} names a declared role`, role in ROLES, role);
+      }
+      if (roles.length === 0) continue;
+      const needed = roles.reduce((ms, role) => ms + ROLES[role as keyof typeof ROLES].wallMs, 0);
+      expect(
+        `${file}: ${node.id} outlasts the wall clocks of ${roles.join("+")} (${needed}ms)`,
+        node.timeout !== undefined && node.timeout > needed,
+        `${node.timeout}ms`,
       );
     }
   }

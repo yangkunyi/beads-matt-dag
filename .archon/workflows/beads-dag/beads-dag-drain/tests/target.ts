@@ -145,13 +145,27 @@ export type PublishOpts = {
   slug: string;
   type?: string;
   labels?: string[];
+  /** The issue's prose. Unset, a short body naming the issue - the tracker always publishes one. */
+  body?: string;
 };
 
-export type PublishedIssue = { id: string; handle: string; slug: string };
+export type PublishedIssue = { id: string; handle: string; slug: string; bodyPath: string };
 
 /**
- * Publish one issue the way the tracker integration will: type, gate label, and the two metadata keys
- * the pack consumes. Nothing in this build publishes issues, so the fixture stands in for the tracker.
+ * Where the tracker publishes an issue's body: `.scratch/<feature>/issues/<NN>-<slug>.md`. The fixture
+ * spells the rule here, on purpose, rather than asking the pack: a test that read the pack's own
+ * derivation could not catch it naming the wrong file.
+ */
+export function publishedBodyPath(root: string, handle: string, slug: string): string {
+  const [feature, number] = handle.split("/");
+  if (!feature || !number) throw new Error(`publishedBodyPath: not a <feature>/<NN> handle: ${handle}`);
+  return join(root, ".scratch", feature, "issues", `${number}-${slug}.md`);
+}
+
+/**
+ * Publish one issue the way the tracker integration will: type, gate label, the two metadata keys the
+ * pack consumes, and the body file it hands the implementer by path. Nothing in this build publishes
+ * issues, so the fixture stands in for the tracker.
  */
 export function publishIssue(root: string, opts: PublishOpts): PublishedIssue {
   const args = [
@@ -165,7 +179,10 @@ export function publishIssue(root: string, opts: PublishOpts): PublishedIssue {
   ];
   if (opts.labels?.length) args.push("--labels", opts.labels.join(","));
   const id = bd(root, ...args);
-  return { id, handle: opts.handle, slug: opts.slug };
+  const bodyPath = publishedBodyPath(root, opts.handle, opts.slug);
+  mkdirSync(dirname(bodyPath), { recursive: true });
+  writeFileSync(bodyPath, opts.body ?? `# ${opts.handle} - ${opts.title}\n\n${opts.title}\n`);
+  return { id, handle: opts.handle, slug: opts.slug, bodyPath };
 }
 
 /** The store's answer to "what can start": ready, gate-labelled, decision issues excluded. */
@@ -209,14 +226,23 @@ export function writeTargetConfig(root: string, text: string): string {
   return CONFIG_REL;
 }
 
+/**
+ * Point the Target's config at the store binary the suite resolved. A test that drives a node's own
+ * function in this process has no spawn to prepend the store's directory to PATH, so it uses the
+ * route a Target on a machine without `bd` on PATH would: the config override.
+ */
+export function writeStoreConfig(root: string): void {
+  writeTargetConfig(root, `store: ${storeBinary()}\n`);
+}
+
 // ---------------------------------------------------------------------------------------------------
 // Target repos.
 // ---------------------------------------------------------------------------------------------------
 
-/** Target repo on Main with one seed commit and no store. */
-export function initTarget(prefix = "target-"): string {
+/** Target repo on its main branch with one seed commit and no store. */
+export function initTarget(prefix = "target-", mainBranch = "main"): string {
   const root = mkTemp(prefix);
-  gitC(root, "init", "-b", "main");
+  gitC(root, "init", "-b", mainBranch);
   gitC(root, "config", "user.name", "test");
   gitC(root, "config", "user.email", "test@example.com");
   writeFileSync(join(root, "README.md"), "x\n");

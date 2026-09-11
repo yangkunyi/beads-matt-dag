@@ -12,7 +12,7 @@
  */
 import { readFileSync } from "node:fs";
 import { EMPTY_PICK, FAILED, NOTHING_TO_REPORT, OPENED, nodeLine } from "../scripts/node-outcomes.ts";
-import { drain, execute, expect, expectEqual, runScript, withTarget } from "./target.ts";
+import { GATE_LABEL, drain, execute, expect, expectEqual, publishIssue, runScript, withTarget } from "./target.ts";
 
 try {
   // The byte contract itself.
@@ -32,11 +32,14 @@ try {
     expectEqual("pick prints its token and nothing else", picked.stdout, nodeLine(EMPTY_PICK));
     expectEqual("a work outcome exits clean", picked.status, 0);
 
-    // A node handed an issue it cannot deliver: still a result, so still exit 0, with the reason on stderr.
-    const issued = runScript(execute.script("execute"), root, { INPUTS_ISSUE: "demo/01" });
+    // A work outcome: the token alone on stdout, and exit 0. The per-issue node hands its issue to the
+    // implementer, and with no session built yet the turn answers nothing: an issue whose work is not
+    // in Main did not land, so its outcome is `failed` - a result, not an error.
+    const issue = publishIssue(root, { title: "one issue", handle: "feat/01", slug: "one-issue", labels: [GATE_LABEL] });
+    const issued = runScript(execute.script("execute"), root, { INPUTS_ISSUE: issue.handle, ARTIFACTS_DIR: artifacts });
     expectEqual("execute prints its outcome token", issued.stdout, nodeLine(FAILED));
     expectEqual("failed is a result, not an error", issued.status, 0);
-    expect("the reason names the issue", issued.stderr.includes("demo/01"), issued.stderr);
+    expect("the reason names the issue", issued.stderr.includes("feat/01"), issued.stderr);
 
     // Misconfiguration: no token at all, and the reason on stderr.
     const missing = runScript(execute.script("execute"), root, {});

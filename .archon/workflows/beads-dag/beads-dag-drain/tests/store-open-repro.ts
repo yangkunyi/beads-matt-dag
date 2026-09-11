@@ -60,13 +60,19 @@ try {
 
   // A machine where the binary cannot be found at all fails naming where it looked.
   await withTarget(async (root, artifacts) => {
-    const opened = runScript(drain.script("open"), root, { ARTIFACTS_DIR: artifacts, ...envWithoutStore() });
+    // A PATH the test chooses, so the assertion is about the directories the message names - which is
+    // what an operator reads - and not about whichever directory happens to sit first on the machine's
+    // own PATH (the store binary's own directory, when it is, is one the search did not need).
+    const searched = [join(root, "first-on-path"), join(root, "second-on-path")].join(":");
+    const opened = runScript(drain.script("open"), root, { ARTIFACTS_DIR: artifacts, PATH: searched });
     expectEqual("an unresolvable store prints no token", opened.stdout, "");
     expect("an unresolvable store fails the node", opened.status !== 0, opened.status);
     expect("the reason names the config file", opened.stderr.includes(".scratch/beads-dag.yaml"), opened.stderr);
     expect("the reason names PATH", opened.stderr.includes("PATH"), opened.stderr);
-    const firstPathEntry = (process.env.PATH ?? "").split(":").find(Boolean);
-    expect("the reason lists where it looked", firstPathEntry !== undefined && opened.stderr.includes(firstPathEntry), opened.stderr);
+    for (const dir of searched.split(":")) {
+      expect("the reason lists every directory it searched", opened.stderr.includes(dir), opened.stderr);
+    }
+    expect("the reason is the one that says it looked", /looked in:/.test(opened.stderr), opened.stderr);
   });
 
   // An override that is not a binary fails, naming it - never a silent fall back to PATH.

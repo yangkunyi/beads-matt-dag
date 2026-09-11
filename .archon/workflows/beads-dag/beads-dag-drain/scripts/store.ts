@@ -158,17 +158,51 @@ function toStoreIssue(raw: unknown, command: string): StoreIssue {
 const READY_ARGS = ["ready", "--json", "--limit", "0"];
 
 /**
+ * One store command that answers with a list of issues, narrowed here and nowhere else. Both queries
+ * that read issues go through it, so "the store returned something that is not an issue" has one home.
+ */
+function issueList(store: Store, target: string, args: string[]): StoreIssue[] {
+  const command = args.join(" ");
+  const parsed = parseJSON(command, runStore(store, target, args));
+  if (!Array.isArray(parsed)) {
+    throw new Error(`${command} answered with something that is not a list of issues: ${JSON.stringify(parsed)}`);
+  }
+  return parsed.map((raw) => toStoreIssue(raw, command));
+}
+
+/**
  * What the store says can start: `open`, not blocked, not pinned, not deferred — the store's own answer,
  * before any policy the store does not hold (the gate label, the decision domain, what this run already
  * tried). A drain works exactly what comes back here.
  */
 export function readyIssues(store: Store, target: string): StoreIssue[] {
-  const command = READY_ARGS.join(" ");
-  const parsed = parseJSON(command, runStore(store, target, READY_ARGS));
-  if (!Array.isArray(parsed)) {
-    throw new Error(`${command} answered with something that is not a list of issues: ${JSON.stringify(parsed)}`);
+  return issueList(store, target, READY_ARGS);
+}
+
+/**
+ * One issue, by the handle the tracker published with it: `<feature>/<NN>`.
+ *
+ * A handle names exactly one issue - it is what the drain hands its per-issue workflow, and every git
+ * name the issue has is derived from it (naming.ts) - so the lookups that matter are "the issue this
+ * handle names" and the two ways that fails: no such issue, or a handle two issues carry. Both throw
+ * with the handle named, because there is nothing sensible to guess between.
+ *
+ * `--all` is deliberate: a handle identifies an issue the pack may look for at any age, including one a
+ * repair path is about to close. The status filter is the caller's business, not the lookup's.
+ */
+export function issueByHandle(store: Store, target: string, handle: string): StoreIssue {
+  const args = ["list", "--metadata-field", `handle=${handle}`, "--all", "--json", "--limit", "0"];
+  const issues = issueList(store, target, args);
+  if (issues.length === 0) {
+    throw new Error(`no issue carries handle ${handle}: ${args.join(" ")} answered with nothing`);
   }
-  return parsed.map((raw) => toStoreIssue(raw, command));
+  if (issues.length > 1) {
+    throw new Error(
+      `handle ${handle} names ${issues.length} issues (${issues.map((issue) => issue.id).join(", ")}): a handle is an ` +
+        "issue's identity in git, so it names exactly one",
+    );
+  }
+  return issues[0]!;
 }
 
 /**
