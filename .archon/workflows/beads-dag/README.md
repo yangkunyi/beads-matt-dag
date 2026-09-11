@@ -207,6 +207,32 @@ and implementation-to-implementation blocking is the graph working as designed â
 closed ones included, because a decision the wayfinder has already closed is exactly the state where the
 store has released its dependents.
 
+## The drain-end report
+
+The run's two readers report on the range **this run** merged. The opening node records Main's tip as
+`review-base` in the run's artifacts before any merge; review and summary read `base..Main`, so no
+other run's work is in this run's report and this run's report is not the repository's history.
+
+- **review** (`review.md`) runs one reviewer per axis over the range - bugs and incorrect assumptions
+  in the diff, missing tests for changed behavior, cross-file breakage - and joins their sections into
+  one artifact. The reviewers fetch the range themselves; the diff is never pasted into a prompt.
+- **summary** (`summary.md`) reads review.md and ranks, dedupes and merges the reviews into the one
+  report a human reads first. It runs only when review.md holds findings.
+
+An empty range is a clean no-op, not a failure: both readers spend no agent, write a skip line naming
+the empty range, and print the `nothing` token - so a drain that merged nothing says so, and a second
+drain in the same repository reports only its own merges (its base is past the first drain's). A reader
+that wrote a report prints `reported`. The three artifacts live in the run's `ARTIFACTS_DIR`, beside
+`pick-exclusions.json` and `attempted-ids.json`.
+
+The base is recorded after the opening node's repair, and the order is not load-bearing: the repair
+does not move Main (it closes an issue whose merge already landed, or reopens one that never merged),
+so it records the commit the run opened on either way.
+
+Both readers share one wall clock (`REVIEW_WALL_MS`, 30 min) and the same read-only contract as every
+worker: the environment the role call carries puts the store in its own read-only mode, so a reader
+cannot move the frontier.
+
 ## The agent roles
 
 `roles.ts` is the single declaration of each agent role: the arguments it takes, the session key it runs
@@ -219,6 +245,8 @@ role the node's script names (two turns in one node means the sum).
 |---|---|---|
 | `implement` | one issue, in its worktree, from the body's path | 2 h |
 | `conflict` | the merge of Main standing in that worktree, from the same body's path | 2 h |
+| `review` | one axis of the drain-end review, over the range this run merged | 30 min |
+| `summary` | one report over the review, for the human who reads the run afterwards | 30 min |
 
 **A worker cannot write issue state**, and the mechanism is the store's own read-only mode rather than a
 sentence in a persona: `workerEnv` (worker-env.ts) adds `BD_READONLY=1` to the environment the drain hands
@@ -289,6 +317,8 @@ The modules the two workflows share, all in the drain's `scripts/`:
 | `settle.ts` | the one order: merge then record, or record the failure and reopen |
 | `reconcile.ts` | the repair of a killed run's leftovers: closed from git, or reopened with a reason |
 | `domains.ts` | the domain boundary: the decision type, and the cross-domain graph preflight |
+| `report-artifacts.ts` | the drain-end artifacts: the run's review base, review.md/summary.md, the skip protocol |
+| `report-node.ts` | the skeleton both drain-end readers ride: the base, the run's range, the agents, the artifact |
 | `roles.ts` | the role table: a role's arguments, session key, persona, brief, wall clock |
 | `prompt.ts` | the personas themselves |
 | `agent.ts` | the agent seam: one turn in, one session's report out, and the two runners behind it |

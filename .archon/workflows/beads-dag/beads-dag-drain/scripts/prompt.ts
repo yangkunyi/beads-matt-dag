@@ -72,3 +72,85 @@ export function conflictPersona(): string {
     "a comment is refused by the store itself, and it must stay refused.",
   ].join("\n");
 }
+
+/** The drain-end review axes, in report order: the title each reviewer is told to check. */
+export const REVIEW_AXES = [
+  "Bugs and incorrect assumptions in the diff",
+  "Missing tests for changed behavior",
+  "Cross-file breakage (callers, contracts, issues interacting)",
+] as const;
+
+/**
+ * One axis as the fan-out and review.md spell it: where it sits, and the text that names it. The
+ * session key and section number read `index` 1-based; the persona reads `title`.
+ */
+type ReviewAxis = { index: number; title: string };
+
+/**
+ * The axes with their identity, in report order - the one owner the fan-out, the section headings and
+ * the summary's count all read. Adding or renaming an axis here carries through each.
+ */
+export function reviewAxes(): ReviewAxis[] {
+  return REVIEW_AXES.map((title, index) => ({ index, title }));
+}
+
+/** The review.md section heading for an axis: `## <n>. <title>`, the byte contract summary reads. */
+export function axisHeading(axis: ReviewAxis): string {
+  return `## ${axis.index + 1}. ${axis.title}`;
+}
+
+/**
+ * How a reviewer reaches the range: git's own reading commands, read-only. Reviewers fetch what they
+ * need themselves - the diff is never pasted into the prompt.
+ */
+const BASE_READ_COMMANDS = "`git log`, `git diff`, `git show`, `cat`, `rg` and your file tools";
+
+/**
+ * The review contract, one text for every runner. Reviewers are handed the range and the tools, not
+ * a pasted diff. Their turn runs read-only: the persona says no writes, and the environment the role
+ * call carries (roles.ts) puts the store in its own read-only mode, so a write attempt is refused by
+ * the store rather than by this paragraph.
+ */
+export function reviewPersona(base: string, axis: string): string {
+  return `You are a read-only reviewer of git range ${base}...HEAD on this repository.
+
+Inspect that range yourself, read-only: ${BASE_READ_COMMANDS} are yours. Never write: no edits, no commits, no output redirection into files, no mutating git commands. Do not spawn agents or invoke /code-review or /tdd.
+
+Report only issues in added or modified lines, plus the impact of those changes on other files.
+
+Your axis: ${axis}. Other reviewers cover the other axes - do not report them.
+
+Do not check issue acceptance criteria. Do not produce a Standards-vs-Spec pair.
+
+If nothing material on your axis, say so briefly. Markdown. Under 800 words.`;
+}
+
+/** The handover: which range, and the commit menu to orient with. The diff itself is not pasted. */
+export function reviewTask(base: string, head: string, log: string): string {
+  return `Review the range ${base}...HEAD (HEAD = ${head}) in this repository.\n\nCommits in that range:\n${log || "(none)"}\n`;
+}
+
+/**
+ * The drain-end summary: one agent merges the review sections for the human. It ranks and dedupes, it
+ * does not review - another opinion on the same diff is not what the axis split bought.
+ */
+export function summaryPersona(base: string): string {
+  return `You are summarizing ${REVIEW_AXES.length} independent read-only reviews of git range ${base}...HEAD on this repository, for the human who owns this drain.
+
+You may read the range yourself, read-only: ${BASE_READ_COMMANDS} are yours. Never write: no edits, no commits, no output redirection into files, no mutating git commands. Do not spawn agents or invoke /code-review or /tdd.
+
+Merge the ${REVIEW_AXES.length} reviews into one report:
+1. Open with what the range does, in two sentences.
+2. Then the findings that survive: drop duplicates, rank by severity, and keep each to a line or two with file and line.
+3. Then the disagreements, where the reviewers contradict each other - say so and give your call.
+4. Name anything you dropped or demoted, and why. Nothing disappears silently.
+5. Where a section is an error rather than a review, say so in one line.
+
+Do not add findings of your own that no reviewer raised - you rank and merge, you do not review.
+Markdown. Under 600 words.`;
+}
+
+/** The summary's input: the range, the commit menu, and the reviews to merge. */
+export function summaryTask(base: string, head: string, log: string, reviewMd: string): string {
+  return `Git range ${base}...HEAD (HEAD = ${head}).\n\nCommits in that range:\n${log || "(none)"}\n\nThe ${REVIEW_AXES.length} reviews (review.md):\n${reviewMd}`;
+}

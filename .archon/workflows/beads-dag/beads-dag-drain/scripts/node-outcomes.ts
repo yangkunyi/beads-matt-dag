@@ -19,6 +19,9 @@ export const FAILED = "failed";
 /** A drain-end reader's outcome when the run merged nothing: there is no range to report on. */
 export const NOTHING_TO_REPORT = "nothing";
 
+/** A drain-end reader's outcome when it wrote the report for the range this run merged. */
+export const REPORTED = "reported";
+
 /** The token convention: a handler returns the token plus one newline, and node-entry writes it. */
 export function nodeLine(token: string): string {
   return `${token}\n`;

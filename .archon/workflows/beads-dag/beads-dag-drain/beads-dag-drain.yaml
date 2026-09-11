@@ -46,6 +46,7 @@ nodes:
   - id: review
     script: review
     runtime: bun
+    # One reader turn: REVIEW_WALL_MS (30 min) in roles.ts, with the runner's own kill after it.
     timeout: 2000000
     depends_on: [drain]
     with:
@@ -53,6 +54,7 @@ nodes:
   - id: summary
     script: summary
     runtime: bun
+    # The same clock as review: both read the one range base..Main.
     timeout: 2000000
     depends_on: [review]
     with:

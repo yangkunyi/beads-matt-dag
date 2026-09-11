@@ -372,10 +372,11 @@ export function commitFile(cwd: string, file: string, content: string, message: 
  *
  * Modes: `answer` writes an assistant row; `none` writes nothing; `hang` never ends until the wall
  * clock aborts it; `throw` rejects; `commit` also commits HELLO.md in the session's cwd, so a node can
- * be driven to a real merge without a model. `FAKE_PI_RECORD` names a file the fake leaves the turn's
- * options in, for a test that wants to read them back.
+ * be driven to a real merge without a model; `commit-cwd` commits a file named after that cwd instead,
+ * so a second issue in the same repository has its own content to land. `FAKE_PI_RECORD` names a file
+ * the fake leaves the turn's options in, for a test that wants to read them back.
  */
-export type FakePiMode = "answer" | "none" | "hang" | "throw" | "commit";
+export type FakePiMode = "answer" | "none" | "hang" | "throw" | "commit" | "commit-cwd";
 
 export function fakePiSdk(root: string, mode: FakePiMode): string {
   const dir = join(root, `fake-pi-${mode}`);
@@ -442,6 +443,12 @@ function fakePiSource(mode: string): string {
     '        execFileSync("git", ["-C", cwd, "add", "HELLO.md"]);',
     '        execFileSync("git", ["-C", cwd, "commit", "-m", "hello from the fake session"]);',
     "      }",
+    '      if (MODE === "commit-cwd") {',
+    '        const cwdFile = cwd.replace(/\\/+$/, "").split("/").pop() + ".md";',
+    '        writeFileSync(cwd + "/" + cwdFile, "hello\\n");',
+    '        execFileSync("git", ["-C", cwd, "add", cwdFile]);',
+    '        execFileSync("git", ["-C", cwd, "commit", "-m", "hello from the fake session"]);',
+    "      }",
     '      if (MODE !== "none") {',
     '        appendFileSync(file, JSON.stringify({ type: "message", message: { role: "assistant", content: [',
     '          { type: "thinking", text: "THINKING-LEAK" },',
@@ -495,9 +502,10 @@ export function runScript(
 // Self-check: the fixture builds a Target with a real store and drives the opening node through the protocol.
 if (import.meta.main) {
   const root = initTarget();
+  const artifacts = mkTemp("artifacts-");
   try {
     initStore(root);
-    const r = runScript(drain.script("open"), root);
+    const r = runScript(drain.script("open"), root, { ARTIFACTS_DIR: artifacts });
     expectEqual("open speaks the protocol", r.stdout, "opened\n");
     expectEqual("open exits clean", r.status, 0);
     const issue = publishIssue(root, { title: "demo", handle: "feat/01", slug: "demo", labels: [GATE_LABEL] });
@@ -509,5 +517,6 @@ if (import.meta.main) {
     process.exitCode = 1;
   } finally {
     rmSync(root, { recursive: true, force: true });
+    rmSync(artifacts, { recursive: true, force: true });
   }
 }

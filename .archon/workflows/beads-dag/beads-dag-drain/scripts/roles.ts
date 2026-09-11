@@ -7,12 +7,12 @@
  * disagree with the role it runs. The workflow's own timeout is the other half of that agreement: it
  * has to outlast the wall clock declared here or the runner kills a turn the agent is still on.
  *
- * `role` here is an agent role (implement and conflict today; the review turn to come). It is not a
- * triage label: different axis, different word.
+ * `role` here is an agent role (implement, conflict, and the two drain-end readers, review and
+ * summary). It is not a triage label: different axis, different word.
  */
 import type { PackAgentOpts } from "./agent.ts";
 import type { PackConfig } from "./config.ts";
-import { conflictPersona, implementPersona } from "./prompt.ts";
+import { conflictPersona, implementPersona, reviewPersona, reviewTask, summaryPersona, summaryTask } from "./prompt.ts";
 import { workerEnv } from "./worker-env.ts";
 
 /**
@@ -23,13 +23,25 @@ import { workerEnv } from "./worker-env.ts";
 export const AGENT_WALL_MS = 2 * 60 * 60 * 1000;
 
 /**
- * What each role is called with: the role's own arguments and nothing else. The handle keys the role's
- * session; the body's path is the role's whole brief.
+ * The drain-end readers share one clock: review and summary read one range and report on it, and
+ * neither has work of its own to run past it. It is its own constant because a reader's turn is not an
+ * implementation turn - and the drain YAML's review/summary timeouts are read against it.
+ */
+export const REVIEW_WALL_MS = 30 * 60 * 1000;
+
+/**
+ * What each role is called with: the role's own arguments and nothing else. The handle keys the issue
+ * roles' sessions; the body's path is the issue roles' whole brief. A reader's arguments are what its
+ * brief is built from - the range, its commit menu, and, for the summary, the review to merge.
  */
 export type RoleShape = {
   implement: { handle: string; bodyPath: string };
   /** The same issue, the same brief: a conflict is the implementer's work meeting a Main that moved. */
   conflict: { handle: string; bodyPath: string };
+  /** One axis of the drain-end review, over the range this run merged. */
+  review: { axisIndex: number; base: string; axis: string; head: string; log: string };
+  /** The one report over the review, for the human who reads the run afterwards. */
+  summary: { base: string; head: string; log: string; reviewMd: string };
 };
 
 /** The pack's agent-role vocabulary. */
@@ -64,6 +76,20 @@ export const ROLES: { [K in AgentRole]: RoleSpec<RoleShape[K]> } = {
     persona: () => conflictPersona(),
     prompt: (args) => args.bodyPath,
     wallMs: AGENT_WALL_MS,
+  },
+  review: {
+    // One session per axis and per run's artifacts: a fresh run's review does not resume a previous
+    // run's session, so an axis' answer is always this run's range's answer.
+    sessionKey: (args) => `drain-review-${args.axisIndex + 1}`,
+    persona: (args) => reviewPersona(args.base, args.axis),
+    prompt: (args) => reviewTask(args.base, args.head, args.log),
+    wallMs: REVIEW_WALL_MS,
+  },
+  summary: {
+    sessionKey: () => "drain-summary",
+    persona: (args) => summaryPersona(args.base),
+    prompt: (args) => summaryTask(args.base, args.head, args.log, args.reviewMd),
+    wallMs: REVIEW_WALL_MS,
   },
 };
 
