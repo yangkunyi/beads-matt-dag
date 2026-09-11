@@ -119,20 +119,36 @@ try {
     expectEqual("the removal drops the worktree", existsSync(worktree), false);
   });
 
-  // The ignore line itself: written once under the lock when the Target has none, and never twice.
+  // The ignore lines themselves: written once under the lock when the Target has none, and never twice.
   await withTarget(async (root) => {
-    // The store's own init already wrote a .gitignore (with its database entries); it has no worktrees rule.
+    // The store's own init already wrote a .gitignore (with its database entries); it has no drain rules.
     const before = readFileSync(join(root, ".gitignore"), "utf8");
     expect("the Target has no worktrees rule to begin with", !before.includes("worktrees"));
-    expectEqual("the line is written under the lock", await withMainLock(root, () => ensureWorktreesIgnored(root)), true);
+    expect("and no interactions rule", !before.includes("interactions.jsonl"));
+    expectEqual("both lines are written under the lock", await withMainLock(root, () => ensureWorktreesIgnored(root)), true);
     expectEqual(
       "as one Main commit",
       gitC(root, "log", "-1", "--format=%s"),
-      "chore(beads-dag): ignore worktrees/",
+      "chore(beads-dag): ignore runtime paths",
     );
-    expectEqual("and the file gained the rule", readFileSync(join(root, ".gitignore"), "utf8"), `${before}/worktrees/\n`);
+    expectEqual(
+      "and the file gained both rules",
+      readFileSync(join(root, ".gitignore"), "utf8"),
+      `${before}/worktrees/\n/.beads/interactions.jsonl\n`,
+    );
+    expectEqual("and the store's log is untracked", gitC(root, "ls-files", "--", ".beads/interactions.jsonl"), "");
     expectEqual("the second call writes nothing", await withMainLock(root, () => ensureWorktreesIgnored(root)), false);
-    expectEqual("and commits nothing", gitC(root, "log", "-1", "--format=%s"), "chore(beads-dag): ignore worktrees/");
+    expectEqual(
+      "and commits nothing",
+      gitC(root, "log", "-1", "--format=%s"),
+      "chore(beads-dag): ignore runtime paths",
+    );
+    // A log that is tracked again after the fact (a force-add, or a store restored from a backup) is
+    // untracked again even though both ignore lines are already in place.
+    gitC(root, "add", "-f", ".beads/interactions.jsonl");
+    gitC(root, "commit", "-m", "someone tracked the log again");
+    expectEqual("a re-tracked log is untracked again", await withMainLock(root, () => ensureWorktreesIgnored(root)), true);
+    expectEqual("and left untracked", gitC(root, "ls-files", "--", ".beads/interactions.jsonl"), "");
   });
 
   // Held while the callback runs, re-entered from inside it, released after it - and the one file

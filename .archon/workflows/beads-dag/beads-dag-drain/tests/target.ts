@@ -350,6 +350,101 @@ export function commitFile(cwd: string, file: string, content: string, message: 
   execFileSync("git", ["-C", cwd, "commit", "-m", message], { encoding: "utf8" });
 }
 
+/**
+ * A fake Pi SDK, for driving any node that would otherwise start a live session. The adapter loads the
+ * real package by name, so `PI_SDK_PATH` pointing at this tree is the whole ladder and no provider is
+ * ever reached. The session writes its answer into the session file - the channel the pack trusts -
+ * and returns a different string from `prompt`, which the pack must ignore.
+ *
+ * Modes: `answer` writes an assistant row; `none` writes nothing; `hang` never ends until the wall
+ * clock aborts it; `throw` rejects; `commit` also commits HELLO.md in the session's cwd, so a node can
+ * be driven to a real merge without a model. `FAKE_PI_RECORD` names a file the fake leaves the turn's
+ * options in, for a test that wants to read them back.
+ */
+export type FakePiMode = "answer" | "none" | "hang" | "throw" | "commit";
+
+export function fakePiSdk(root: string, mode: FakePiMode): string {
+  const dir = join(root, `fake-pi-${mode}`);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(
+    join(dir, "package.json"),
+    JSON.stringify({
+      name: "@earendil-works/pi-coding-agent",
+      version: "0.0.0",
+      type: "module",
+      exports: { ".": { import: "./index.js" } },
+    }),
+  );
+  writeFileSync(join(dir, "index.js"), fakePiSource(mode));
+  return dir;
+}
+
+function fakePiSource(mode: string): string {
+  // String concatenation, not a template literal: a `${` inside this source would interpolate here.
+  return [
+    'import { appendFileSync, writeFileSync } from "node:fs";',
+    'import { execFileSync } from "node:child_process";',
+    `const MODE = ${JSON.stringify(mode)};`,
+    "const RECORD = process.env.FAKE_PI_RECORD;",
+    'const ANSWER = "the session\'s answer";',
+    'const PROMPT_RETURN = "PROMPT-RETURN-VALUE";',
+    "let settle;",
+    "function record(entry) {",
+    "  if (RECORD) writeFileSync(RECORD, JSON.stringify(entry));",
+    "}",
+    "export const SessionManager = {",
+    "  open(file) {",
+    "    return { appendSessionInfo() {}, getSessionFile() { return file; } };",
+    "  },",
+    "};",
+    "export const ModelRuntime = { create: async () => ({}) };",
+    "export function resolveCliModel(opts) {",
+    '  if (opts.cliModel === "nope/nope") return { error: "unknown model nope/nope" };',
+    "  return { model: { id: opts.cliModel } };",
+    "}",
+    'export function getAgentDir() { return "/fake/agent-dir"; }',
+    "export class DefaultResourceLoader {",
+    "  async reload() {}",
+    "}",
+    "export function defineTool(definition) { return definition; }",
+    "export function createBashToolDefinition(cwd, options) {",
+    '  return { kind: "bash", cwd, spawnHook: options.spawnHook };',
+    "}",
+    "export async function createAgentSession(opts) {",
+    "  const file = opts.sessionManager.getSessionFile();",
+    "  const cwd = opts.cwd;",
+    "  const saw = () => ({",
+    "    cwd, sessionFile: file, model: opts.model, thinkingLevel: opts.thinkingLevel,",
+    "    customTools: (opts.customTools ?? []).map((tool) => tool && tool.kind),",
+    "  });",
+    "  record(saw());",
+    "  const session = {",
+    "    async prompt(text) {",
+    "      record({ ...saw(), prompt: text });",
+    '      if (MODE === "hang") return new Promise((resolve) => { settle = resolve; });',
+    '      if (MODE === "throw") throw new Error("the model exploded");',
+    '      if (MODE === "commit") {',
+    '        writeFileSync(cwd + "/HELLO.md", "hello\\n");',
+    '        execFileSync("git", ["-C", cwd, "add", "HELLO.md"]);',
+    '        execFileSync("git", ["-C", cwd, "commit", "-m", "hello from the fake session"]);',
+    "      }",
+    '      if (MODE !== "none") {',
+    '        appendFileSync(file, JSON.stringify({ type: "message", message: { role: "assistant", content: [',
+    '          { type: "thinking", text: "THINKING-LEAK" },',
+    '          { type: "text", text: ANSWER },',
+    '        ] } }) + "\\n");',
+    "      }",
+    "      return PROMPT_RETURN;",
+    "    },",
+    "    async abort() { if (settle) settle(); },",
+    "    dispose() {},",
+    "  };",
+    "  return { session };",
+    "}",
+    "",
+  ].join("\n");
+}
+
 export function envWithout(...names: string[]): NodeJS.ProcessEnv {
   const env = { ...process.env };
   for (const name of names) delete env[name];

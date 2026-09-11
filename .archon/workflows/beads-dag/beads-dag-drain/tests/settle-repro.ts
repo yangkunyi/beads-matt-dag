@@ -31,6 +31,7 @@ import {
   expect,
   expectEqual,
   expectReject,
+  fakePiSdk,
   gitC,
   mkTemp,
   packDir,
@@ -157,7 +158,7 @@ try {
     const issue = publishIssue(root, {
       title: "a turn that never started",
       handle: "feat/02",
-      slug: "a-turn-that-never-started",
+      slug: "a-turn-that-answered-nothing",
       labels: [GATE_LABEL],
     });
     const dependent = publishIssue(root, {
@@ -168,16 +169,22 @@ try {
     });
     bd(root, "dep", "add", dependent.id, issue.id);
     bd(root, "update", issue.id, "-s", "in_progress");
-    const { branch, worktree } = names("feat/02", "a-turn-that-never-started");
+    const { branch, worktree } = names("feat/02", "a-turn-that-answered-nothing");
 
-    // The pack's own agent: no runner is built into this slice, so the turn fails on purpose.
-    const outcome = await executeIssue(root, issue.handle, { artifactsDir: artifacts });
+    // A turn the runner started and that answered nothing: there is nothing in the worktree to merge,
+    // and the runner's own reason is what the issue records.
+    const noAnswer = async (): Promise<PackAgentResult> => ({
+      sessionFile: "",
+      answer: { kind: "none" },
+      lastError: "the session produced no answer",
+    });
+    const outcome = await executeIssue(root, issue.handle, { artifactsDir: artifacts, runAgent: noAnswer });
 
     expectEqual("a turn that did not land is a failure", outcome, FAILED);
     expectEqual("the issue is never closed", storeIssue(root, issue.id).status, "open");
     const reason = storeComments(root, issue.id)[0]?.text ?? "";
     expect("the reason is a comment on the issue", reason.startsWith("attempt 1 failed: "), reason);
-    expect("and it is the runner's own reason", reason.includes("no pi session ran"), reason);
+    expect("and it is the runner's own reason", reason.includes("the session produced no answer"), reason);
     expectEqual("nothing merged: Main carries no merge commit at all", gitC(root, "log", "--merges", "--format=%s", "main"), "");
     expectEqual("and the branch carries nothing Main does not have", gitC(root, "rev-list", "--count", `main..${branch}`), "0");
     expect("the worktree is left for the report", existsSync(join(root, worktree)));
@@ -188,7 +195,7 @@ try {
 
     // The next attempt of the same issue records the next ordinal.
     bd(root, "update", issue.id, "-s", "in_progress");
-    const second = await executeIssue(root, issue.handle, { artifactsDir: artifacts });
+    const second = await executeIssue(root, issue.handle, { artifactsDir: artifacts, runAgent: noAnswer });
     expectEqual("the second attempt fails the same way", second, FAILED);
     expectEqual(
       "and its reason says which attempt it was",
@@ -289,7 +296,11 @@ try {
     const first = runScript(drain.script("pick"), root, { ARTIFACTS_DIR: artifacts });
     expectEqual("pick offers the eligible issue", JSON.parse(first.stdout), ["feat/06"]);
 
-    const executed = runScript(execute.script("execute"), root, { ARTIFACTS_DIR: artifacts, INPUTS_ISSUE: "feat/06" });
+    const executed = runScript(execute.script("execute"), root, {
+      ARTIFACTS_DIR: artifacts,
+      INPUTS_ISSUE: "feat/06",
+      PI_SDK_PATH: fakePiSdk(artifacts, "none"),
+    });
     expectEqual("the turn failed", executed.stdout, nodeLine(FAILED));
     expectEqual("and a failed attempt is a result, not an error", executed.status, 0);
     expectEqual("the issue is back to open", storeIssue(root, issue.id).status, "open");
@@ -326,17 +337,25 @@ try {
     }
     const ignoreCommits = gitC(root, "log", "--format=%s", "main")
       .split("\n")
-      .filter((subject) => subject === "chore(beads-dag): ignore worktrees/");
-    expectEqual("the ignore line is one commit for the Target", ignoreCommits.length, 1);
+      .filter((subject) => subject === "chore(beads-dag): ignore runtime paths");
+    expectEqual("the ignore lines are one commit for the Target", ignoreCommits.length, 1);
     expect("worktrees/ is ignored", gitC(root, "check-ignore", "-v", "worktrees/feat-08-one").includes("/worktrees/"));
+    expect(
+      "the store's interaction log is ignored too",
+      gitC(root, "check-ignore", "-v", ".beads/interactions.jsonl").includes("interactions.jsonl"),
+    );
+    expectEqual("and untracked", gitC(root, "ls-files", "--", ".beads/interactions.jsonl"), "");
     expectEqual("and Main carries no worktree dirt", worktreeDirt(root), "");
+    expectEqual("nor any store dirt", gitC(root, "status", "--porcelain", "--", ".beads"), "");
   });
 
-  // A Target that already ignores its worktrees keeps its own spelling: the pack commits nothing.
+  // A Target that already carries both rules, in its own spelling, keeps them: no commit is made.
   await withTarget(async (root, artifacts) => {
     writeStoreConfig(root);
-    writeFileSync(join(root, ".gitignore"), "node_modules/\nworktrees/\n");
+    writeFileSync(join(root, ".gitignore"), "node_modules/\nworktrees/\n/.beads/interactions.jsonl\n");
     gitC(root, "add", ".gitignore");
+    // The Target untracked the store's log itself; the pack's job is only to make that true when it is not.
+    gitC(root, "rm", "--cached", "--quiet", "--", ".beads/interactions.jsonl");
     gitC(root, "commit", "-m", "the Target's own ignore rules");
     const issue = publishIssue(root, { title: "already ignored", handle: "feat/10", slug: "already-ignored", labels: [GATE_LABEL] });
     bd(root, "update", issue.id, "-s", "in_progress");
@@ -348,8 +367,9 @@ try {
         return { sessionFile: "", answer: { kind: "none" }, lastError: "did not land" };
       },
     });
-    expectEqual("the Target's own rule is enough: no commit was made", gitC(root, "rev-parse", "main"), before);
+    expectEqual("the Target's own rules are enough: no commit was made", gitC(root, "rev-parse", "main"), before);
     expectEqual("Main carries no worktree dirt", worktreeDirt(root), "");
+    expectEqual("nor any store dirt", gitC(root, "status", "--porcelain", "--", ".beads"), "");
   });
 
   // The one close in the pack, and where it sits: everything above pins the behaviour, and this pins

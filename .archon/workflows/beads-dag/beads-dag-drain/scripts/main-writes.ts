@@ -13,9 +13,10 @@
  * - **the removal**, which is the merge's other half: it deletes the branch and its worktree, and it
  *   refuses to do either unless Main already carries the merge.
  *
- * It also carries the one `.gitignore` line Main needs to stay clean while worktrees exist: the pack
- * writes it once per Target, idempotently, in the same lock as the rest of Main's writes - the Target's
- * own spelling of the rule is respected, and a Target that already has one gains no commit.
+ * It also carries the `.gitignore` rules Main needs to stay clean while the drain runs: the pack
+ * writes them once per Target, idempotently, in the same lock as the rest of Main's writes, and it
+ * also untracks the store's interaction log, which `bd init` commits and every command rewrites - a
+ * Target's own spelling of a rule is respected, and a Target that already has both gains no commit.
  *
  * What is deliberately *not* here: the store. The lock guards git, not the store (ADR-0002), so the
  * recording path is settle.ts and runs outside this module's lock.
@@ -27,14 +28,30 @@ import { isMainLockHeld } from "./lock.ts";
 import type { IssueNames } from "./naming.ts";
 import { mainBranch } from "./worktree.ts";
 
-/** The line that keeps the Target's worktrees out of its own tree; `git status` on Main stays clean. */
+/**
+ * The lines that keep the Target's tree clean while the drain runs: `git status` on Main has to be
+ * empty for a merge to be trusted, so what the drain's own machinery leaves in the tree is ignored.
+ */
 export const WORKTREES_IGNORE_LINE = "/worktrees/";
 
-/** Spellings a Target may already use for the same rule. Any of them means the line is not needed. */
+/**
+ * The store rewrites its interaction log on every command, and `bd init` starts it out tracked. A
+ * tracked file that is rewritten is dirt, ignored or not, so the ignore line is only half the fix: the
+ * step below also untracks it when it is tracked.
+ */
+export const INTERACTIONS_IGNORE_LINE = "/.beads/interactions.jsonl";
+
+/** The interactions log's path in the Target, relative to its root. */
+export const INTERACTIONS_REL = ".beads/interactions.jsonl";
+
+/** Spellings a Target may already use for the worktrees rule. Any of them means the line is not needed. */
 const IGNORE_ALIASES = [WORKTREES_IGNORE_LINE, "worktrees/", "worktrees", "/worktrees"];
 
-/** The ignore line's commit message; also what a later reader (and the tests) can count. */
-const IGNORE_COMMIT_SUBJECT = "chore(beads-dag): ignore worktrees/";
+/** Spellings a Target may already use for the interactions rule. */
+const INTERACTIONS_ALIASES = [INTERACTIONS_IGNORE_LINE, INTERACTIONS_REL];
+
+/** The ignore lines' commit message; also what a later reader (and the tests) can count. */
+const IGNORE_COMMIT_SUBJECT = "chore(beads-dag): ignore runtime paths";
 
 /** No function in this module may run without the lock; the reason names the function, not the caller. */
 function assertMainLock(what: string): void {
@@ -44,17 +61,39 @@ function assertMainLock(what: string): void {
 }
 
 /**
- * Make sure `worktrees/` is ignored, committing that on Main when it is not. Idempotent: a Target that
- * already carries the rule - in any of the spellings it is usually written in - gains no commit, and
- * neither does the second issue of a drain.
+ * Make sure the drain's own runtime paths are ignored on Main, committing that when they are not.
+ *
+ * Two rules, both of them the drain's own machinery rather than the Target's content: `worktrees/`,
+ * where the issue's worktrees are made, and `.beads/interactions.jsonl`, which every store command
+ * rewrites. The second one is why this is not only a `.gitignore` edit: `bd init` commits that file,
+ * and an ignored-but-tracked file still reads as modified, which would leave `git status` dirty on a
+ * Target that just had its whole drain recorded successfully. So a tracked log is removed from the
+ * index here, in the same commit as the line that ignores it - the file itself stays on disk.
+ *
+ * Idempotent: a Target that already carries both rules - in any of the spellings they are usually
+ * written in - and does not track the log gains no commit, and neither does the second issue of a
+ * drain.
  */
 export function ensureWorktreesIgnored(target: string): boolean {
   assertMainLock("ensureWorktreesIgnored");
   const file = join(target, ".gitignore");
   const body = existsSync(file) ? readFileSync(file, "utf8") : "";
-  if (body.split(/\r?\n/).some((line) => IGNORE_ALIASES.includes(line.trim()))) return false;
-  writeFileSync(file, `${body}${body === "" || body.endsWith("\n") ? "" : "\n"}${WORKTREES_IGNORE_LINE}\n`);
-  gitOrThrow(target, ["add", ".gitignore"]);
+  const written = body.split(/\r?\n/).map((line) => line.trim());
+  const missing = [
+    written.some((line) => IGNORE_ALIASES.includes(line)) ? undefined : WORKTREES_IGNORE_LINE,
+    written.some((line) => INTERACTIONS_ALIASES.includes(line)) ? undefined : INTERACTIONS_IGNORE_LINE,
+  ].filter((line): line is string => line !== undefined);
+  // Tracked-ness is read from the index, not from the file: an ignored-but-tracked log is exactly the
+  // state this step exists to end, and a log deleted from the worktree but still in the index is too.
+  const tracked = git(target, ["ls-files", "--error-unmatch", "--", INTERACTIONS_REL]).ok;
+  if (missing.length === 0 && !tracked) return false;
+  if (missing.length > 0) {
+    writeFileSync(file, `${body}${body === "" || body.endsWith("\n") ? "" : "\n"}${missing.join("\n")}\n`);
+    gitOrThrow(target, ["add", ".gitignore"]);
+  }
+  // Force on purpose: the log is expected to have been rewritten since the commit that tracked it, and
+  // the caller's intent is to stop tracking it - the working copy is kept either way.
+  if (tracked) gitOrThrow(target, ["rm", "--cached", "--force", "--quiet", "--", INTERACTIONS_REL]);
   gitOrThrow(target, ["commit", "-m", IGNORE_COMMIT_SUBJECT]);
   return true;
 }

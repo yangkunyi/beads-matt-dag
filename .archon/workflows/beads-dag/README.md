@@ -119,8 +119,10 @@ refuses to run unless the caller holds the Main-write lock; the store write that
 deliberately outside it, under the store's own transaction. The lock is one file in the Target's git
 directory (`beads-dag.lock`): a second process waits for it, a call made while this process holds it
 joins the same transaction, and a lock left behind by a killed run (its pid gone) is stolen rather than
-waited for. `main-writes.ts` also writes the one `.gitignore` line a Target needs to keep its checkout
-clean while a worktree exists (`/worktrees/`), idempotently, under the same lock.
+waited for. `main-writes.ts` also writes the `.gitignore` rules that keep the checkout clean - `/worktrees/`
+and `/.beads/interactions.jsonl` - and untracks the store's interaction log, which `bd init` commits and
+every command rewrites. Ignored-but-tracked still reads as dirty, so untracking it is part of the same
+idempotent, under-the-lock commit; a Target that already carries both rules gains no commit.
 
 ## The agent roles
 
@@ -137,9 +139,28 @@ role the node's script names (two turns in one node means the sum).
 **A worker cannot write issue state**, and the mechanism is the store's own read-only mode rather than a
 sentence in a persona: `workerEnv` (worker-env.ts) adds `BD_READONLY=1` to the environment the drain hands
 the runner, and the store then refuses every write operation for that whole process tree - a shell, a
-child, a command through a tool - while reads keep working. The pi and dsh sessions arrive with the runner
-work; until they do, the seam starts nothing, and the honest outcome for an issue whose work is not in
-Main is that it did not land.
+child, a command through a tool - while reads keep working.
+
+**The runners.** `agent.ts` is the seam; the Target's `runner:` key picks which one a turn spends.
+
+- `pi` (default) runs the session in-process through the Pi SDK (`pi-session.ts`). The SDK is loaded at
+  run time by a ladder - `PI_SDK_PATH` first, then the bare package name, then the `pi` CLI's own
+  install tree and this process's global `node_modules` - because an Archon run executes the pack with
+  no `node_modules` above it. The session file is contract-pinned: `ARTIFACTS_DIR/sessions/<key>/<role>.jsonl`,
+  and the answer is read back from that file's last assistant text. The session mounts one custom tool,
+  Pi's own bash definition with the seam's environment on its spawn context, which is how the store's
+  read-only mode reaches the agent's shells.
+- `dsh` runs the harness as a child over JSON-RPC (`dsh-agent.ts`, `dsh-runtime.ts`). It carries the
+  persona as the harness system prompt and the brief as the first message, folds the seven thinking
+  levels onto dsh's four efforts, and enforces the wall clock by killing the child. Its session log
+  stays where the harness keeps it (`DSH_HOME`, its config root); the result reports that real path.
+
+Either way the answer is read from the runner's own product and nothing else - never its terminal
+output, never the value a prompt call returns - and both report the session file on
+`PackAgentResult.sessionFile` as diagnostics. A runner that cannot start (an unreachable SDK, a refused
+model, no credentials, no `dsh` binary) throws `RunnerUnavailable`: the execute node exits non-zero and
+the drain fails loudly, rather than recording a failed attempt on an issue no session ever saw. A runner
+that starts and goes wrong is a turn with a `lastError`, and the node's own failure path records it.
 
 ## Gates
 
@@ -184,5 +205,8 @@ The modules the two workflows share, all in the drain's `scripts/`:
 | `settle.ts` | the one order: merge then record, or record the failure and reopen |
 | `roles.ts` | the role table: a role's arguments, session key, persona, brief, wall clock |
 | `prompt.ts` | the personas themselves |
-| `agent.ts` | the agent seam: one turn in, one session's report out |
+| `agent.ts` | the agent seam: one turn in, one session's report out, and the two runners behind it |
+| `pi-session.ts` | the Pi runner: the SDK ladder, the session file, the answer reader, the bash spawn hook |
+| `dsh-agent.ts` | the dsh runner's policy: profile, gateway, effort fold, wall-clock kill |
+| `dsh-runtime.ts` | the dsh wire protocol, with no pack nouns |
 | `worker-env.ts` | the environment a worker runs under (the store's read-only mode) |

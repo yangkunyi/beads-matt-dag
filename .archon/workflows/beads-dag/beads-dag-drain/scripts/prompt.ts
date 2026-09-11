@@ -7,6 +7,14 @@
  */
 
 /**
+ * How a runner that carries everything in one message sees a persona plus its brief. One place, so
+ * both runners put the same bytes in front of the agent: the persona first, then the task.
+ */
+export function composeMessage(persona: string, task: string): string {
+  return `${persona}\n\n${task}`;
+}
+
+/**
  * The implementer. It is handed a path and a worktree, and nothing else about the issue: the body is
  * the brief, the worktree is where the work goes, and state is not its to write.
  */

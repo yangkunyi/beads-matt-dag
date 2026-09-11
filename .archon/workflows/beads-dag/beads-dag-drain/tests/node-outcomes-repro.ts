@@ -12,7 +12,7 @@
  */
 import { readFileSync } from "node:fs";
 import { EMPTY_PICK, FAILED, NOTHING_TO_REPORT, OPENED, nodeLine } from "../scripts/node-outcomes.ts";
-import { GATE_LABEL, drain, execute, expect, expectEqual, publishIssue, runScript, withTarget } from "./target.ts";
+import { GATE_LABEL, drain, execute, expect, expectEqual, fakePiSdk, publishIssue, runScript, withTarget } from "./target.ts";
 
 try {
   // The byte contract itself.
@@ -33,10 +33,14 @@ try {
     expectEqual("a work outcome exits clean", picked.status, 0);
 
     // A work outcome: the token alone on stdout, and exit 0. The per-issue node hands its issue to the
-    // implementer, and with no session built yet the turn answers nothing: an issue whose work is not
-    // in Main did not land, so its outcome is `failed` - a result, not an error.
+    // implementer; the session is the fake SDK this suite pins (no provider, no live model), and a turn
+    // that answers nothing means the work is not in Main: its outcome is `failed` - a result, not an error.
     const issue = publishIssue(root, { title: "one issue", handle: "feat/01", slug: "one-issue", labels: [GATE_LABEL] });
-    const issued = runScript(execute.script("execute"), root, { INPUTS_ISSUE: issue.handle, ARTIFACTS_DIR: artifacts });
+    const issued = runScript(execute.script("execute"), root, {
+      INPUTS_ISSUE: issue.handle,
+      ARTIFACTS_DIR: artifacts,
+      PI_SDK_PATH: fakePiSdk(artifacts, "none"),
+    });
     expectEqual("execute prints its outcome token", issued.stdout, nodeLine(FAILED));
     expectEqual("failed is a result, not an error", issued.status, 0);
     expect("the reason names the issue", issued.stderr.includes("feat/01"), issued.stderr);
