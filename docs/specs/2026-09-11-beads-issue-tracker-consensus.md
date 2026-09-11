@@ -796,6 +796,16 @@ shows the status and not the body, §6).
 - **The issue body *is* tracked.** It is the one part of an issue that belongs to git (§10.5), so
   `.scratch/<feature>/issues/*.md` is committed and gets its own reviewable diff; only the store and
   the worktrees are ignored.
+- **The interactions log is store state, so git does not carry it.** `bd init`'s own commit tracks
+  `.beads/interactions.jsonl`, and bd appends to it on every write, so a Target using the store is never
+  clean while it stays tracked. What it holds is a record of *state changes* (`kind: field_change`, old
+  and new value, and the reason) — the same fact the store's own history already owns, and the kind of
+  fact this design keeps out of git (ADR-0005). So the drain ignores the path, and untracks it when the
+  store's init committed it, in the same setup commit that ignores `worktrees/`. The cost is accepted
+  knowingly: bd means the file to be versioned, so this is one place where the pack overrules a tool
+  default, and it belongs in the design record rather than in a comment. (Found by the drain-end
+  review of a lab run, 2026-09-11; a clone that holds it tracked and modified cannot merge that commit
+  cleanly, which is a one-time friction on existing clones, not on a fresh Target.)
 - **git carries the merge commits and nothing else about state.** `orchestrator: merge <branch>` is
   both the idempotence key (ADR-0029) and the recovery signal, which is why `hasTicketMergeCommit`
   still answers "did this land". Main's history is a delivery timeline, not a status log.
