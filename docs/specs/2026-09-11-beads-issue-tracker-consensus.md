@@ -97,7 +97,7 @@ fails with `schema version mismatch`.
 | 1 | **v1.2.2**, CLI surface pinned per §3 |
 | 2 | **Hash ids** (beads default). Legacy positional markdown ids go into `--metadata`; do not switch to `issue_id_mode counter` (counter ids are per-prefix and seeded from the highest existing numeric id, so they collide under concurrent creation) |
 | 3 | **No external transition record.** `bd history` is the record (see §7.5 for what it does and does not show). **Reinforced 2026-09-11 (§10.5):** git carries no status copy at all, so `bd history` is not merely the primary record but the only one |
-| 4 | **Vocabulary split.** Implementation lifecycle → `status` (built-ins + `status.custom` with categories). Triage roles and wayfinder dispositions → **labels**. Reason: a beads status is a single slot per issue; labels are a set. **Restated 2026-09-11:** a custom status never appears in `bd ready` in *any* category (§5.6), so readiness visibility is exactly `status = 'open'` |
+| 4 | **Vocabulary split.** Implementation lifecycle → `status` (built-ins + `status.custom` with categories). Triage roles and wayfinder dispositions → **labels**. Reason: a beads status is a single slot per issue; labels are a set. **Restated 2026-09-11:** a custom status never appears in `bd ready` in *any* category (§5.6), so readiness visibility is exactly `status = 'open'`. **Restated again 2026-09-11 (§10.3):** no custom status is used at all — the vocabulary is three built-ins, and a failure is an event (a comment plus the issue back to `open`), not a fourth value |
 | 5 | **embedded mode** (not `--server`). Verified: 8 concurrent writers against one embedded DB, all exit 0, no stderr, no lost writes |
 | 6 | **Worker agents are fully read-only**, enforced by `BD_READONLY=1` (see §5.9). `to-tickets` / `triage` / `wayfinder` keep write access. Rationale: everything that affects the frontier (status, edges, nodes) belongs to whoever has the global view; workers only produce narrative — and their working memory belongs in their own worktree, not in the shared store |
 | 7 | **`bd init --skip-agents --skip-hooks`.** Avoids a competing managed `AGENTS.md` section, a `prepare-commit-msg` hook that would add trailers to load-bearing commit subjects, an unused JSONL export path, and per-commit hook latency |
@@ -106,7 +106,7 @@ fails with `schema version mismatch`.
 | 10 | **Documents live in git.** Specs and maps are markdown files in the repo; issues point back with `--spec-id <path>`. See §6. **Extended 2026-09-11:** the issue *body* also lives in a file, frozen once published — beads holds state, edges and identity (§10.5) |
 | 11 | **Publish channel = `bd create --graph`**, not `bd create -f` (see §5.2 and §7.6) |
 | 12 | **Wayfinder mapping**: `claimed` → `assignee` + `in_progress`; `resolved` → `closed`; `Type: research/prototype/grilling/task` → bead type `decision` plus label `wayfinder:<type>` (mirrors the GitHub template's convention). **Amended 2026-09-11 (§10.4):** `resolved → closed` is legitimate only while nothing on the implementation side depends on a decision issue — a `closed` blocker releases its dependents unconditionally, whatever the closure meant, so the two domains are kept apart |
-| 13 | ~~**`FAILED` is category `wip`** — hidden from `bd ready`. Category `active` would mean the pick step automatically re-picks failed work: an unbounded retry loop, and a default behaviour nobody chose. A failure leaves the frontier; retrying is an explicit orchestrator action. If automatic retry is ever wanted it should be an explicit attempt-capped policy, not a side effect of a category~~ → **Reversed 2026-09-11 (§10.3).** The conclusion was right and the mechanism was wrong: no custom status enters `bd ready` in *any* category (§5.6), so a category never protected anything here. `failed` stays a custom status and is invisible to a bare `bd ready`; `pick` unions an explicit `bd list -s failed` into the frontier so the next drain sees it, and the retry cap stays run-local in `attempted-ids.json` |
+| 13 | ~~**`FAILED` is category `wip`** — hidden from `bd ready`. Category `active` would mean the pick step automatically re-picks failed work: an unbounded retry loop, and a default behaviour nobody chose. A failure leaves the frontier; retrying is an explicit orchestrator action. If automatic retry is ever wanted it should be an explicit attempt-capped policy, not a side effect of a category~~ → **Reversed 2026-09-11 (§10.3), twice over.** First the mechanism fell: no custom status enters `bd ready` in *any* category (§5.6), so the category never protected anything. Then the status itself: a failure is an **event** — the reason is a comment and the issue returns to `open` — so the retry channel is `bd ready` itself, there is no union in `pick`, and nothing has to be registered in the store. What survives from the original decision is the retry cap: per-run, in `attempted-ids.json`, never in the store |
 
 **One-line operating model:**
 
@@ -469,13 +469,13 @@ decided design, not a translation suggestion.
 | `Status: RUNNING` | `in_progress` (built-in) — the claim |
 | `Status: MERGING` / `CONFLICT` / `RESOLVING` | **retired** — steps inside a run, not states (§10.3) |
 | `Status: MERGED` | `closed`, and only ever with MERGED semantics (§10.4) |
-| `Status: FAILED` | custom status `failed` — never `closed`, never in `bd ready`, unioned into the frontier by `pick` (§10.4) |
+| `Status: FAILED` | an **event, not a state**: the reason is a comment and the issue returns to `open`, so the next drain retries it (§10.3) |
 | `Type: research/prototype/grilling/task` | bead type `decision` + label `wayfinder:<type>` (§10.2) |
 | `Status: claimed` (wayfinder) | `assignee` + `in_progress` |
 | `Status: resolved` (wayfinder) | `closed` — legitimate only because the two domains never share an edge (§10.4) |
 | map = `map.md` | a markdown file in git |
 | child issue = a file | a bead, pointing at its document with `--spec-id` |
-| frontier = scan the directory | composed by the orchestrator: `bd ready` ∪ failed, minus attempted, minus unlabelled (§10.4) |
+| frontier = scan the directory | the store's own answer: `bd ready` with the type and label filters, minus what this run already attempted (§10.4) |
 | `/implement` and conflict resolution leave the state alone | `BD_READONLY=1` |
 | triage's five roles | five labels; `ready-for-agent` is the gate, `needs-triage`/`needs-info` are the brake (§10.4) |
 
@@ -498,7 +498,8 @@ document exists to avoid:
   all". False — 63 ADRs exist and all seven cited ones are there. Rewritten in place.
 - **Decision #13** classified `FAILED` as category `wip` "so it is hidden from `bd ready`". The
   conclusion was right and the mechanism wrong — no custom status is ever ready, in any category. It
-  is reversed and restated (§10.3, §10.4).
+  is reversed and restated (§10.3, §10.4); the status it was about was then dropped altogether — a
+  failure is an event (§10.3).
 - **The scope line** "not a port of any existing orchestrator — written fresh against beads' own
   characteristics" is withdrawn: the deliverable is the archon pack's flow migrated onto beads
   (§10.1).
@@ -578,32 +579,39 @@ it is the `ticket-dag` orchestration flow moving onto beads. The pack's source i
 
 ### 10.3 State
 
-Four statuses, three of them beads' own:
+Three statuses, all beads' own:
 
 | State | Beads | Note |
 |---|---|---|
 | waiting | `open` | blocked-ness is a separate, derived fact |
 | running | `in_progress` | the claim — and what keeps a second drain off it |
 | done | `closed` | closed **only** with MERGED semantics (§10.4) |
-| failed | `failed` (custom) | never closed, never in `bd ready` |
 
-**Registration.** `failed` is not a built-in status. Measured 2026-09-11: `bd update <id> -s failed`
-answers `invalid status "failed" (built-in: open, in_progress, blocked, deferred, closed, pinned,
-hooked; or configure custom statuses via 'bd config set status.custom')` and exits 1; after
-`bd config set status.custom "failed:wip"` the whole path works — `bd ready` stays clean, the issue is
-still visible in `bd list`, `bd list -s failed` finds it, and `bd history` records every transition.
-§5.6's example predates this section and registers three custom statuses §10.3 retires; the flow needs
-exactly one. The registration is **store state, not a file**: `bd config get status.custom` reads it
-back from the database and `.beads/config.yaml` stays comment-only, so it travels with the Dolt remote
-(§12) and is *absent from a freshly `bd init`ed store*. A drain must therefore refuse to start on a
-store that cannot express `failed` — naming the command — rather than dying at its first failure, which
-may be hours in. Labels and issue types need nothing: labels are free text and `decision` is native.
+**Failure is an event, not a status** (reversed 2026-09-11; this section previously added `failed` as a
+fourth, custom status). beads ships no `failed` built-in because a failure is something that *happened*,
+not a disposition of the work — and the custom status charged for the difference: it had to be
+registered per store (`bd config set status.custom`; without it `bd update -s failed` exits 1 with
+`invalid status "failed"`), that registration is store state living in the database rather than in
+`.beads/config.yaml` (§12), the drain had to refuse to start without it, and — because no custom status
+is ever returned by `bd ready` (§5.6) — the frontier stopped being the store's answer and became a union
+the drain composed by hand. A failed attempt now says so and returns the issue to the only set that can
+start:
+
+```
+bd comment <id> "attempt N failed: <reason>"   # the reason persists; bd history records status, not body
+bd update  <id> -s open                        # the retry channel is bd ready itself
+```
+
+So a failed issue is startable to every reader of the store, this drain included, and a crash and a
+failure converge on the same repair. What the store gives up is answering "what failed" in one query:
+that becomes the drain-end report's job, and, per issue, `bd history`.
 
 `BLOCKED` and `READY` become **derived** (`is_blocked`, `status='open'`). `MERGING`, `CONFLICT` and
 `RESOLVING` are **retired**: merging and resolving are steps *inside* a running issue, and the
 worktree's own git state (`MERGE_HEAD`, unmerged paths) is what records them. The old machine had 8
-statuses and 12 transitions; this one has 3 transitions (`open→in_progress`, `in_progress→closed`,
-`in_progress→failed`) plus one repair path.
+statuses and 12 transitions; this one has two that mean progress (`open→in_progress`, `in_progress→closed`),
+one that means the attempt did not land (`in_progress→open`, with its reason attached), and a repair
+path that resolves to one of the two.
 
 **Order: merge before stamp.** The orchestrator never announces a result before performing it — the
 merge into Main happens first, the `closed` stamp second. So `closed` implies the merge commit exists,
@@ -613,35 +621,39 @@ but still `in_progress` — is safe and repairable: `recoverLeftover` reads the 
 `closed`. Consequence: the lock no longer has to make the state write and the git merge atomic, and
 guards Main's git writes only.
 
-**Retry.** A FAILED issue is not retried inside the drain that failed it; the next drain may start it.
-The cap is per-run and lives in the run's own `attempted-ids.json` — drain bookkeeping does not enter
-the store (ADR-0032). Across runs there is **no cap at all**: a deterministic failure is retried by
-every drain that follows and costs a worker slot each time, and the brake (§10.4) is the only thing
-that ends it. A brake nobody is prompted to pull is not a cap, so **the drain-end report must say how
-many times each failed issue has been attempted** — `bd history` already records every transition
-(measured), so that is a reading, not new state. This build does not change what the report says (the
-build spec puts that out of scope); this paragraph is the requirement for whoever does.
+**Retry.** A failure is not retried inside the drain that failed it, and is retried by the next one —
+the cap is per-run and lives in the run's own `attempted-ids.json`, because drain bookkeeping does not
+enter the store (ADR-0032). The retry needs no channel of its own: the issue is `open` again. Across
+runs there is **no cap at all**: a deterministic failure is retried by every drain that follows and
+costs a worker slot each time, and the brake (§10.4) is the only thing that ends it. A brake nobody is
+prompted to pull is not a cap, so **the drain-end report must say which attempts failed and how many
+times each issue has burned** — `bd history` already records every transition (measured), so that is a
+reading, not new state. This build does not change what the report says (the build spec puts that out
+of scope); this paragraph is the requirement for whoever does.
 
 ### 10.4 Frontier, claim, closure
 
-beads owns *blocked-ness*; the orchestrator owns *startable-ness*, so the frontier is composed:
+beads owns *blocked-ness* **and startable-ness**, so the frontier is one store query with one
+subtraction the store cannot make:
 
 ```
-bd ready --exclude-type decision -l ready-for-agent              # eligible
-∪ bd list --exclude-type decision -s failed -l ready-for-agent   # the retry channel
-− issues attempted by this drain (attempted-ids.json)
-− issues whose handle already has a merge commit on Main
-→ truncated to the concurrency cap
-→ claimed in a single `bd batch` (one transaction, all-or-nothing)
+bd ready --exclude-type decision -l ready-for-agent     # what the store says can start
+  − issues already attempted by this drain (attempted-ids.json)
+  → truncated to the concurrency cap
+  → claimed in a single `bd batch` (one transaction, all-or-nothing)
 ```
 
-`bd ready` alone cannot be the frontier: it can never report a failed issue (§5.6), and it cannot know
-what this drain already tried. Because beads cannot explain a status-based exclusion either, `pick`
-must emit its own exclusion reasoning each cycle — which promotes ADR-0021's inspect snapshot from
-convenience to requirement.
+A failed attempt leaves its issue `open` (§10.3), so the retry needs no second query and no union: what
+`bd ready` reports is what a drain will work, minus what this run has already tried.
 
-**Closure.** Only the orchestrator closes an issue, and only to mean "the work is in Main". A FAILED
-issue is never closed. `wontfix` is a label, not a closure — closing a blocker releases its dependents
+`bd ready` alone cannot be the frontier, but the gap is a single subtraction — the store cannot know
+what this drain already tried, and it cannot explain that exclusion either — so `pick` must emit its own
+exclusion reasoning each cycle. That is what promotes ADR-0021's inspect snapshot from convenience to
+requirement.
+
+**Closure.** Only the orchestrator closes an issue, and only to mean "the work is in Main". A failed
+attempt leaves its issue `open`, never closed, so its dependents stay blocked until the work really
+lands. `wontfix` is a label, not a closure — closing a blocker releases its dependents
 regardless of the reason (verified: closing with `-r wontfix` released the dependent). Therefore **an
 implementation issue may only be blocked by another implementation issue**. Decision issues are a
 separate domain whose `closed` means "the question is answered"; they reach the implementation side by
@@ -673,7 +685,7 @@ worker contract — a worker is handed a **path** (ADR-0003) — and keeps the b
 The new pack is validated in a throwaway lab under `/tmp`, never against a live Target:
 
 1. the frontier excludes type `decision`, and refuses anything without the gate label;
-2. a FAILED issue is not retried inside its drain, and *is* retried by the next one;
+2. an issue whose attempt failed is not retried inside its drain, and *is* retried by the next one;
 3. closure never crosses domains, so a decision issue can never release implementation work (§10.4);
 4. the merge precedes the stamp, and a kill between the two leaves a state the repair path fixes.
 
@@ -714,8 +726,9 @@ Settled 2026-09-11. The tracker template of §1 is the centre of a *set*, not a 
   from the Dolt remote, recompute blocked-ness, reconcile leftovers). A third file that also builds
   store commands would be the duplication this section exists to prevent.
 - **There is no retry command, and no lever that narrows a drain to one issue.** Retry is a
-  consequence of the query rather than a verb (§10.3), so the operator's "retry" is running another
-  drain — and that drain also starts every other eligible issue. Wanting *only* the one issue back
+  consequence of the query rather than a verb — after a failed attempt the issue is `open` again, so the
+  store's own `bd ready` already contains it (§10.3) — and the operator's "retry" is therefore running
+  another drain, which also starts every other eligible issue. Wanting *only* the one issue back
   means braking its neighbours, which mutates triage state to express a transient wish; running the
   per-issue workflow by hand is not the cheap way out either, because it bypasses the opening node's
   reconciliation of the previous attempt's leftovers. Recorded as a known cost rather than solved: the
@@ -784,9 +797,9 @@ shows the status and not the body, §6).
   still show that `<feature>/<NN>` was merged, not that it failed twice first. So the Dolt remote is
   **load-bearing, not optional**: `bd dolt remote add …` plus `bd dolt push` — a Dolt-native path,
   distinct from the JSONL hydration `bd repo sync` performs (§5.10). Size is not a concern: measured
-  at ~75 KB per issue including Dolt history, so a 99-issue repo is roughly 7–8 MB. The custom status
-  registration travels the same way: `status.custom` is store state (§10.3), so a restored store still
-  knows what `failed` means while a fresh `bd init` does not.
+  at ~75 KB per issue including Dolt history, so a 99-issue repo is roughly 7–8 MB. Nothing else has to
+  travel: the reversal in §10.3 removed the last non-database fact — no custom status is registered, so
+  the store's configuration carries no part of this design.
 - **A restore re-opens the `is_blocked` staleness window** (§7.5): after a pull, run
   `bd recompute-blocked`. With no remote configured there is no pull, and the window does not exist.
 - When the two disagree, **git wins**: beads' `closed` is a cache that `hasTicketMergeCommit` repairs.

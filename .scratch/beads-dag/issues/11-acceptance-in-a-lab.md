@@ -9,8 +9,8 @@ other Target is touched.
 **Blocked by:** `06`, `07`, `08`, `09`, `10`
 **Status:** BLOCKED
 
-- [ ] a real run over a lab holding eligible, blocked, decision, unlabelled and failed issues starts
-      exactly the eligible ones
+- [ ] a real run over a lab holding eligible, blocked, decision, unlabelled and previously-failed
+      issues starts exactly the eligible ones
 - [ ] decision issues and issues without the gate label never start; a failure is retried by the next
       run and never by the one that failed it; closure never crosses domains; and a kill between the
       merge and the record is repaired by the next open — all four observed in the real run
