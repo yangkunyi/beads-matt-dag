@@ -646,6 +646,12 @@ bd ready --exclude-type decision -l ready-for-agent     # what the store says ca
 A failed attempt leaves its issue `open` (§10.3), so the retry needs no second query and no union: what
 `bd ready` reports is what a drain will work, minus what this run has already tried.
 
+**Implemented with one departure** (ticket 03): the pack asks the store for the same query *unfiltered*
+and applies the type and label rules itself, because a query that filters cannot report *what* it
+filtered — and the exclusion report has to name the rule, per issue. Readiness is still the store's
+answer; only the reporting of the filters moved. The exclusion is still by **type**, so a new flavour of
+question cannot leak into a drain by omission.
+
 `bd ready` alone cannot be the frontier, but the gap is a single subtraction — the store cannot know
 what this drain already tried, and it cannot explain that exclusion either — so `pick` must emit its own
 exclusion reasoning each cycle. That is what promotes ADR-0021's inspect snapshot from convenience to
