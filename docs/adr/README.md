@@ -6,6 +6,7 @@
 | [0002](0002-merge-before-stamp.md) | Merge before stamp | accepted |
 | [0003](0003-four-statuses-the-rest-is-derived.md) | Four statuses; the rest is derived | accepted |
 | [0004](0004-close-means-merged.md) | Close means merged | accepted |
+| [0005](0005-one-record-per-fact.md) | One record per fact | accepted |
 
 Design record: `docs/specs/2026-09-11-beads-issue-tracker-consensus.md` (§10 settles the flow).
 

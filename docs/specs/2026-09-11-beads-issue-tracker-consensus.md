@@ -714,4 +714,9 @@ shows the status and not the body, §6).
    draft is at `/tmp/reverted-issue-tracker-beads.md`; it predates §10 and must be rewritten against it.
 3. **Fix the pre-existing `to-tickets` hardcoding** (§9) — also an edit outside this repo, so also its
    own approval.
-4. Retire §9's unverified items as they are resolved.
+4. **Follow the wording this design changed, in the two skills that still carry the old shape.**
+   `to-tickets/SKILL.md` writes a `Status:` line into every ticket it publishes, and `implement/SKILL.md`
+   ends by saying to leave that line unchanged. On a store-backed Target the body has no `Status:` line at
+   all (§10.5), so one of those sentences is stale and the other has become a no-op. Also edits outside
+   this repo, also each needing its own approval.
+5. Retire §9's unverified items as they are resolved.

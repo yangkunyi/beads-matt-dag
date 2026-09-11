@@ -15,6 +15,9 @@ below — if a term can only be explained by a command, it belongs in a spec.
 - **spec** — a long-form design document in git (`docs/specs/<date>-<slug>.md`). Not an issue: never in
   a frontier, never claimed, never closed.
 - **map** — the document a wayfinding effort keeps its questions, findings and decisions-so-far in.
+- **body** — an issue's prose: the file at `.scratch/<feature>/issues/<NN>-<slug>.md`, frozen once
+  published. It carries the handle and no status — identity belongs in a document, state does not
+  (ADR-0005).
 
 ## Running
 
