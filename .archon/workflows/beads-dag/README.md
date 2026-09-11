@@ -36,7 +36,8 @@ store: /home/me/.local/node-v24.19.0-linux-x64/bin/bd   # optional; unset, bd is
 
 One module builds every store command for the pack: `beads-dag-drain/scripts/store.ts`. Nothing else in
 either workflow folder names the binary, and the suite asserts that. The store's derived blocked-ness is
-recomputed at open, so a change made outside the drain cannot leave a stale answer behind.
+recomputed at open, so a change made outside the drain cannot leave a stale answer behind — and work a
+killed run left claimed is repaired there too, before pick (`Leftovers are repaired from git`, below).
 
 **Back the store up to its Dolt remote** — one command, from the Target, once the remote is configured
 (`bd dolt remote add <name> <url>`):
@@ -124,6 +125,35 @@ and `/.beads/interactions.jsonl` - and untracks the store's interaction log, whi
 every command rewrites. Ignored-but-tracked still reads as dirty, so untracking it is part of the same
 idempotent, under-the-lock commit; a Target that already carries both rules gains no commit.
 
+## Leftovers are repaired from git
+
+A drain can be killed between the merge and the store write, or before its work landed at all. Either way
+the issue is left `in_progress`, and a later drain's `bd ready` will never see it — so the opening node
+repairs every `in_progress` issue it finds, and decides from **git**, because the store is the thing being
+repaired:
+
+- **the merge landed.** Main carries a merge commit whose subject names the issue's branch *and* whose
+  second parent is that branch's own tip, so the repair records the close the killed run never wrote — the
+  same `merged <branch>` reason the settlement would have written — and drops the worktree and branch the
+  settled path would have dropped. The merge commit is found, never made a second time.
+- **the work never landed.** The issue goes back to `open` with a comment on it — `attempt N failed:
+  leftover in progress and main carries no merge commit of <branch>` — and its worktree and branch are
+  left for the report, exactly as an ordinary failed attempt leaves them.
+- **the issue cannot be named in git** (no `handle`/`slug` metadata): it goes back to `open` with the
+  naming failure as its reason, rather than one unresolvable issue failing the whole drain.
+
+A repaired failure is deliberately **not** put in the run's `attempted-ids.json`: this run never attempted
+it, so the same run's `pick` offers it as a retry. That is what running the repair before pick is for. A
+branch that carries only history Main already had — an attempt killed before its first commit, or a branch
+re-created from Main after an earlier attempt of the same issue merged — is not merged work: the merge
+that counts is one whose subject names the branch *and* whose second parent is the branch's own tip, so
+neither an earlier attempt's merge nor a merge that merely mentions the branch in its subject can be
+mistaken for this attempt landing.
+
+The store is never the evidence: an issue's `in_progress` says it was claimed, and only Main says whether
+the claim's work landed. A repaired issue is therefore never worse off than one the settlement recorded
+itself, and the two resolutions it can take are the same two the settle step has.
+
 ## The agent roles
 
 `roles.ts` is the single declaration of each agent role: the arguments it takes, the session key it runs
@@ -203,6 +233,7 @@ The modules the two workflows share, all in the drain's `scripts/`:
 | `lock.ts` | the Main-write lock: one writer at a time on the Target's branch |
 | `main-writes.ts` | every git write to Main: the merge, the ignore line, the removal after a merge |
 | `settle.ts` | the one order: merge then record, or record the failure and reopen |
+| `reconcile.ts` | the repair of a killed run's leftovers: closed from git, or reopened with a reason |
 | `roles.ts` | the role table: a role's arguments, session key, persona, brief, wall clock |
 | `prompt.ts` | the personas themselves |
 | `agent.ts` | the agent seam: one turn in, one session's report out, and the two runners behind it |

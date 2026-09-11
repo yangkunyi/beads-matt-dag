@@ -110,10 +110,18 @@ export function mergeSubject(names: IssueNames): string {
 /**
  * The merge commit Main carries for this issue's branch, or undefined when no merge landed.
  *
- * A merge commit is one with a second parent, and that parent has to be on the issue's branch: the
- * subject alone could be repeated by a branch re-created later at a different commit, and ancestry is
- * what says the work actually landed. This is the check the removal insists on, and the one ticket 07's
- * reconcile reads git for.
+ * A merge commit is one with a second parent, and that second parent has to **be the branch's tip**: a
+ * `--no-ff` merge of a branch records exactly the commit it landed, and the flow never commits to a
+ * branch after merging it. Requiring the tip to be an ancestor of that parent instead would accept two
+ * states that are not this branch's work: a branch Main already carried that has since been re-created
+ * from Main (it contains the merged commit without being it), and a branch an out-of-band commit moved
+ * past the merge. Both belong to the same question - did *this* branch's work land - and getting it
+ * wrong closes an issue whose work is not in Main, which is the one thing ADR-0002 forbids.
+ *
+ * The subject is the other half of the test: the branch's names are derived, the subject names them, and
+ * a merge of some other branch will not match. This is the check the removal insists on, and the one
+ * ticket 07's reconcile reads git for; a branch that is gone is recognised by neither half, which is
+ * why a caller can ask about an issue whose branch was already dropped.
  */
 export function mergedOnMain(target: string, names: IssueNames): string | undefined {
   const log = git(target, ["log", "--merges", "--format=%H%x00%P%x00%s", mainBranch(target)]);
@@ -123,7 +131,12 @@ export function mergedOnMain(target: string, names: IssueNames): string | undefi
     if (!commit || !parentsRaw || subject !== mergeSubject(names)) continue;
     const parents = parentsRaw.split(" ").filter(Boolean);
     if (parents.length < 2) continue;
-    if (isAncestor(target, parents[1]!, names.branch)) return commit;
+    // Both directions of ancestry hold exactly when the branch tip is that second parent; a branch that
+    // is gone fails the first, so no merge of it is ever recognised here.
+    const landedTip = parents[1]!;
+    if (!isAncestor(target, landedTip, names.branch)) continue;
+    if (!isAncestor(target, names.branch, landedTip)) continue;
+    return commit;
   }
   return undefined;
 }

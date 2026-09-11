@@ -157,6 +157,9 @@ function toStoreIssue(raw: unknown, command: string): StoreIssue {
  */
 const READY_ARGS = ["ready", "--json", "--limit", "0"];
 
+/** The whole `in_progress` set, by the same rule: the store's cap is not a policy this pack has. */
+const IN_PROGRESS_ARGS = ["list", "-s", "in_progress", "--json", "--limit", "0"];
+
 /**
  * One store command that answers with a list of issues, narrowed here and nowhere else. Both queries
  * that read issues go through it, so "the store returned something that is not an issue" has one home.
@@ -177,6 +180,19 @@ function issueList(store: Store, target: string, args: string[]): StoreIssue[] {
  */
 export function readyIssues(store: Store, target: string): StoreIssue[] {
   return issueList(store, target, READY_ARGS);
+}
+
+/**
+ * Everything the store holds `in_progress`: the set a drain that was killed left claimed.
+ *
+ * This is the repair's input, and it is the store's answer on purpose — the store is what says an issue
+ * was claimed, and git is what says whether the claim's work landed (the repair looks the merge up by
+ * the names the issue carries, never by scanning). Nothing but the repair reads it, and it is a plain
+ * `list` for the same reason `ready` is: the store's own status is the one fact the repair may take
+ * from the store, because it is the fact being repaired.
+ */
+export function inProgressIssues(store: Store, target: string): StoreIssue[] {
+  return issueList(store, target, IN_PROGRESS_ARGS);
 }
 
 /**
