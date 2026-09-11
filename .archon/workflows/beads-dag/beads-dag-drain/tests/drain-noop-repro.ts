@@ -4,9 +4,9 @@
  * as a test can drive it.
  *
  * Every node the drain would run is driven the way the runner drives it, and each one reports nothing:
- * the opening node says the run may proceed, pick offers an empty frontier, and both drain-end readers
- * have no range to read. Nothing here reaches a store: the store arrives with the node that must open it
- * first, and until it exists nothing can be eligible.
+ * the opening node opens the Target's real store and says the run may proceed, pick offers an empty
+ * frontier, and both drain-end readers have no range to read. Pick is still the skeleton's stub, so
+ * nothing can be eligible until the frontier work arrives.
  *
  * What this cannot check is the graph itself — that the loop ends and no issue instance is started — so
  * the real run against a throwaway Target stays the acceptance for that (README, gates).

@@ -21,6 +21,8 @@ export type PackConfig = {
   thinkingLevel: ThinkingLevel;
   concurrency: number;
   runner: Runner;
+  /** Path to the store binary. Unset, the store module looks for `bd` on PATH. */
+  store: string | undefined;
 };
 
 /** The Target's config, relative to it. The workflow hands this path to every node as INPUTS_CONFIG. */
@@ -31,10 +33,11 @@ const DEFAULTS: PackConfig = {
   thinkingLevel: "high",
   concurrency: 4,
   runner: "pi",
+  store: undefined,
 };
 
 /** The only keys the pack reads; every other top-level key is ignored. */
-const CONFIG_KEYS = ["model", "thinkingLevel", "concurrency", "runner"] as const;
+const CONFIG_KEYS = ["model", "thinkingLevel", "concurrency", "runner", "store"] as const;
 type ConfigKey = (typeof CONFIG_KEYS)[number];
 
 function isConfigKey(key: string): key is ConfigKey {
@@ -154,6 +157,9 @@ export function parseConfigText(text: string, file: string): PackConfig {
     switch (key) {
       case "model":
         if (typeof value === "string") config.model = value;
+        break;
+      case "store":
+        if (typeof value === "string") config.store = value;
         break;
       case "thinkingLevel":
         if (typeof value !== "string" || !isThinkingLevel(value)) {
