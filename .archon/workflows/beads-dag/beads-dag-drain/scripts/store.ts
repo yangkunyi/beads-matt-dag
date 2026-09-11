@@ -111,6 +111,14 @@ function parseJSON(command: string, stdout: string): unknown {
   }
 }
 
+/** One dependency an issue declares: the issue it waits on, and the store's type for the edge. */
+export type StoreDependency = {
+  /** The issue depended on. */
+  id: string;
+  /** The store's edge type: `blocks`, `parent-child`, `relates-to`, ... */
+  type: string;
+};
+
 /** One issue, narrowed to what the pack reads off the store. The store's JSON shape stops here. */
 export type StoreIssue = {
   id: string;
@@ -121,10 +129,26 @@ export type StoreIssue = {
   /** `<feature>/<NN>`, when the tracker published one: what branch and worktree names derive from. */
   handle: string | undefined;
   slug: string | undefined;
+  /** The edges the issue declares. Every query that asks for an issue gets them; only the domain
+   * preflight reads them. */
+  dependencies: StoreDependency[];
 };
 
 function text(value: unknown): string | undefined {
   return typeof value === "string" && value !== "" ? value : undefined;
+}
+
+function toDependencies(raw: unknown): StoreDependency[] {
+  if (!Array.isArray(raw)) return [];
+  const dependencies: StoreDependency[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== "object" || entry === null) continue;
+    const record = entry as Record<string, unknown>;
+    const id = text(record.depends_on_id);
+    const type = text(record.type);
+    if (id !== undefined && type !== undefined) dependencies.push({ id, type });
+  }
+  return dependencies;
 }
 
 function toStoreIssue(raw: unknown, command: string): StoreIssue {
@@ -147,6 +171,7 @@ function toStoreIssue(raw: unknown, command: string): StoreIssue {
     labels: Array.isArray(issue.labels) ? issue.labels.filter((l): l is string => typeof l === "string") : [],
     handle: text(metadata.handle),
     slug: text(metadata.slug),
+    dependencies: toDependencies(issue.dependencies),
   };
 }
 
@@ -193,6 +218,17 @@ export function readyIssues(store: Store, target: string): StoreIssue[] {
  */
 export function inProgressIssues(store: Store, target: string): StoreIssue[] {
   return issueList(store, target, IN_PROGRESS_ARGS);
+}
+
+/**
+ * Every issue the store holds, closed ones included: the graph the domain preflight reads.
+ *
+ * `--all` is the point. A decision issue that has already been closed is the dangerous state — the
+ * store has released whatever waits on it — so the edge that produced the release is a fact about the
+ * whole store, not about the ready set, and it stays visible here after the closure.
+ */
+export function allIssues(store: Store, target: string): StoreIssue[] {
+  return issueList(store, target, ["list", "--all", "--json", "--limit", "0"]);
 }
 
 /**

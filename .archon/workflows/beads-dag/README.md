@@ -38,6 +38,8 @@ One module builds every store command for the pack: `beads-dag-drain/scripts/sto
 either workflow folder names the binary, and the suite asserts that. The store's derived blocked-ness is
 recomputed at open, so a change made outside the drain cannot leave a stale answer behind — and work a
 killed run left claimed is repaired there too, before pick (`Leftovers are repaired from git`, below).
+Open also refuses the run while the graph lets closure cross domains (`Closure never crosses domains`,
+below), before anything is claimed or repaired.
 
 **Back the store up to its Dolt remote** — one command, from the Target, once the remote is configured
 (`bd dolt remote add <name> <url>`):
@@ -54,7 +56,10 @@ question — `bd ready`, the whole answer, not the store's default cap — and t
 - **the other domain.** Type `decision` never enters a drain, excluded by type, so a new flavour of
   question cannot leak in by omission.
 - **the gate label.** An issue without `ready-for-agent` is not the drain's work; pulling that label back
-  is the operator's brake.
+  is the operator's brake. The drain reads the gate and nothing else: a triage move is the role label
+  replacing `ready-for-agent`, and the brake holds from every side — fresh work, a retried failure, an
+  issue that was eligible before the label came off — because it is a store state, not a run's memory.
+  `wontfix` is a label, never a closure: the issue stays `open`, and whatever waits on it stays blocked.
 - **what this run already tried.** The store cannot know it: a failed attempt records its reason as a
   comment and puts the issue back to `open`, so the retry channel is the store's own ready answer, and
   the only thing that stops a run retrying its own failure is the run's `attempted-ids.json`. A drain
@@ -163,6 +168,10 @@ repaired:
   left for the report, exactly as an ordinary failed attempt leaves them.
 - **the issue cannot be named in git** (no `handle`/`slug` metadata): it goes back to `open` with the
   naming failure as its reason, rather than one unresolvable issue failing the whole drain.
+- **a decision issue.** Nothing in this flow claims one, so an `in_progress` decision issue is the
+  wayfinder operator's, not the drain's: the repair leaves it exactly where it found it and reports it on
+  stderr, rather than closing or reopening a status it does not own. A decision issue never enters the
+  frontier, so its closure never releases implementation work.
 
 A repaired failure is deliberately **not** put in the run's `attempted-ids.json`: this run never attempted
 it, so the same run's `pick` offers it as a retry. That is what running the repair before pick is for. A
@@ -175,6 +184,28 @@ mistaken for this attempt landing.
 The store is never the evidence: an issue's `in_progress` says it was claimed, and only Main says whether
 the claim's work landed. A repaired issue is therefore never worse off than one the settlement recorded
 itself, and the two resolutions it can take are the same two the settle step has.
+
+## Closure never crosses domains
+
+Only the settlement closes an issue, and only to mean the work is in Main (ADR-0004). A decision issue's
+`closed` means its question is answered, so an edge from an implementation issue to a decision issue would
+let an answer release implementation work that was never built — and the store cannot police it, because
+`bd ready` trusts a closed blocker whoever closed it and whatever its type.
+
+So the opening node refuses the whole run while such an edge exists, naming it:
+
+```
+closure would cross domains: lab/11 [lab-vn5] is blocked by the decision issue lab/12 [lab-8dx]; an
+implementation issue may only be blocked by another implementation issue (ADR-0004), because a decision's
+closure means its question is answered, not that work is in Main. Remove the edge with the store's
+dependency command (`dep remove <dependent> <blocker>`) or restructure the dependency; nothing was claimed.
+```
+
+The drain exits non-zero and nothing is claimed or repaired; removing the edge is the operator's act,
+never the drain's. Only blocking (`blocks`) edges are refused — a `relates-to` link carries no blocking,
+and implementation-to-implementation blocking is the graph working as designed — and every issue is read,
+closed ones included, because a decision the wayfinder has already closed is exactly the state where the
+store has released its dependents.
 
 ## The agent roles
 
@@ -257,6 +288,7 @@ The modules the two workflows share, all in the drain's `scripts/`:
 | `main-writes.ts` | every git write to Main: the merge, the ignore line, the removal after a merge |
 | `settle.ts` | the one order: merge then record, or record the failure and reopen |
 | `reconcile.ts` | the repair of a killed run's leftovers: closed from git, or reopened with a reason |
+| `domains.ts` | the domain boundary: the decision type, and the cross-domain graph preflight |
 | `roles.ts` | the role table: a role's arguments, session key, persona, brief, wall clock |
 | `prompt.ts` | the personas themselves |
 | `agent.ts` | the agent seam: one turn in, one session's report out, and the two runners behind it |

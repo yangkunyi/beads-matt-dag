@@ -207,6 +207,20 @@ export function failAttempt(root: string, id: string, reason: string, attempt = 
   bd(root, "update", id, "-s", "open");
 }
 
+/** The four triage states that are not the gate: what an operator moves an issue back to. */
+export const TRIAGE_LABELS = ["needs-triage", "needs-info", "ready-for-human", "wontfix"] as const;
+
+/**
+ * The operator's move back to a triage state: the role label replaces the gate label.
+ *
+ * One triage role at a time is what those labels mean, so the move is a replacement — and the gate
+ * label is the only thing the drain reads, which is why pulling it is the whole brake. A "move" that
+ * left `ready-for-agent` on would not be a move.
+ */
+export function moveToTriage(root: string, id: string, label: (typeof TRIAGE_LABELS)[number]): void {
+  bd(root, "update", id, "--add-label", label, "--remove-label", GATE_LABEL);
+}
+
 /** The store's answer to "what is blocked". */
 export function storeBlocked(root: string): string[] {
   return JSON.parse(bd(root, "blocked", "--json")).map((i: { id: string }) => i.id);

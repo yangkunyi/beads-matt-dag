@@ -1,6 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { addAttempted, readAttempted } from "./attempted.ts";
+import { DECISION_TYPE } from "./domains.ts";
 import { runNode } from "./node-entry.ts";
 import { nodeLine } from "./node-outcomes.ts";
 import { claimIssues, preflightStore, readyIssues, type StoreIssue } from "./store.ts";
@@ -27,9 +28,6 @@ import { claimIssues, preflightStore, readyIssues, type StoreIssue } from "./sto
 
 /** The only way into the frontier: an issue without this label is not this drain's work. */
 export const GATE_LABEL = "ready-for-agent";
-
-/** The other domain. Excluded by type, so a new flavour of question cannot leak in by omission. */
-export const DECISION_TYPE = "decision";
 
 /**
  * Why an issue that the store offered was left out. These are the rules the pack applies, and the only
