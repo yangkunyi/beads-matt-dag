@@ -7,15 +7,19 @@
  * disagree with the role it runs. The workflow's own timeout is the other half of that agreement: it
  * has to outlast the wall clock declared here or the runner kills a turn the agent is still on.
  *
- * `role` here is an agent role (implement, and the conflict and review turns to come). It is not a
+ * `role` here is an agent role (implement and conflict today; the review turn to come). It is not a
  * triage label: different axis, different word.
  */
 import type { PackAgentOpts } from "./agent.ts";
 import type { PackConfig } from "./config.ts";
-import { implementPersona } from "./prompt.ts";
+import { conflictPersona, implementPersona } from "./prompt.ts";
 import { workerEnv } from "./worker-env.ts";
 
-/** How long one implement turn may run. Named so the workflow's timeout can be read against it. */
+/**
+ * How long one agent turn may run, whichever turn it is. The executor runs at most two of them - the
+ * implementer, and the conflict resolver if the merge conflicted - so the workflow's timeout covers
+ * two of these. Named so the workflow's timeout can be read against it.
+ */
 export const AGENT_WALL_MS = 2 * 60 * 60 * 1000;
 
 /**
@@ -24,6 +28,8 @@ export const AGENT_WALL_MS = 2 * 60 * 60 * 1000;
  */
 export type RoleShape = {
   implement: { handle: string; bodyPath: string };
+  /** The same issue, the same brief: a conflict is the implementer's work meeting a Main that moved. */
+  conflict: { handle: string; bodyPath: string };
 };
 
 /** The pack's agent-role vocabulary. */
@@ -45,6 +51,17 @@ export const ROLES: { [K in AgentRole]: RoleSpec<RoleShape[K]> } = {
   implement: {
     sessionKey: (args) => args.handle,
     persona: () => implementPersona(),
+    prompt: (args) => args.bodyPath,
+    wallMs: AGENT_WALL_MS,
+  },
+  conflict: {
+    // The same key as the implementer: one issue, one session directory. The pack's session path is
+    // `<key>/<role>.jsonl` (pi-session.ts), so the conflict turn writes its own file beside the
+    // implementer's rather than continuing its conversation - the intent it needs is in the worktree
+    // (both sides of the merge, the commits, the body), and a conflict turn a later attempt resumes is
+    // its own file resumed.
+    sessionKey: (args) => args.handle,
+    persona: () => conflictPersona(),
     prompt: (args) => args.bodyPath,
     wallMs: AGENT_WALL_MS,
   },

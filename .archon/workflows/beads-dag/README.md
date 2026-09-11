@@ -90,11 +90,33 @@ somewhere nobody can name.
 
 `worktree.ts` creates that worktree from Main (`git worktree add -b <branch> <path> <main>`), or resumes
 the one an earlier attempt left - the branch is the issue's, so re-creating it would throw that attempt
-away - and brings Main into it. A merge that conflicts is left standing: the worktree's own git state is
-where this flow records a merge under way.
+away - and brings Main into it. On a resumed worktree whose branch already conflicts with Main, that
+merge is rolled back and deferred: the execution's one conflict turn belongs after the implementer's
+turn, where both sides of the conflict include the turn's own work, and the integration there
+re-attempts the same merge. A merge that conflicts with nobody to resolve it (a plain failure, not a
+conflict under way) still fails the attempt.
 
 The implementer's whole brief is the body's **path** (absolute, and the Target's own published copy, not
 a checkout of it): one tool call reads the whole issue. No node writes the body; state lives in the store.
+
+## A conflict is resolved in the same execution
+
+Bringing Main into the worktree is a step inside a running issue: not a state, not a second workflow, and
+not something a stdout token gates. The executor does it twice - before the implementer's turn on a
+resumed worktree, and again after the turn as the settlement's first half - and the second integration
+and the merge into Main are **one Main-lock transaction** (`settle.ts`), so no other writer can land a
+change between them.
+
+If that integration conflicts, git leaves the merge standing in the worktree (`MERGE_HEAD` and the
+unmerged paths are the record) and the same execution runs the `conflict` role there: the agent reads
+the issue's body and the commits on both sides, resolves the hunks, and commits the merge. The executor
+does not take the agent's word for it - the turn counts as done only when git says the merge is concluded
+and the Main it was merging is in the branch - and then runs the integration and the merge again. The
+issue settles exactly as a clean one does.
+
+A merge that is clean starts no conflict turn at all, and an execution runs at most one. If the conflict
+turn cannot resolve the merge, the standing merge is rolled back, the reason goes on the issue as a
+comment, and the worktree, its branch and its commits stay for the report; the next drain retries it.
 
 ## The settlement: merge, then record
 
@@ -165,6 +187,7 @@ role the node's script names (two turns in one node means the sum).
 | Role | Turn | Wall clock |
 |---|---|---|
 | `implement` | one issue, in its worktree, from the body's path | 2 h |
+| `conflict` | the merge of Main standing in that worktree, from the same body's path | 2 h |
 
 **A worker cannot write issue state**, and the mechanism is the store's own read-only mode rather than a
 sentence in a persona: `workerEnv` (worker-env.ts) adds `BD_READONLY=1` to the environment the drain hands
@@ -229,7 +252,7 @@ The modules the two workflows share, all in the drain's `scripts/`:
 | `store.ts` | every store command: the binary, its arguments, its working directory |
 | `naming.ts` | the one derivation of an issue's branch, worktree and body path |
 | `git.ts` | git plumbing: the two calls the readers and writers share |
-| `worktree.ts` | the issue's worktree: create, resume, bring Main in |
+| `worktree.ts` | the issue's worktree: create, resume, bring Main in, and the standing-merge state |
 | `lock.ts` | the Main-write lock: one writer at a time on the Target's branch |
 | `main-writes.ts` | every git write to Main: the merge, the ignore line, the removal after a merge |
 | `settle.ts` | the one order: merge then record, or record the failure and reopen |

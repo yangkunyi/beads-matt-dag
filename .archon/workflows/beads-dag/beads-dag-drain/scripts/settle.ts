@@ -40,6 +40,13 @@ export function settleFailed(store: Store, target: string, issue: StoreIssue, re
  * outside both - that separation is the point of the order, not an accident of it. A branch whose merge
  * already landed (a repair) is not merged twice; `mergeIntoMain` finds the merge commit instead.
  *
+ * `integrateMain`, when the caller passes it, runs inside the same lock transaction, immediately before
+ * the merge: it is how the executor brings Main into the worktree (worktree.ts) so the branch being
+ * merged contains the Main that is being merged into. One transaction, because a writer that landed a
+ * change between the two could turn the merge into a conflict the caller has no turn left for. A
+ * conflict in that step throws out of here, having closed nothing and left the merge standing in the
+ * worktree - which is what the conflict turn reads.
+ *
  * Throws only from the merge: a merge that cannot land is the attempt's failure, and the caller records
  * it as one. Once the close has been written, nothing here throws.
  */
@@ -48,8 +55,12 @@ export async function settleMerged(
   store: Store,
   issue: StoreIssue,
   names: IssueNames,
+  integrateMain?: () => void,
 ): Promise<{ mergeCommit: string; created: boolean }> {
-  const landed = await withMainLock(target, () => mergeIntoMain(target, names));
+  const landed = await withMainLock(target, () => {
+    integrateMain?.();
+    return mergeIntoMain(target, names);
+  });
 
   // The record. Outside the lock, on purpose: the store has its own transaction, and the lock is for
   // Main's git writes. `merged <branch>` is what this closure means, and it is checkable against git.

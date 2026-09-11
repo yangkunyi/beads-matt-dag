@@ -62,7 +62,8 @@ export function ensureWorktree(target: string, names: IssueNames): Worktree {
 
 /**
  * Bring Main into the worktree. At creation there is nothing to bring and git says so; on a resumed
- * worktree this is what stops an attempt from working against a Main that moved while the issue waited.
+ * worktree, and again after the implementer's turn, this is what stops an attempt from landing against
+ * a Main that moved underneath it.
  *
  * A conflict is left standing, deliberately: the worktree's own git state (MERGE_HEAD, unmerged paths)
  * is where this flow records "a merge is under way", and that is what the conflict agent reads. The
@@ -71,4 +72,24 @@ export function ensureWorktree(target: string, names: IssueNames): Worktree {
 export function bringMainIn(worktree: string, main: string): void {
   const r = git(worktree, ["merge", "--no-edit", main]);
   if (!r.ok) throw new Error(`cannot bring ${main} into the worktree at ${worktree}: ${r.out}`);
+}
+
+/**
+ * True while a merge is standing in this worktree: git holds MERGE_HEAD. That is true for the conflict
+ * `bringMainIn` leaves behind - MERGE_HEAD plus unmerged paths, the conflict agent's inbox - and still
+ * true when the agent has staged a resolution but not yet committed it. It is false for every failure
+ * that is not a merge under way, which is how a caller tells the conflict route from a plain one.
+ */
+export function mergeUnderway(worktree: string): boolean {
+  return git(worktree, ["rev-parse", "-q", "--verify", "MERGE_HEAD"]).ok;
+}
+
+/**
+ * Roll back a merge standing in this worktree, leaving the branch at its last commit. A no-op when
+ * there is none: an attempt that failed to resolve a conflict is left exactly as it was before the
+ * merge, so the next attempt resumes it instead of finding an unfinished merge in its way.
+ */
+export function abortMerge(worktree: string): void {
+  if (!mergeUnderway(worktree)) return;
+  gitOrThrow(worktree, ["merge", "--abort"]);
 }

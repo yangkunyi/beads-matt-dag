@@ -12,10 +12,11 @@
  * cannot move the frontier while it works. worker-readonly-repro.ts proves the store refuses the write.
  */
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { PackConfig } from "../scripts/config.ts";
+import { roleSessionFile } from "../scripts/pi-session.ts";
 import { AGENT_WALL_MS, ROLES, roleAgent, type AgentRole } from "../scripts/roles.ts";
-import { implementPersona } from "../scripts/prompt.ts";
+import { conflictPersona, implementPersona } from "../scripts/prompt.ts";
 import { READONLY_ENV } from "../scripts/worker-env.ts";
 import { drain, execute, expect, expectEqual } from "./target.ts";
 
@@ -81,6 +82,31 @@ try {
   expectEqual("the runner comes from the config", call.runner, CONFIG.runner);
   expectEqual("the turn runs where the node says", call.cwd, "/worktree");
   expectEqual("and leaves its artifacts where the node says", call.artifactsDir, "/artifacts");
+
+  // The conflict role is the same issue's second turn: the same key and brief, its own persona, and
+  // the same wall clock - so a conflicting merge cannot be handed a differently-clock ed turn.
+  const conflict = roleAgent({
+    role: "conflict",
+    args: { handle: "feat/01", bodyPath: "/target/.scratch/feat/issues/01-body.md" },
+    cwd: "/worktree",
+    artifactsDir: "/artifacts",
+    config: CONFIG,
+  });
+  expectEqual("the conflict turn runs under its own role", conflict.role, "conflict");
+  expectEqual("the conflict turn keys the same issue session", conflict.sessionKey, call.sessionKey);
+  expectEqual("its persona is the conflict resolver's", conflict.persona, conflictPersona());
+  expect("which is not the implementer's", conflict.persona !== call.persona, conflict.persona.slice(0, 40));
+  expectEqual("its brief is the same body's path", conflict.prompt, call.prompt);
+  expectEqual("and its wall clock is the same", conflict.wallMs, AGENT_WALL_MS);
+  expectEqual("it runs in the same worktree", conflict.cwd, "/worktree");
+  // The decision this pins: the conflict turn shares the issue's session key, so both sessions sit
+  // under `sessions/<handle>/`, and the pack's path rule gives the conflict turn its own file there -
+  // `conflict.jsonl`, beside the implementer's - rather than continuing the implementer's conversation.
+  const implementFile = roleSessionFile("/artifacts", call.sessionKey, "implement");
+  const conflictFile = roleSessionFile("/artifacts", conflict.sessionKey, "conflict");
+  expectEqual("the conflict session is one file under the issue's key", conflictFile, "/artifacts/sessions/feat/01/conflict.jsonl");
+  expectEqual("beside the implementer's own", dirname(conflictFile), dirname(implementFile));
+  expect("and never the same file", conflictFile !== implementFile, conflictFile);
 
   // The environment a worker runs under is the protocol's, and it is the store's own read-only mode.
   const base: NodeJS.ProcessEnv = { PATH: "/usr/bin" };

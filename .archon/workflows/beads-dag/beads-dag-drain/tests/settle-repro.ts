@@ -204,37 +204,38 @@ try {
     );
   });
 
-  // A merge that cannot land: Main is not left torn, nothing closes, and the reason says what happened.
+  // A merge that cannot land: the attempt carries nothing Main does not have, so there is nothing to
+  // merge. Nothing closes, Main is not left torn, and the reason says what happened. (A conflict is no
+  // longer this path's cause: since 08 it is the conflict agent's route, tested in conflict-repro.)
   await withTarget(async (root, artifacts) => {
     writeStoreConfig(root);
     commitFile(root, "shared.txt", "the base\n", "the base");
     const issue = publishIssue(root, {
-      title: "a merge that conflicts",
+      title: "an attempt with nothing to merge",
       handle: "feat/04",
-      slug: "a-merge-that-conflicts",
+      slug: "nothing-to-merge",
       labels: [GATE_LABEL],
     });
     bd(root, "update", issue.id, "-s", "in_progress");
-    const { branch, worktree } = names("feat/04", "a-merge-that-conflicts");
+    const { branch, worktree } = names("feat/04", "nothing-to-merge");
 
     const outcome = await executeIssue(root, issue.handle, {
       artifactsDir: artifacts,
-      runAgent: async (opts): Promise<PackAgentResult> => {
-        commitFile(opts.cwd, "shared.txt", "the issue's side\n", "the issue's change");
-        // Main moves while the issue is being worked: the merge at settlement cannot be clean.
-        commitFile(root, "shared.txt", "Main's side\n", "Main moved under the issue");
-        return { sessionFile: "", answer: { kind: "text", text: "done" }, lastError: undefined };
-      },
+      runAgent: async (): Promise<PackAgentResult> => ({
+        sessionFile: "",
+        answer: { kind: "text", text: "done" },
+        lastError: undefined,
+      }),
     });
 
     expectEqual("a merge that cannot land is a failure", outcome, FAILED);
     expectEqual("and it closes nothing", storeIssue(root, issue.id).status, "open");
     const reason = storeComments(root, issue.id)[0]?.text ?? "";
-    expect("the reason names the merge that could not happen", reason.includes(`cannot merge ${branch}`), reason);
+    expect("the reason names the merge that could not happen", reason.includes(`nothing to merge: ${branch}`), reason);
     expectEqual("Main is not left mid-merge", existsSync(join(root, ".git", "MERGE_HEAD")), false);
     expectEqual("nor carrying worktree dirt", worktreeDirt(root), "");
     expectEqual("and no merge landed on Main at all", gitC(root, "log", "--merges", "--format=%s", "main"), "");
-    expect("the worktree is left for the conflict work to come", existsSync(join(root, worktree)));
+    expect("the worktree is left for the report", existsSync(join(root, worktree)));
     expectEqual("and its branch", gitC(root, "branch", "--list", branch).includes(branch), true);
   });
 
