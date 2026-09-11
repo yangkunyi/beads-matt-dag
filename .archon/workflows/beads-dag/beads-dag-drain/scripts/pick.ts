@@ -1,18 +1,117 @@
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { addAttempted, readAttempted } from "./attempted.ts";
 import { runNode } from "./node-entry.ts";
 import { nodeLine } from "./node-outcomes.ts";
+import { claimIssues, preflightStore, readyIssues, type StoreIssue } from "./store.ts";
 
 /**
  * The frontier: what this drain may start, in one token — a JSON array of issue handles, so the same
  * token is both the loop's end condition (`[]`) and the fan-out's item list.
  *
- * The frontier is composed here rather than asked of the store, because the store's own answer is
- * partial: it cannot exclude decision issues by type, it cannot leave out an issue without the gate
- * label, it cannot know what this run already tried, and it cannot report a failed issue as ready at
- * all. Every exclusion the store cannot explain is reported in this node's own artifact, so "nothing
- * happened" is explainable afterwards.
+ * It is the store's own answer, minus what only this run knows:
  *
- * This slice prints the empty frontier: nothing can be eligible before the store is read.
+ *   ready issues − decision-type issues − issues without the gate label − issues already attempted
+ *     → truncated to config.concurrency → claimed in one transaction
+ *
+ * The store owns readiness — `open`, not blocked — and that is one query, `readyIssues`. It cannot own
+ * the three exclusions: two are this flow's policy rather than the store's facts, and the third (what
+ * this run already tried) is bookkeeping that lives beside the run by design. Because the store cannot
+ * explain any of them, every excluded issue and its rule goes into the run's own exclusion report, so
+ * "nothing happened" is explainable afterwards.
+ *
+ * An issue whose attempt failed needs no branch of its own: it is `open` again, so the store offers it
+ * like fresh work and the retry channel is the same query. The only thing this run adds is that it does
+ * not offer it twice — the attempted set.
  */
+
+/** The only way into the frontier: an issue without this label is not this drain's work. */
+export const GATE_LABEL = "ready-for-agent";
+
+/** The other domain. Excluded by type, so a new flavour of question cannot leak in by omission. */
+export const DECISION_TYPE = "decision";
+
+/**
+ * Why an issue that the store offered was left out. These are the rules the pack applies, and the only
+ * ones it can explain: anything the store itself excluded (blocked, in progress, closed) never reaches
+ * this step and is answered by asking the store.
+ */
+type ExclusionRule = "decision-type" | "missing-gate-label" | "attempted-by-this-run";
+
+type ExcludedIssue = { id: string; handle: string | undefined; rule: ExclusionRule };
+
+/** What the run keeps of this cycle's frontier: what was claimed, and why each other candidate was not. */
+type ExclusionReport = {
+  picked: { id: string; handle: string }[];
+  excluded: ExcludedIssue[];
+};
+
+/** The artifact pick rewrites each cycle, relative to ARTIFACTS_DIR. */
+const EXCLUSION_REPORT_FILE = "pick-exclusions.json";
+
+/**
+ * The rule that keeps an issue out of the frontier, or undefined when nothing does. The order is what
+ * decides which rule a multiply-excluded issue is reported under: the domain first (it is never this
+ * drain's work at all), then the operator's gate, then this run's own bookkeeping.
+ */
+function exclusionRule(issue: StoreIssue, attempted: Set<string>): ExclusionRule | undefined {
+  if (issue.type === DECISION_TYPE) return "decision-type";
+  if (!issue.labels.includes(GATE_LABEL)) return "missing-gate-label";
+  if (attempted.has(issue.id)) return "attempted-by-this-run";
+  return undefined;
+}
+
+/** The store's answer with this step's three rules applied. */
+function composeFrontier(
+  issues: StoreIssue[],
+  attempted: Set<string>,
+): { candidates: StoreIssue[]; excluded: ExcludedIssue[] } {
+  const candidates: StoreIssue[] = [];
+  const excluded: ExcludedIssue[] = [];
+  for (const issue of issues) {
+    const rule = exclusionRule(issue, attempted);
+    if (rule === undefined) candidates.push(issue);
+    else excluded.push({ id: issue.id, handle: issue.handle, rule });
+  }
+  return { candidates, excluded };
+}
+
+/**
+ * The handle a claimed issue is handed to its worker under. It comes from the metadata the tracker
+ * publishes, and there is no fallback: an issue in the frontier without one cannot be named in git, so
+ * claiming it would start work whose branch, worktree and body path do not exist.
+ */
+function handleOf(issue: StoreIssue): string {
+  if (issue.handle === undefined) {
+    throw new Error(
+      `issue ${issue.id} is in the frontier but carries no handle metadata; the tracker publishes ` +
+        '"handle" (<feature>/<NN>) when it publishes the issue, and every git name derives from it',
+    );
+  }
+  return issue.handle;
+}
+
+function writeExclusionReport(artifactsDir: string, report: ExclusionReport): void {
+  mkdirSync(artifactsDir, { recursive: true });
+  writeFileSync(join(artifactsDir, EXCLUSION_REPORT_FILE), `${JSON.stringify(report, null, 2)}\n`);
+}
+
 if (import.meta.main) {
-  await runNode({ run: () => nodeLine(JSON.stringify([])) });
+  await runNode({
+    artifacts: true,
+    run: ({ target, artifactsDir, config }) => {
+      const store = preflightStore(target, config);
+      const attempted = readAttempted(artifactsDir);
+      const { candidates, excluded } = composeFrontier(readyIssues(store, target), attempted);
+      const picked = candidates
+        .slice(0, config.concurrency)
+        .map((issue) => ({ id: issue.id, handle: handleOf(issue) }));
+      const ids = picked.map((issue) => issue.id);
+
+      claimIssues(store, target, ids);
+      addAttempted(artifactsDir, ids);
+      writeExclusionReport(artifactsDir, { picked, excluded });
+      return nodeLine(JSON.stringify(picked.map((issue) => issue.handle)));
+    },
+  });
 }

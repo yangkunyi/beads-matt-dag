@@ -45,6 +45,26 @@ recomputed at open, so a change made outside the drain cannot leave a stale answ
 bun ~/.archon/workflows/beads-dag/beads-dag-drain/backup.ts
 ```
 
+## The frontier
+
+The drain starts what the store says can start, minus what the store cannot know. `pick` asks one
+question — `bd ready`, the whole answer, not the store's default cap — and then applies three rules:
+
+- **the other domain.** Type `decision` never enters a drain, excluded by type, so a new flavour of
+  question cannot leak in by omission.
+- **the gate label.** An issue without `ready-for-agent` is not the drain's work; pulling that label back
+  is the operator's brake.
+- **what this run already tried.** The store cannot know it: a failed attempt records its reason as a
+  comment and puts the issue back to `open`, so the retry channel is the store's own ready answer, and
+  the only thing that stops a run retrying its own failure is the run's `attempted-ids.json`. A drain
+  with no attempts of its own works such an issue exactly like fresh work.
+
+What is left is truncated to the configured `concurrency` and claimed in **one transaction** (`bd batch`,
+all-or-nothing), so a claim that fails part-way leaves nothing claimed. Every issue the store offered and
+this step left out is written to `pick-exclusions.json` in the run's artifacts, with the rule that
+excluded it — so a drain that did nothing can say why. The file is rewritten each cycle: it describes the
+cycle that just ran, and the cycles before it are in the store's own history.
+
 ## Gates
 
 All three run from this repository, cheapest first.

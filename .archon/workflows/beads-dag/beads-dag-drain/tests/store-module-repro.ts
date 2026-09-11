@@ -55,6 +55,7 @@ try {
   // The nodes that need the store call the module; none of them could have kept a private copy.
   const callers = [
     ["open", join(drain.dir, "scripts", "open.ts")],
+    ["pick", join(drain.dir, "scripts", "pick.ts")],
     ["backup", join(drain.dir, "backup.ts")],
   ] as const;
   for (const [name, file] of callers) {

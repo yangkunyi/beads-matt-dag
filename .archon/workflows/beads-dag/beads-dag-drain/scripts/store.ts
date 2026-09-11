@@ -92,8 +92,8 @@ export function preflightStore(target: string, config: PackConfig): Store {
 }
 
 /** One store command, built and run here and nowhere else. Throws with the command and its reason. */
-function runStore(store: Store, target: string, args: string[]): string {
-  const result = spawnSync(store.binary, args, { cwd: target, encoding: "utf8", env: process.env });
+function runStore(store: Store, target: string, args: string[], input?: string): string {
+  const result = spawnSync(store.binary, args, { cwd: target, encoding: "utf8", env: process.env, input });
   const command = [store.binary, ...args].join(" ");
   if (result.error) throw new Error(`cannot run ${command}: ${result.error.message}`);
   if (result.status !== 0) {
@@ -101,6 +101,94 @@ function runStore(store: Store, target: string, args: string[]): string {
     throw new Error(`${command} failed (exit ${result.status})${reason ? `: ${reason}` : ""}`);
   }
   return result.stdout ?? "";
+}
+
+function parseJSON(command: string, stdout: string): unknown {
+  try {
+    return JSON.parse(stdout);
+  } catch {
+    throw new Error(`${command} did not answer with JSON: ${stdout.trim().slice(0, 200)}`);
+  }
+}
+
+/** One issue, narrowed to what the pack reads off the store. The store's JSON shape stops here. */
+export type StoreIssue = {
+  id: string;
+  /** The issue's type. `decision` is the other domain: it never enters a drain's frontier. */
+  type: string;
+  status: string;
+  labels: string[];
+  /** `<feature>/<NN>`, when the tracker published one: what branch and worktree names derive from. */
+  handle: string | undefined;
+  slug: string | undefined;
+};
+
+function text(value: unknown): string | undefined {
+  return typeof value === "string" && value !== "" ? value : undefined;
+}
+
+function toStoreIssue(raw: unknown, command: string): StoreIssue {
+  if (typeof raw !== "object" || raw === null) {
+    throw new Error(`${command} returned something that is not an issue: ${JSON.stringify(raw)}`);
+  }
+  const issue = raw as Record<string, unknown>;
+  const id = text(issue.id);
+  if (id === undefined) {
+    throw new Error(`${command} returned an issue with no id: ${JSON.stringify(raw)}`);
+  }
+  const metadata =
+    typeof issue.metadata === "object" && issue.metadata !== null
+      ? (issue.metadata as Record<string, unknown>)
+      : {};
+  return {
+    id,
+    type: text(issue.issue_type) ?? "",
+    status: text(issue.status) ?? "",
+    labels: Array.isArray(issue.labels) ? issue.labels.filter((l): l is string => typeof l === "string") : [],
+    handle: text(metadata.handle),
+    slug: text(metadata.slug),
+  };
+}
+
+/**
+ * `--limit 0` asks for everything: the store caps its answer (documented default 100), and the frontier
+ * has to be the whole answer twice over — the exclusions are reported from it, and the only cap that may
+ * truncate it is the run's own concurrency, applied by pick.
+ */
+const READY_ARGS = ["ready", "--json", "--limit", "0"];
+
+/**
+ * What the store says can start: `open`, not blocked, not pinned, not deferred — the store's own answer,
+ * before any policy the store does not hold (the gate label, the decision domain, what this run already
+ * tried). A drain works exactly what comes back here.
+ */
+export function readyIssues(store: Store, target: string): StoreIssue[] {
+  const command = READY_ARGS.join(" ");
+  const parsed = parseJSON(command, runStore(store, target, READY_ARGS));
+  if (!Array.isArray(parsed)) {
+    throw new Error(`${command} answered with something that is not a list of issues: ${JSON.stringify(parsed)}`);
+  }
+  return parsed.map((raw) => toStoreIssue(raw, command));
+}
+
+/**
+ * Claim issues: every one of them, in a single transaction, or none of them.
+ *
+ * `bd batch` executes its stdin inside one store transaction and rolls the whole thing back on any
+ * failing line, so a drain that claims a batch can never leave half the batch in progress. The claim
+ * itself is the status transition — `in_progress` is what takes an issue out of every other drain's
+ * `ready` answer; the assignee is left alone because the batch grammar cannot express `--claim`'s actor
+ * resolution and no step of this flow reads it.
+ */
+export function claimIssues(store: Store, target: string, ids: string[]): void {
+  if (ids.length === 0) return;
+  const lines = ids.map((id) => `update ${quoteBatchToken(id)} status=in_progress`);
+  runStore(store, target, ["batch"], `${lines.join("\n")}\n`);
+}
+
+/** A batch token: quoted always, so an id the store generates can never split a line in two. */
+function quoteBatchToken(token: string): string {
+  return `"${token.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }
 
 /**

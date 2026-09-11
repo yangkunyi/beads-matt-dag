@@ -175,6 +175,21 @@ export function storeReady(root: string): string[] {
   );
 }
 
+/** The store's answer to "what can start" before any filter: readiness alone, capped at nothing. */
+export function storeReadyAll(root: string): string[] {
+  return JSON.parse(bd(root, "ready", "--json", "--limit", "0")).map((i: { id: string }) => i.id);
+}
+
+/**
+ * A failed attempt, recorded the way the flow records one: the reason is a comment, and the issue goes
+ * back to `open`. Nothing else about it changes, which is the point — the retry channel is `bd ready`.
+ */
+export function failAttempt(root: string, id: string, reason: string, attempt = 1): void {
+  bd(root, "update", id, "-s", "in_progress");
+  bd(root, "comment", id, `attempt ${attempt} failed: ${reason}`);
+  bd(root, "update", id, "-s", "open");
+}
+
 /** The store's answer to "what is blocked". */
 export function storeBlocked(root: string): string[] {
   return JSON.parse(bd(root, "blocked", "--json")).map((i: { id: string }) => i.id);
