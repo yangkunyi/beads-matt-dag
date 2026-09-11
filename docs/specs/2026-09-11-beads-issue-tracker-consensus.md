@@ -456,8 +456,8 @@ tier) this papercut disappears on its own, so the template's frontier query need
 
 ## 8. Mapping: local-markdown template → beads
 
-Rewritten 2026-09-11 against §10 (four statuses, composed frontier). The right-hand column is the
-decided design, not a translation suggestion.
+Rewritten 2026-09-11 against §10 (three statuses and a failure that is an event, one store query for the
+frontier). The right-hand column is the decided design, not a translation suggestion.
 
 | Local markdown | Beads |
 |---|---|

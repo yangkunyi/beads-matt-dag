@@ -35,12 +35,14 @@ below — if a term can only be explained by a command, it belongs in a spec.
 
 ## Lifecycle
 
-- **status** — an issue's single lifecycle slot: `open`, `in_progress`, `closed`, `failed`.
+- **status** — an issue's single lifecycle slot: `open`, `in_progress`, `closed`.
 - **blocked** — derived, never stored: a blocker is not closed. The store maintains it.
 - **ready** — derived: `open` and not blocked.
 - **closed** — the work is in Main. The only closure meaning this repo recognises (ADR-0004).
-- **failed** — the git contract failed. Never closed. A later drain may start it again; the drain that
-  failed it may not.
+- **failed attempt** — an event, not a status: the git contract failed, the reason is a comment on the
+  issue, and the issue is back to `open` — so `bd ready` is the whole retry channel. A later drain may
+  start it again; the drain that failed it may not, because the issue is in that run's
+  `attempted-ids.json`.
 - **merge before stamp** — a result is recorded only after it has happened, so a recorded "closed"
   never runs ahead of the merge it claims (ADR-0002).
 
