@@ -853,8 +853,12 @@ shows the status and not the body, §6).
    (decided 2026-09-12, four follow-ups in the same feature): `.scratch/beads-dag/issues/12` gives the
    report the failures and their counts (§10.3) — **done 2026-09-12** (`fc28658`): the reading is the
    failure comment, node-written into `summary.md`, and the half it could not answer (a repair's close is
-   byte-identical to a settlement's) moved to `13`. `13` records "what was last
-   reviewed" in the Target so a merge left by a run that dies before its review is still looked at,
+   byte-identical to a settlement's) moved to `13`. `13` records
+   "what was last reviewed" in the Target — **done 2026-09-12** (`7636b1f`): the position is the local ref
+   `refs/beads-dag/reviewed`, advanced only once a review has written findings, and the run's own
+   bookkeeping (`main-commits.json`, `repairs.json`) is the record that lets the report name a merge it did
+   not make and a repair it performed (including the ones that closed) — so a merge left by a run that dies
+   before its review is still looked at,
    `14` makes a range holding nothing but the pack's own bookkeeping a skip instead of ten minutes of
    reviewer wall clock, and `15` has a run report the configuration it used — every key has a usable
    default, so a Target whose config file is absent is not a mystery. A fifth defect is in the same feature
