@@ -112,13 +112,18 @@ function summaryBrief(base: string, head: string, menu: string, reviewMd: string
 /** The readers' clock, by the worked example the role table must meet: 30 minutes, not the pack's own value. */
 const READER_WALL_MS = 30 * 60 * 1000;
 
+/** The failures block a run with nothing to report on appends to its summary (failures-repro pins it). */
+const NO_FAILURES_BLOCK = "## Failed attempts\n\nnone this run\n";
+
 /** The readers' config, handed in so the model and runner the agents see are the test's, not a file's. */
 const CONFIG = {
   model: "some/model",
   thinkingLevel: "high" as const,
   concurrency: 4,
   runner: "pi" as const,
-  store: undefined,
+  // The summary node reads the store for the run's failures, so this process needs the binary: the
+  // same override a Target without `bd` on PATH would carry.
+  store: storeBinary(),
 };
 
 try {
@@ -242,7 +247,11 @@ try {
     expectEqual("the summariser runs in the Target", summarySeen.cwd, root);
     expect(`its persona pins the run's range`, summarySeen.persona.includes(`${base1}...HEAD`));
     expectEqual("its brief is the range, its menu and the review, exactly", summarySeen.prompt, summaryBrief(base1, head1, menu1, review1));
-    expectEqual("summary.md is the summariser's answer", artifact(run1, SUMMARY_MD_REL), "run 1's report\n");
+    expectEqual(
+      "summary.md is the summariser's answer, then the node's failures block",
+      artifact(run1, SUMMARY_MD_REL),
+      `run 1's report\n\n${NO_FAILURES_BLOCK}`,
+    );
 
     // The readers' read-only contract: the environment a reader's turn runs under refuses a store
     // write, and the reader moves neither the store nor Main.
@@ -305,11 +314,11 @@ try {
     );
     const summariser2 = recordingAgent("run 2's report");
     await summarizeDrain(root, { artifactsDir: run2, runAgent: summariser2.run, config: CONFIG });
-    expectEqual("run 2's summary is its own", artifact(run2, SUMMARY_MD_REL), "run 2's report\n");
+    expectEqual("run 2's summary is its own", artifact(run2, SUMMARY_MD_REL), `run 2's report\n\n${NO_FAILURES_BLOCK}`);
 
     // Run 1's artifacts are run 1's: running run 2 did not touch them.
     expectEqual("run 1's review is unchanged", artifact(run1, REVIEW_MD_REL), review1);
-    expectEqual("run 1's summary is unchanged", artifact(run1, SUMMARY_MD_REL), "run 1's report\n");
+    expectEqual("run 1's summary is unchanged", artifact(run1, SUMMARY_MD_REL), `run 1's report\n\n${NO_FAILURES_BLOCK}`);
 
     // ---- Run 3: nothing to merge. It completes cleanly and says so. ---------------------------------
     const open3 = runScript(drain.script("open"), root, { ARTIFACTS_DIR: run3 });
@@ -368,7 +377,11 @@ try {
       PI_SDK_PATH: fakePiSdk(artifacts, "answer"),
     });
     expectEqual("the summary node reports over the review", summarised4.stdout, nodeLine(REPORTED));
-    expectEqual("and its artifact is its runner's answer", artifact(run4, SUMMARY_MD_REL), "the session's answer\n");
+    expectEqual(
+      "and its artifact is its runner's answer, then the failures block",
+      artifact(run4, SUMMARY_MD_REL),
+      `the session's answer\n\n${NO_FAILURES_BLOCK}`,
+    );
     expect(
       "its session landed under the run's artifacts",
       existsSync(join(run4, "sessions", "drain-summary", "summary.jsonl")),

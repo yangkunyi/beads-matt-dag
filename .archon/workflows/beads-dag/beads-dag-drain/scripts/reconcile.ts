@@ -44,6 +44,15 @@ export type Repair =
   | { id: string; handle: string | undefined; outcome: "left-alone"; reason: string };
 
 /**
+ * The reason a leftover whose work never landed is put back to `open` with, from the two facts git gave
+ * the repair. One builder, so the repair and the drain-end report cannot spell it differently: the
+ * report reads a failure comment and has to recognise this one as the repair's reopen.
+ */
+export function leftoverReason(main: string, branch: string): string {
+  return `leftover in progress and ${main} carries no merge commit of ${branch}`;
+}
+
+/**
  * A leftover whose work did not land: the reason as a comment, the issue back to `open`, nothing
  * closed. It is one function because both of the repair's unlanded outcomes are the same write — the
  * work never landed because Main has no merge of it, and the work never landed because the issue could
@@ -89,7 +98,7 @@ export async function reconcileLeftovers(target: string, store: Store): Promise<
       continue;
     }
 
-    const reason = `leftover in progress and ${mainBranch(target)} carries no merge commit of ${names.branch}`;
+    const reason = leftoverReason(mainBranch(target), names.branch);
     repairs.push(reopen(store, target, issue, reason));
   }
   return repairs;

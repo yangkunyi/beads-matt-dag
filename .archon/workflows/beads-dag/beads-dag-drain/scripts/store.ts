@@ -129,6 +129,9 @@ export type StoreIssue = {
   /** `<feature>/<NN>`, when the tracker published one: what branch and worktree names derive from. */
   handle: string | undefined;
   slug: string | undefined;
+  /** The comments the store holds for the issue. Only the drain-end report reads it: a failure is a
+   * comment, so a zero here is an issue that can hold no failure record. */
+  commentCount: number;
   /** The edges the issue declares. Every query that asks for an issue gets them; only the domain
    * preflight reads them. */
   dependencies: StoreDependency[];
@@ -151,6 +154,10 @@ function toDependencies(raw: unknown): StoreDependency[] {
   return dependencies;
 }
 
+function toCount(value: unknown): number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : 0;
+}
+
 function toStoreIssue(raw: unknown, command: string): StoreIssue {
   if (typeof raw !== "object" || raw === null) {
     throw new Error(`${command} returned something that is not an issue: ${JSON.stringify(raw)}`);
@@ -171,6 +178,7 @@ function toStoreIssue(raw: unknown, command: string): StoreIssue {
     labels: Array.isArray(issue.labels) ? issue.labels.filter((l): l is string => typeof l === "string") : [],
     handle: text(metadata.handle),
     slug: text(metadata.slug),
+    commentCount: toCount(issue.comment_count),
     dependencies: toDependencies(issue.dependencies),
   };
 }
@@ -310,20 +318,45 @@ export function closeIssue(store: Store, target: string, id: string, reason: str
 /** One comment the store holds, as this module reads it back. */
 type StoreComment = { text: string };
 
-/** The failure records the plainest reading of them: one comment per failed attempt. */
-const FAILURE_COMMENT = /^attempt \d+ failed:/;
+/**
+ * The failure record, as the flow writes it into a comment: `attempt N failed: <reason>`. One comment
+ * per failed attempt (recordFailedAttempt), so the store's own comment trail is the count - and the
+ * plainest reading of a failure there is, because `bd history` records transitions, not bodies.
+ */
+const FAILURE_COMMENT = /^attempt (\d+) failed:(?: ([\s\S]*))?$/;
 
-/** The failures already recorded on an issue, from its own comments. */
-function recordedFailures(store: Store, target: string, id: string): number {
+export type RecordedFailure = {
+  /** The attempt ordinal the flow wrote: one plus the failures already recorded when it failed. */
+  attempt: number;
+  /** The reason, with the `attempt N failed: ` prefix stripped. */
+  reason: string;
+  /** The whole comment, exactly as the store answered it. */
+  text: string;
+};
+
+/**
+ * One issue's recorded failures, oldest first, from the store's own answers.
+ *
+ * `bd comments <id> --json` is the query the drain-end report reads: a failure is an event (§10.3) -
+ * a comment plus a return to `open` - and this is where the reason lives. `bd history` cannot answer
+ * it: it records the transition commits and the issue's status after each, never the comment's body,
+ * so every failure there looks like every other update.
+ */
+export function recordedFailures(store: Store, target: string, id: string): RecordedFailure[] {
   const command = `comments ${id} --json`;
   const parsed = parseJSON(command, runStore(store, target, ["comments", id, "--json"]));
   if (!Array.isArray(parsed)) {
     throw new Error(`${command} answered with something that is not a list of comments: ${JSON.stringify(parsed)}`);
   }
-  return parsed.filter(
-    (raw): raw is StoreComment =>
-      typeof raw === "object" && raw !== null && typeof (raw as { text?: unknown }).text === "string",
-  ).filter((comment) => FAILURE_COMMENT.test(comment.text)).length;
+  return parsed
+    .filter(
+      (raw): raw is StoreComment =>
+        typeof raw === "object" && raw !== null && typeof (raw as { text?: unknown }).text === "string",
+    )
+    .flatMap((comment) => {
+      const m = FAILURE_COMMENT.exec(comment.text);
+      return m ? [{ attempt: Number(m[1]), reason: m[2] ?? "", text: comment.text }] : [];
+    });
 }
 
 /**
@@ -343,7 +376,7 @@ function recordedFailures(store: Store, target: string, id: string): number {
  * other order would leave an issue that looks untouched with no reason anywhere.
  */
 export function recordFailedAttempt(store: Store, target: string, id: string, reason: string): void {
-  const attempt = 1 + recordedFailures(store, target, id);
+  const attempt = 1 + recordedFailures(store, target, id).length;
   runStore(store, target, ["comment", id, `attempt ${attempt} failed: ${reason}`]);
   runStore(store, target, ["update", id, "-s", "open"]);
 }

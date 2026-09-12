@@ -57,6 +57,7 @@ try {
     ["open", join(drain.dir, "scripts", "open.ts")],
     ["pick", join(drain.dir, "scripts", "pick.ts")],
     ["execute", join(execute.dir, "scripts", "execute.ts")],
+    ["summary", join(drain.dir, "scripts", "summary.ts")],
     ["backup", join(drain.dir, "backup.ts")],
   ] as const;
   for (const [name, file] of callers) {

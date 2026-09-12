@@ -217,13 +217,36 @@ other run's work is in this run's report and this run's report is not the reposi
   in the diff, missing tests for changed behavior, cross-file breakage - and joins their sections into
   one artifact. The reviewers fetch the range themselves; the diff is never pasted into a prompt.
 - **summary** (`summary.md`) reads review.md and ranks, dedupes and merges the reviews into the one
-  report a human reads first. It runs only when review.md holds findings.
+  report a human reads first, then appends the run's failures block (below). It runs a session only when
+  review.md holds findings; with failures to report and no review to merge it writes the block itself.
 
-An empty range is a clean no-op, not a failure: both readers spend no agent, write a skip line naming
-the empty range, and print the `nothing` token - so a drain that merged nothing says so, and a second
-drain in the same repository reports only its own merges (its base is past the first drain's). A reader
-that wrote a report prints `reported`. The three artifacts live in the run's `ARTIFACTS_DIR`, beside
-`pick-exclusions.json` and `attempted-ids.json`.
+An empty range is a clean no-op, not a failure: both readers spend no agent and write a skip line naming
+the empty range - and print the `nothing` token, unless the run has a failure to report, in which case the
+summary keeps that line, writes the failures block under it, and prints `reported`. So a drain that merged
+nothing says so, and a second drain in the same repository reports only its own merges (its base is past
+the first drain's). A reader that wrote a report prints `reported`. The three artifacts live in the run's
+`ARTIFACTS_DIR`, beside `pick-exclusions.json` and `attempted-ids.json`.
+
+- **the failures block** (`## Failed attempts`, at the end of summary.md). The summary node itself writes
+  it, from the store: one row per issue this run attempted and left `open` with a failure, each with the
+  number of `attempt N failed:` comments the store holds for it (`bd comments <id> --json`) and the latest
+  reason. That count is a *reading*, never a counter the pack keeps: the same issue failing in two drains
+  reports 1, then 2, and nothing had to be written down to make that true. `bd history` cannot answer it -
+  a failure leaves the store's commits and the issue's statuses there, but not the reason; the comment is
+  where the reason lives.
+- an issue an **opening repair reopened** is named too, with the repair's own reason, whether or not this
+  run retried it (its record is a failure comment like any other). A repair that **closed** an issue wrote
+  no comment at all - its close reason is exactly the settlement's `merged <branch>` - so it has no row
+  here; the merge a reader can see is the *range's* business, not the failures block's.
+- nothing is invented: an issue that never failed gets no row, a run with nothing to say writes the one
+  line `none this run` under the heading, and a run whose summary is a `skip:` with nothing to report
+  keeps that line and gains no block. A run that has failures to report and merged nothing - the run that
+  used to print `nothing` while it burned a worker slot - keeps its skip line and writes the block under
+  it.
+- the numbers are the node's, not a model's: the summary role's brief is the review and the range, the
+  block is appended after whatever the turn answered, and it is still there when the turn answered nothing
+  at all. A Target whose store cannot be read fails the summary node loudly rather than reporting that
+  nothing failed.
 
 The base is recorded after the opening node's repair, and the order is not load-bearing: the repair
 does not move Main (it closes an issue whose merge already landed, or reopens one that never merged),
@@ -276,17 +299,24 @@ that starts and goes wrong is a turn with a `lastError`, and the node's own fail
 
 ## Gates
 
-All three run from this repository, cheapest first.
+Both run from this repository, cheapest first, and the store binary sits on `PATH` when they do:
 
 ```
 bun install                                                        # once: the gate's dev dependencies
-bun .archon/workflows/beads-dag/beads-dag-drain/tests/run-all.ts   # the repro suite
+bun .archon/workflows/beads-dag/beads-dag-drain/tests/run-all.ts   # the repro suite, once
 ./node_modules/.bin/tsc -p tsconfig.pack.json                      # typecheck, dev-only, not in the pack
 ```
 
+The suite is run **once, with the store binary on PATH**: a machine that drains has `bd` there - the
+premise the pack resolves the binary by - so one `run-all` on that PATH is the whole gate, and there is
+no second mode in which it is run with the binary hidden. `BEADS_BIN` is the override for an operator who
+keeps the binary somewhere else.
+
 The repro suite drives a real store, never a fake one: it resolves the store binary from `BEADS_BIN`,
 then PATH, then `npm prefix -g` plus `/bin/bd`, and fails loudly when it cannot find one — no test skips.
-Install it with `npm i -g @beads/bd@1.2.2`, or point `BEADS_BIN` at one.
+Install it with `npm i -g @beads/bd@1.2.2`, or point `BEADS_BIN` at one. "There is no store binary" is a
+repro *inside* that one run, not an argument for a second: `store-open-repro.ts` runs the opening node
+against a PATH that cannot resolve a binary and reads the reason it fails with.
 
 The third gate is the acceptance: a real `archon workflow run` against a throwaway Target. It runs once
 per release rather than per change, and never against a Target someone is draining.
@@ -317,6 +347,7 @@ The modules the two workflows share, all in the drain's `scripts/`:
 | `settle.ts` | the one order: merge then record, or record the failure and reopen |
 | `reconcile.ts` | the repair of a killed run's leftovers: closed from git, or reopened with a reason |
 | `domains.ts` | the domain boundary: the decision type, and the cross-domain graph preflight |
+| `failures.ts` | the drain-end failures block: the store's own failure records, and how they read |
 | `report-artifacts.ts` | the drain-end artifacts: the run's review base, review.md/summary.md, the skip protocol |
 | `report-node.ts` | the skeleton both drain-end readers ride: the base, the run's range, the agents, the artifact |
 | `roles.ts` | the role table: a role's arguments, session key, persona, brief, wall clock |

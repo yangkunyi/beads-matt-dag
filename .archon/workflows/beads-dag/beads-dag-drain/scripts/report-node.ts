@@ -61,8 +61,8 @@ type ReportRange = {
   ask: <R extends AgentRole>(call: ReportAsk<R>) => Promise<string>;
 };
 
-/** What a node's own read gets: where it runs, and the base it reports on. */
-type ReportInput = Pick<ReportRange, "target" | "artifactsDir" | "base">;
+/** What a node's own read gets: where it runs, the base it reports on, and the Target's config. */
+type ReportInput = Pick<ReportRange, "target" | "artifactsDir" | "base" | "config">;
 
 /**
  * What a node's own read answers: the line to write and stop with (a skip or the node's own range
@@ -95,7 +95,14 @@ export async function runReportNode(node: ReportNode, target: string, opts: Repo
     writeArtifact(outFile, baseR.skip);
     return NOTHING_TO_REPORT;
   }
-  const read = await node.read({ target, artifactsDir: opts.artifactsDir, base: baseR.base });
+  // Read after the base, so a run with no range still skips without touching the Target's config.
+  const config = opts.config ?? loadConfig(target);
+  const read = await node.read({
+    target,
+    artifactsDir: opts.artifactsDir,
+    base: baseR.base,
+    config,
+  });
   if ("stop" in read) {
     writeArtifact(outFile, read.stop);
     return NOTHING_TO_REPORT;
@@ -108,7 +115,6 @@ export async function runReportNode(node: ReportNode, target: string, opts: Repo
   }
   const head = headR.out.trim();
   const logR = await git(target, ["log", `${baseR.base}..${head}`, "--oneline"]);
-  const config = opts.config ?? loadConfig(target);
   const runAgent: AgentRunner = opts.runAgent ?? defaultAgent;
   const ask = async <R extends AgentRole>({ role, args, fallback }: ReportAsk<R>): Promise<string> => {
     const agentOpts = roleAgent({ role, args, cwd: target, artifactsDir: opts.artifactsDir, config });
