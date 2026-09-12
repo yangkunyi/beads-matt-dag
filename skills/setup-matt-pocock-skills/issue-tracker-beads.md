@@ -192,6 +192,12 @@ and read state — status, labels, comments — from the store:
 - **By handle**: `bd list --metadata-field handle=<handle> --all --json --limit 0` — a handle names
   exactly one issue, and `--all` finds it at any age.
 - **By id**: `bd show <id> --json`.
+- **By label**: `bd list --label <role> --status open --json --limit 0` — the open issues carrying a
+  triage role label; `bd list --no-labels --status open --json --limit 0` is the untriaged read, the
+  open ones carrying none. `--status open` is pinned rather than left to the store's default, which
+  hides only `closed` — claimed work is not a triage queue either. `/triage` discovers its buckets
+  with these; the drain's frontier is not one of them — `pick` asks for the unfiltered `bd ready` and
+  applies the gate rule itself ("The frontier and the claim").
 - **Comments**: `bd comment <id> "<text>"` writes one; `bd comments <id> --json` reads them back.
 - **Transitions**: `bd history <id>` is the store's record of every status change. Git carries the
   merge commits and nothing else about state; there is no copy of the transitions in git, so the store's
