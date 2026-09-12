@@ -472,10 +472,15 @@ export function envWithout(...names: string[]): NodeJS.ProcessEnv {
   return env;
 }
 
-/** The environment as a Target that cannot find the store: the binary's directory out of PATH. */
+/**
+ * The environment as a Target that cannot find the store: every PATH entry under which an executable
+ * `bd` resolves is out, not only the one `storeBinary()` happened to pick. A second install earlier or
+ * later on PATH would otherwise leave the binary findable, and the premise is what the repros assert.
+ */
 export function envWithoutStore(): NodeJS.ProcessEnv {
-  const storeDir = dirname(storeBinary());
-  const entries = (process.env.PATH ?? "").split(delimiter).filter((dir) => dir !== "" && dir !== storeDir);
+  const entries = (process.env.PATH ?? "")
+    .split(delimiter)
+    .filter((dir) => dir !== "" && !isExecutable(join(dir, "bd")));
   return { ...process.env, PATH: entries.join(delimiter) };
 }
 
