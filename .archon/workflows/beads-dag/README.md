@@ -21,7 +21,9 @@ archon workflow run beads-dag-drain --detach
 
 The Target does not commit `.archon/`. Its config is optional and lives at `.scratch/beads-dag.yaml`; the
 keys are `model`, `thinkingLevel`, `concurrency`, `runner` and `store`, and the defaults are in
-`beads-dag-drain/scripts/config.ts`.
+`beads-dag-drain/scripts/config.ts`. The opening node prints the effective configuration on stderr — one
+line naming each value and whether the Target's file or the built-in default supplied it, the store
+binary's resolution on PATH included — so a run says what it runs even when the Target has no file.
 
 ## The store
 

@@ -45,7 +45,7 @@ export type ExecuteOpts = {
 
 /** The issue's outcome, as the drain's fan-out reads it. */
 export async function executeIssue(target: string, issueHandle: string, opts: ExecuteOpts): Promise<string> {
-  const config = opts.config ?? loadConfig(target);
+  const config = opts.config ?? loadConfig(target).config;
   const store = preflightStore(target, config);
   // The issue itself, by the handle the drain named it with: the slug is half of every git name, and
   // the store is the only place it is. An issue whose metadata cannot name a worktree fails here,

@@ -1,4 +1,4 @@
-import { loadConfig, type PackConfig } from "./config.ts";
+import { loadConfig, type ConfigProvenance, type PackConfig } from "./config.ts";
 
 /** What a node's handler is handed: where it runs, its own inputs, and the Target's config. */
 type NodeEnv = {
@@ -9,6 +9,11 @@ type NodeEnv = {
   /** ARTIFACTS_DIR: what this run leaves behind, "" for a node that did not ask for it. */
   artifactsDir: string;
   config: PackConfig;
+  /**
+   * Where the config's effective values came from: the file it was read from, and the keys it set.
+   * The opening node's configuration line is built from this; every other node ignores it.
+   */
+  configProvenance: ConfigProvenance;
 };
 
 type NodeOpts = {
@@ -42,8 +47,10 @@ export async function runNode(opts: NodeOpts): Promise<void> {
     const target = process.cwd();
     const issueHandle = opts.issue ? requireEnv("INPUTS_ISSUE") : "";
     const artifactsDir = opts.artifacts ? requireEnv("ARTIFACTS_DIR") : "";
-    const config = loadConfig(target, process.env.INPUTS_CONFIG);
-    process.stdout.write(await opts.run({ target, issueHandle, artifactsDir, config }));
+    const { config, provenance } = loadConfig(target, process.env.INPUTS_CONFIG);
+    process.stdout.write(
+      await opts.run({ target, issueHandle, artifactsDir, config, configProvenance: provenance }),
+    );
   } catch (e) {
     console.error(e instanceof Error ? e.message : String(e));
     process.exitCode = 1;

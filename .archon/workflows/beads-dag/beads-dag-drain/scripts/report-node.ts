@@ -158,7 +158,7 @@ export async function runReportNode(node: ReportNode, target: string, opts: Repo
     return NOTHING_TO_REPORT;
   }
   // Read after the base, so a run with no range still skips without touching the Target's config.
-  const config = opts.config ?? loadConfig(target);
+  const config = opts.config ?? loadConfig(target).config;
   const read = await node.read({
     target,
     artifactsDir: opts.artifactsDir,

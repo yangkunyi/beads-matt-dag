@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
+import type { Store } from "./store.ts";
 
 const THINKING_LEVELS = [
   "off",
@@ -36,9 +37,36 @@ const DEFAULTS: PackConfig = {
   store: undefined,
 };
 
-/** The only keys the pack reads; every other top-level key is ignored. */
-const CONFIG_KEYS = ["model", "thinkingLevel", "concurrency", "runner", "store"] as const;
-type ConfigKey = (typeof CONFIG_KEYS)[number];
+/** The keys the pack reads, in the order the configuration line names them; every other top-level key
+ * is ignored. */
+export const CONFIG_KEYS = ["runner", "model", "thinkingLevel", "concurrency", "store"] as const;
+export type ConfigKey = (typeof CONFIG_KEYS)[number];
+
+/**
+ * Where the effective configuration's values came from: the Target's config file, when one was read,
+ * and which keys it set. Every key it did not set is the built-in default (`DEFAULTS`); the store is
+ * the one key whose resolution has a second source, PATH, which `store.ts` records on the Store it
+ * returns. `loadConfig` returns this beside the values - never instead of them - because the values
+ * alone cannot tell "the Target has no file" from "a file said the defaults".
+ */
+export type ConfigProvenance = {
+  /** The file the values were read from; undefined when the Target has no config file. */
+  file: string | undefined;
+  /** The keys the file set. A key whose parsed value did not take effect is not among them. */
+  fromFile: ReadonlySet<ConfigKey>;
+};
+
+/** A config read off a Target: the effective values, and where each came from. */
+export type LoadedConfig = {
+  config: PackConfig;
+  provenance: ConfigProvenance;
+};
+
+/** One file's answer: the effective values, and the keys that file set. */
+export type ParsedConfig = {
+  config: PackConfig;
+  fromFile: ReadonlySet<ConfigKey>;
+};
 
 function isConfigKey(key: string): key is ConfigKey {
   return (CONFIG_KEYS as readonly string[]).includes(key);
@@ -107,11 +135,13 @@ function parseScalar(text: string, file: string, line: number): unknown {
  * mapping of scalars, with `#` comments and blank lines. Anything the reader does not understand - a
  * nested map or list, a key with no value, a duplicate key, a value that opens a flow collection or
  * block scalar - throws with the file and line instead of being silently reinterpreted. Unknown keys
- * are ignored, as they always were. `file` only names the source in error messages, so a test can
- * drive this without a filesystem.
+ * are ignored, as they always were. The answer carries which keys the text set, so the opening node's
+ * line can name the file as their source. `file` only names the source in error messages, so a test
+ * can drive this without a filesystem.
  */
-export function parseConfigText(text: string, file: string): PackConfig {
+export function parseConfigText(text: string, file: string): ParsedConfig {
   const config: PackConfig = { ...DEFAULTS };
+  const fromFile = new Set<ConfigKey>();
   const seen = new Set<string>();
   let topIndent: number | undefined;
   let currentKey: string | undefined;
@@ -156,35 +186,44 @@ export function parseConfigText(text: string, file: string): PackConfig {
     const value = parseScalar(valueText, file, lineNo);
     switch (key) {
       case "model":
-        if (typeof value === "string") config.model = value;
+        if (typeof value === "string") {
+          config.model = value;
+          fromFile.add(key);
+        }
         break;
       case "store":
-        if (typeof value === "string") config.store = value;
+        if (typeof value === "string") {
+          config.store = value;
+          fromFile.add(key);
+        }
         break;
       case "thinkingLevel":
         if (typeof value !== "string" || !isThinkingLevel(value)) {
           throw new Error(`invalid thinkingLevel in ${file}: ${String(value)}`);
         }
         config.thinkingLevel = value;
+        fromFile.add(key);
         break;
       case "concurrency":
         if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
           throw new Error(`invalid concurrency in ${file}: ${String(value)}`);
         }
         config.concurrency = value;
+        fromFile.add(key);
         break;
       case "runner":
         if (value !== "pi" && value !== "dsh") {
           throw new Error(`invalid runner in ${file}: ${String(value)} (expected pi or dsh)`);
         }
         config.runner = value;
+        fromFile.add(key);
         break;
     }
   }
   if (pending !== undefined) {
     throw configError(file, pending.line, `"${pending.key}" has no value`);
   }
-  return config;
+  return { config, fromFile };
 }
 
 function resolveConfigPath(target: string, configPath?: string): string {
@@ -192,11 +231,54 @@ function resolveConfigPath(target: string, configPath?: string): string {
   return isAbsolute(raw) ? raw : resolve(target, raw);
 }
 
-/** The Target's config, or the defaults when it has none. Every node reads it through node-entry. */
-export function loadConfig(target: string, configPath?: string): PackConfig {
+/**
+ * The Target's config, or the defaults when it has none, with the reading's provenance beside it.
+ * Every node reads it through node-entry; the opening node's configuration line is built from the
+ * values and this provenance together.
+ */
+export function loadConfig(target: string, configPath?: string): LoadedConfig {
   const file = resolveConfigPath(target, configPath);
   if (!existsSync(file)) {
-    return { ...DEFAULTS };
+    return { config: { ...DEFAULTS }, provenance: { file: undefined, fromFile: new Set() } };
   }
-  return parseConfigText(readFileSync(file, "utf8"), file);
+  const { config, fromFile } = parseConfigText(readFileSync(file, "utf8"), file);
+  return { config, provenance: { file, fromFile } };
+}
+
+/**
+ * The opening node's one line: the effective configuration, each value with the source it came from -
+ * the Target's config file, by the path it was read from, or the built-in default.
+ *
+ * It exists because the values alone cannot tell the two apart: `loadConfig` returns the defaults in
+ * silence when the Target has no file, so without this line "no config file" and "a file said so"
+ * are the same run. A model the config does not set is the runner's own default, which is what the
+ * line names; its source is still the pack's default. The store is the one key whose source has a
+ * second form: `store.ts` resolves the binary from the config override first, then PATH, and its
+ * `source` says which answered - the file the override was read from, or PATH.
+ *
+ * `open.ts` writes it to stderr, never stdout: a node's stdout is its token channel, and open's whole
+ * stdout has to stay one `opened` token.
+ *
+ * The two records are typed out over `CONFIG_KEYS`, so a key added to the pack cannot be left out of
+ * the line: the record is missing it and the typecheck fails.
+ */
+export function configLine(config: PackConfig, provenance: ConfigProvenance, store: Store): string {
+  const file = provenance.file;
+  const sourceOf = (key: ConfigKey): string =>
+    provenance.fromFile.has(key) && file !== undefined ? file : "default";
+  const values: Record<ConfigKey, string> = {
+    runner: config.runner,
+    model: config.model ?? "the runner's default",
+    thinkingLevel: config.thinkingLevel,
+    concurrency: String(config.concurrency),
+    store: store.binary,
+  };
+  const sources: Record<ConfigKey, string> = {
+    runner: sourceOf("runner"),
+    model: sourceOf("model"),
+    thinkingLevel: sourceOf("thinkingLevel"),
+    concurrency: sourceOf("concurrency"),
+    store: store.source === "environment" ? "PATH" : file ?? "config",
+  };
+  return `beads-dag: config: ${CONFIG_KEYS.map((key) => `${key}=${values[key]} (${sources[key]})`).join(", ")}`;
 }

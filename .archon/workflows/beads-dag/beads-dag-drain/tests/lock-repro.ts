@@ -231,7 +231,7 @@ try {
     const issue = publishIssue(root, { title: "recorded without a lock", handle: "feat/02", slug: "recorded-without-a-lock", labels: [GATE_LABEL] });
     bd(root, "update", issue.id, "-s", "in_progress");
 
-    const store = preflightStore(root, loadConfig(root));
+    const store = preflightStore(root, loadConfig(root).config);
     recordFailedAttempt(store, root, issue.id, "a failure with no lock anywhere");
 
     expectEqual("the record lands with nothing held", storeIssue(root, issue.id).status, "open");

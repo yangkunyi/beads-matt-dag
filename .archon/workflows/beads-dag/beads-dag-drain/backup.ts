@@ -15,7 +15,7 @@ import { preflightStore, pushStore } from "./scripts/store.ts";
 
 const target = process.cwd();
 try {
-  const store = preflightStore(target, loadConfig(target));
+  const store = preflightStore(target, loadConfig(target).config);
   pushStore(store, target);
   process.stdout.write("store pushed to its Dolt remote\n");
 } catch (e) {
