@@ -21,3 +21,6 @@ to change what the report says, and this is the ticket that changes it.
 - [ ] a run with nothing to say about failures says so in one line rather than an empty section, and a run
       with no report at all keeps its existing skip line
 - [ ] nothing new is recorded anywhere: no attempt counter, no failure log, no store field
+- [ ] the pack README's Gates section records how the gates are run now (Q11): `run-all` once with the store
+      binary on PATH, plus the typecheck; "the store binary is absent" stays a repro inside the suite, not a
+      second mode of it, because a machine that drains has the binary on PATH

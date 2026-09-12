@@ -845,7 +845,8 @@ shows the status and not the body, §6).
    reviewer wall clock, and `15` has a run report the configuration it used — every key has a usable
    default, so a Target whose config file is absent is not a mystery.
 2. **Write the skill set** (§10.7) — after step 1's acceptance, sourced in this repo, installed by
-   copy. This absorbs what used to be three separate items here (whether §1's template may be written
+   copy. Tracked as `.scratch/beads-skills/issues/01`–`06`: the contract, the operator skill, the publish
+   side, the rest of the edits, the install, and the set's own acceptance. This absorbs what used to be three separate items here (whether §1's template may be written
    and where; the `to-tickets` hardcoding of §9; the stale wording in `to-tickets` and `implement`):
    they are all edits to the same set, and §10.7 settles them together. The operator skill in that set also
    carries the tool-level facts learned in step 1: whether a run succeeded is read from the run's own status
