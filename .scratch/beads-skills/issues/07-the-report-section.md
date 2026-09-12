@@ -383,3 +383,10 @@ ok   yaml-contract-repro.ts  {"ok":true}
   sentence as the skipped review's, because `summary.ts` treats both through `reviewSkipReason`.
 - **The `/tmp` labs left by earlier pack tickets** (`beads-lab-06` … `beads-lab-10`, `drain-skill-evidence`)
   were not touched: this ticket built none of its own, and those are other tickets' recorded evidence.
+
+## Settled after the ticket (parent, 2026-09-12)
+
+The first "not settled" item is **settled against the skill**: `bd ready` was still named in the incident
+about an issue that failed twice, and the record's rule is that the contract is the only place store
+commands are written, so that mention is now a pointer to the contract's frontier row. `grep -n 'bd [a-z]'
+skills/drain/SKILL.md` is empty; the installed copy was refreshed.

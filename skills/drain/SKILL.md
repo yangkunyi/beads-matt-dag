@@ -154,7 +154,8 @@ never from a wrapper's exit code — `archon workflow wait` prints `Run … fail
 `pick`. The contract owns the resolution order.
 
 **An issue failed twice.** The reason is a comment on the issue and the issue is `open` again, so the
-store's own ready answer — `bd ready` — is the whole retry channel, and the next drain works it like
+store's own ready answer — the query the contract's frontier row names — is the whole retry channel, and
+the next drain works it like
 fresh work. There is no retry command, and no lever that narrows a drain to one issue: a drain starts
 every eligible issue. To stop one burning worker slots, brake it, fix what is wrong, then let it back
 in; how often it has burned is the count in `## Failed attempts`, read from the store's comments.
