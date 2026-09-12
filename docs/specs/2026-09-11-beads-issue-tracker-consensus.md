@@ -633,9 +633,15 @@ enter the store (ADR-0032). The retry needs no channel of its own: the issue is 
 runs there is **no cap at all**: a deterministic failure is retried by every drain that follows and
 costs a worker slot each time, and the brake (§10.4) is the only thing that ends it. A brake nobody is
 prompted to pull is not a cap, so **the drain-end report must say which attempts failed and how many
-times each issue has burned** — `bd history` already records every transition (measured), so that is a
-reading, not new state. This build does not change what the report says (the build spec puts that out
-of scope); this paragraph is the requirement for whoever does.
+times each issue has burned** — a reading, not new state. **Implemented 2026-09-12** (pack `fc28658`,
+ticket `12`): the reading is the failure *comment* — `bd comments <id> --json`, counted over the
+`attempt N failed:` records — and **not** `bd history`, which records the transition commits and the
+issue's status after each but never the comment's body, so every failure there looks like every other
+update (measured). The block is written by the node into `summary.md`, and the one thing the store cannot
+answer on its own, *which run* attempted an issue, comes from the run's own `attempted-ids.json`. Left
+open by that ticket and moved to `13`: a repair that **closed** an issue writes no failure comment at all,
+and its close reason is byte-identical to a settlement's (`merged <branch>`), so no row could tell the two
+apart — that fact belongs to the range's report, not to this block.
 
 ### 10.4 Frontier, claim, closure
 
@@ -845,14 +851,23 @@ shows the status and not the body, §6).
    is repaired by the next open. `.scratch/beads-dag/issues/11-acceptance-in-a-lab.md` holds the run ids
    and the artifact behind each. Three operator-visible consequences came out of it, and they are **fixed, not accepted**
    (decided 2026-09-12, four follow-ups in the same feature): `.scratch/beads-dag/issues/12` gives the
-   report the failures and their counts (§10.3, read from the store's own history), `13` records "what was last
-   reviewed" in the Target so a run that dies before its review leaves nothing that nobody ever looks at,
+   report the failures and their counts (§10.3) — **done 2026-09-12** (`fc28658`): the reading is the
+   failure comment, node-written into `summary.md`, and the half it could not answer (a repair's close is
+   byte-identical to a settlement's) moved to `13`. `13` records "what was last
+   reviewed" in the Target so a merge left by a run that dies before its review is still looked at,
    `14` makes a range holding nothing but the pack's own bookkeeping a skip instead of ten minutes of
    reviewer wall clock, and `15` has a run report the configuration it used — every key has a usable
-   default, so a Target whose config file is absent is not a mystery.
+   default, so a Target whose config file is absent is not a mystery. A fifth defect is in the same feature
+   for a different reason — the suite's off-PATH premise removed only the one directory the resolver
+   happened to pick, so a second `bd` on `PATH` silently broke it: `.scratch/beads-dag/issues/16`.
 2. **Write the skill set** (§10.7) — after step 1's acceptance, sourced in this repo, installed by
    copy. Tracked as `.scratch/beads-skills/issues/01`–`06`: the contract, the operator skill, the publish
-   side, the rest of the edits, the install, and the set's own acceptance. This absorbs what used to be three separate items here (whether §1's template may be written
+   side, the rest of the edits, the install, and the set's own acceptance. **01–05 are done
+   (2026-09-12)**: `4326c13` the contract, `807f0a2` the operator skill, `b3bf0e1` the publish side,
+   `c50a7fd` the rest of the edits, and `9998710` the install — the seven folders copied byte-identically
+   into `~/.pi/agent/skills` and committed in the config repository (`e7980fd`), so the set is live.
+   `06`, the set's own acceptance, still waits: the walk reads a drain's report, and `12`–`14` change what
+   one says. This absorbs what used to be three separate items here (whether §1's template may be written
    and where; the `to-tickets` hardcoding of §9; the stale wording in `to-tickets` and `implement`):
    they are all edits to the same set, and §10.7 settles them together. The operator skill in that set also
    carries the tool-level facts learned in step 1: whether a run succeeded is read from the run's own status
