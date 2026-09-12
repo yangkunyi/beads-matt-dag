@@ -44,14 +44,36 @@ export const INTERACTIONS_IGNORE_LINE = "/.beads/interactions.jsonl";
 /** The interactions log's path in the Target, relative to its root. */
 export const INTERACTIONS_REL = ".beads/interactions.jsonl";
 
+/** The ignore file the drain's own runtime paths are written into, relative to the Target's root. */
+const GITIGNORE_REL = ".gitignore";
+
 /** Spellings a Target may already use for the worktrees rule. Any of them means the line is not needed. */
 const IGNORE_ALIASES = [WORKTREES_IGNORE_LINE, "worktrees/", "worktrees", "/worktrees"];
 
 /** Spellings a Target may already use for the interactions rule. */
 const INTERACTIONS_ALIASES = [INTERACTIONS_IGNORE_LINE, INTERACTIONS_REL];
 
-/** The ignore lines' commit message; also what a later reader (and the tests) can count. */
-const IGNORE_COMMIT_SUBJECT = "chore(beads-dag): ignore runtime paths";
+/**
+ * The ignore lines' commit message; also what a later reader (and the tests) can count. Exported
+ * because the drain-end readers recognise the pack's own bookkeeping writes by it (report-node.ts):
+ * writer and reader share one constant, so the message cannot drift from what the guard accepts.
+ */
+export const IGNORE_COMMIT_SUBJECT = "chore(beads-dag): ignore runtime paths";
+
+/**
+ * The subjects of the commits the pack writes to Main as its own bookkeeping rather than its work.
+ * Today that is one write - `ensureWorktreesIgnored`'s - and a future housekeeping write registers
+ * its subject here. A subject that is not registered is not recognised, and its range is reviewed.
+ */
+export const PACK_BOOKKEEPING_SUBJECTS: readonly string[] = [IGNORE_COMMIT_SUBJECT];
+
+/**
+ * The Target-relative paths the pack's own bookkeeping write may touch. The readers require a
+ * recognised commit's diff to be a subset of these: the mark is the write itself - its message and
+ * what it changed - not a message anybody could copy. `ensureWorktreesIgnored` edits `.gitignore` and,
+ * when the store's interaction log is tracked, removes that log from the index.
+ */
+export const PACK_BOOKKEEPING_PATHS: readonly string[] = [GITIGNORE_REL, INTERACTIONS_REL];
 
 /** No function in this module may run without the lock; the reason names the function, not the caller. */
 function assertMainLock(what: string): void {
@@ -76,7 +98,7 @@ function assertMainLock(what: string): void {
  */
 export function ensureWorktreesIgnored(target: string): boolean {
   assertMainLock("ensureWorktreesIgnored");
-  const file = join(target, ".gitignore");
+  const file = join(target, GITIGNORE_REL);
   const body = existsSync(file) ? readFileSync(file, "utf8") : "";
   const written = body.split(/\r?\n/).map((line) => line.trim());
   const missing = [
@@ -89,7 +111,7 @@ export function ensureWorktreesIgnored(target: string): boolean {
   if (missing.length === 0 && !tracked) return false;
   if (missing.length > 0) {
     writeFileSync(file, `${body}${body === "" || body.endsWith("\n") ? "" : "\n"}${missing.join("\n")}\n`);
-    gitOrThrow(target, ["add", ".gitignore"]);
+    gitOrThrow(target, ["add", GITIGNORE_REL]);
   }
   // Force on purpose: the log is expected to have been rewritten since the commit that tracked it, and
   // the caller's intent is to stop tracking it - the working copy is kept either way.

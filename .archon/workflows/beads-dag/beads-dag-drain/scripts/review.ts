@@ -10,7 +10,7 @@ import {
   reviewWroteFindings,
   skipLine,
 } from "./report-artifacts.ts";
-import { reportNodeCli, runReportNode, type ReportNode, type ReportOpts } from "./report-node.ts";
+import { reportNodeCli, runReportNode, rangeHoldsOnlyPackBookkeeping, type ReportNode, type ReportOpts } from "./report-node.ts";
 import { advanceReviewed } from "./review-position.ts";
 import { mainBranch } from "./worktree.ts";
 
@@ -21,7 +21,10 @@ import { mainBranch } from "./worktree.ts";
  * range themselves; nothing is pasted.
  *
  * An empty range is a skip, not a report: a run with nothing unviewed spends no reviewer, and its
- * review.md says the range was empty.
+ * review.md says the range was empty. A range holding nothing but the pack's own bookkeeping is the
+ * same kind of no-op, with its own reason: the pack's commits are reviewed whenever they ride with
+ * anything the pack did not write, so the skip is only ever taken for a range no review would have
+ * anything to look at.
  *
  * Once the artifact is written the node advances the recorded position past the range, but only when
  * the artifact holds findings: a skip and a failed review leave the position where the run opened it,
@@ -39,6 +42,13 @@ const REVIEW_NODE: ReportNode = {
     const probe = await git(target, ["diff", "--stat", `${base}...${main}`]);
     if (!probe.ok) return { stop: reviewErrorLine(`git diff ${probe.out}`) };
     if (!probe.out.trim()) return { stop: skipLine(`empty diff ${base}...${main}, skipped`) };
+    // A range the pack wrote itself holds nothing a reviewer would look at: skip it, naming why,
+    // exactly as the empty range is skipped. One unrecognised commit makes the whole range reviewable
+    // (report-node.ts owns the recognition and its asymmetry argument), and the summary inherits this
+    // skip through review.md, the same way it inherits the empty one - so both readers say why.
+    if (await rangeHoldsOnlyPackBookkeeping(target, base, main)) {
+      return { stop: skipLine(`only the pack's own bookkeeping ${base}...${main}, skipped`) };
+    }
     return {
       report: async (range) => {
         // One reviewer per axis, in parallel; each axis' failure is that axis' section, never the
@@ -78,9 +88,9 @@ const REVIEW_NODE: ReportNode = {
     };
   },
   after: (range, body) => {
-    // The position advances only past a review that actually wrote findings: a skip, or a failed
-    // review read back through reviewSkipReason, leaves it where the run opened - so the next run
-    // reports the same range again.
+    // The position advances only past a review that actually wrote findings: a skip (an empty range,
+    // or nothing but the pack's own bookkeeping), or a failed review read back through
+    // reviewSkipReason, leaves it where the run opened - so the next run reports the same range again.
     if (reviewWroteFindings(body)) advanceReviewed(range.target, range.head);
   },
 };

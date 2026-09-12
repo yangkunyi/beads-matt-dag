@@ -219,11 +219,11 @@ both cover the same range and the review's advance below cannot hide the range f
 Nothing before the base is in this run's report.
 
 - **only a review that wrote findings advances the position.** The review node advances it to the
-  range's end when review.md holds findings. A skipped review, and a failed one — review.md is the
-  protocol's `review error:` line, which is what every axis failing or answering nothing produces —
-  leave the position where the run opened it, so the next run reports that range again. A run killed
-  between its merge and its review therefore leaves that merge inside the next run's range. The
-  position is never moved backwards.
+  range's end when review.md holds findings. A skipped review — an empty range, or nothing but the
+  pack's own bookkeeping (below) — and a failed one — review.md is the protocol's `review error:` line,
+  which is what every axis failing or answering nothing produces — leave the position where the run
+  opened it, so the next run reports that range again. A run killed between its merge and its review
+  therefore leaves that merge inside the next run's range. The position is never moved backwards.
 - **review** (`review.md`) runs one reviewer per axis over the range - bugs and incorrect assumptions
   in the diff, missing tests for changed behavior, cross-file breakage - and joins their sections into
   one artifact. The reviewers fetch the range themselves; the diff is never pasted into a prompt.
@@ -233,12 +233,17 @@ Nothing before the base is in this run's report.
   writes the failures block itself.
 
 An empty range is a clean no-op, not a failure: both readers spend no agent and write a skip line naming
-the empty range - and print the `nothing` token, unless the run has a failure to report, in which case the
-summary keeps that line, writes the failures block under it, and prints `reported`. So a drain that merged
-nothing says so, and a second drain in the same repository reports exactly what the first drain's review
-left unviewed (its base is the recorded position). A reader that wrote a report prints `reported`. The
-three artifacts live in the run's `ARTIFACTS_DIR`, beside `pick-exclusions.json`, `attempted-ids.json`,
-`main-commits.json` and `repairs.json`.
+the empty range — and print the `nothing` token, unless the run has a failure to report, in which case
+the summary keeps that line, writes the failures block under it, and prints `reported`. A range holding
+nothing but the pack's own bookkeeping is the same no-op with its own reason: the readers recognise a
+commit the pack wrote as bookkeeping by its exact subject — shared between the writer and the guard — its
+single parent, and a diff confined to the paths that write owns, and skip only when **every** commit in
+the range is one of them. One commit the pack did not write, an operator's own included, means the range
+is reviewed, the pack's own commits and all. So a drain that merged nothing says so, and a second drain
+in the same repository reports exactly what the first drain's review left unviewed (its base is the
+recorded position). A reader that wrote a report prints `reported`. The three artifacts live in the
+run's `ARTIFACTS_DIR`, beside `pick-exclusions.json`, `attempted-ids.json`, `main-commits.json` and
+`repairs.json`.
 
 - **the range section** (at the end of summary.md, above the failures block). The summary node writes it,
   from the run's own record and from git: the range both readers covered, then - when Main gained commits
@@ -372,7 +377,7 @@ The modules the two workflows share, all in the drain's `scripts/`:
 | `domains.ts` | the domain boundary: the decision type, and the cross-domain graph preflight |
 | `failures.ts` | the drain-end failures block: the store's own failure records, and how they read |
 | `report-artifacts.ts` | the drain-end artifacts: the range's base, review.md/summary.md, the skip protocol |
-| `report-node.ts` | the skeleton both drain-end readers ride: the base, the run's range, the agents, the artifact |
+| `report-node.ts` | the skeleton both drain-end readers ride: the base, the run's range, the agents, the artifact, and the recognition of a range the pack wrote itself |
 | `review-position.ts` | the recorded position: the Target's local ref, how a run opens on it, how a review advances it |
 | `run-record.ts` | the run's own bookkeeping: the Main commits it made, the repairs its open performed, the range section |
 | `roles.ts` | the role table: a role's arguments, session key, persona, brief, wall clock |

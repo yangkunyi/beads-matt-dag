@@ -15,12 +15,15 @@
  * run's artifact and not in the position ref, because the review advance moves the ref while the
  * summary still has to read the range the review covered: one run, one range, ref advanced once.
  * A run with no range reads an empty diff, writes its skip line, spends no agent, and reports `nothing`.
+ * The skeleton also owns the recognition a reader may use to skip a range the pack wrote itself
+ * (`rangeHoldsOnlyPackBookkeeping`): per-commit positive evidence, so one unrecognised commit means review.
  */
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { defaultAgent, type AgentRunner } from "./agent.ts";
 import { loadConfig, type PackConfig } from "./config.ts";
 import { git } from "./git.ts";
+import { PACK_BOOKKEEPING_PATHS, PACK_BOOKKEEPING_SUBJECTS } from "./main-writes.ts";
 import { runNode } from "./node-entry.ts";
 import { NOTHING_TO_REPORT, REPORTED } from "./node-outcomes.ts";
 import { readReviewBase, writeArtifact } from "./report-artifacts.ts";
@@ -94,6 +97,56 @@ export type ReportNode = {
 
 /** A reader node's whole outcome: it reported, or it had nothing to report. */
 export type ReportOutcome = typeof REPORTED | typeof NOTHING_TO_REPORT;
+
+/**
+ * Whether `base..head` holds nothing but commits the pack wrote as its own bookkeeping - the one
+ * positive recognition that lets a reader skip a range it would otherwise spend a session on.
+ *
+ * The asymmetry is the whole argument: a false "ours" silently drops a review, a false "not ours"
+ * spends one session on a trivial range, so the guard may only make the cheap mistake. Every commit
+ * must therefore be recognised on its own evidence, and one unrecognised commit - an operator's work,
+ * a branch that arrived in a merge, a message that merely copies the pack's - means the range is
+ * reviewed. `base..head` is the whole reachable range, branch commits inside merges included, so
+ * nothing can hide behind a merge.
+ *
+ * A commit is recognised only when all three facts hold, each measured against the real commits a
+ * Target's Main carries (`git log --format=%H%n%s%n%an%n%ae%n%b` plus `--name-only`):
+ *
+ * - **the exact subject the pack's write uses** (`main-writes.ts`'s `PACK_BOOKKEEPING_SUBJECTS`, shared
+ *   with the writer so the message cannot drift from what the guard accepts). The pack's other Main
+ *   write - the `beads-dag: merge <branch>` merge - is deliberately not among them: it is work.
+ * - **at most one parent.** A merge brought a branch's work into Main, whoever wrote its subject; the
+ *   measured merge commit is the pack's own and is still not bookkeeping.
+ * - **a diff whose paths are all paths that write owns** (`PACK_BOOKKEEPING_PATHS`). The subject is a
+ *   message anyone could copy; the housekeeping commit's content is the pack's own runtime paths, and
+ *   requiring it makes a commit that only reuses the subject unrecognised. The measured author of every
+ *   commit is the operator's own git identity, so no author or email field could serve here at all.
+ *
+ * Git is the only source and a failure is never a skip: an unreadable log or diff, an empty range (the
+ * empty-diff skip's case, not this one), a merge, or a malformed record all answer false, and the
+ * caller reviews the range.
+ */
+export async function rangeHoldsOnlyPackBookkeeping(target: string, base: string, head: string): Promise<boolean> {
+  const log = await git(target, ["log", "--format=%H%x00%P%x00%s", `${base}..${head}`]);
+  if (!log.ok) return false;
+  const commits = log.out.split("\n").filter((line) => line !== "");
+  if (commits.length === 0) return false;
+  for (const line of commits) {
+    const [commit, parents, subject] = line.split("\0");
+    if (commit === undefined || parents === undefined || subject === undefined) return false;
+    if (parents.split(" ").filter(Boolean).length > 1) return false;
+    if (!PACK_BOOKKEEPING_SUBJECTS.includes(subject)) return false;
+    const touched = await git(target, ["show", "--no-renames", "--name-only", "--format=", commit]);
+    if (!touched.ok) return false;
+    const paths = touched.out
+      .split("\n")
+      .map((path) => path.trim())
+      .filter((path) => path !== "");
+    if (paths.length === 0) return false;
+    if (!paths.every((path) => PACK_BOOKKEEPING_PATHS.includes(path))) return false;
+  }
+  return true;
+}
 
 /** Run one report node end to end: the ordering, the skips and the error handling live here. */
 export async function runReportNode(node: ReportNode, target: string, opts: ReportOpts): Promise<ReportOutcome> {
