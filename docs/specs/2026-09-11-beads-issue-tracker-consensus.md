@@ -103,7 +103,7 @@ fails with `schema version mismatch`.
 | 7 | **`bd init --skip-agents --skip-hooks`.** Avoids a competing managed `AGENTS.md` section, a `prepare-commit-msg` hook that would add trailers to load-bearing commit subjects, an unused JSONL export path, and per-commit hook latency |
 | 8 | **No container tier at all.** No feature layer, no business epic, no spec/map container. Business → label. Reason: "Feature" in the local tracker is an artifact of the filesystem (per-directory id scoping, `NN` numbering, directories), not of the domain |
 | 9 | **Cross-feature edges work unconditionally** and need no convention (ids are globally unique, so the local tracker's `<feature-slug>/<NN>` prefix requirement disappears entirely) |
-| 10 | **Documents live in git.** Specs and maps are markdown files in the repo; issues point back with `--spec-id <path>`. See §6. **Extended 2026-09-11:** the issue *body* also lives in a file, frozen once published — beads holds state, edges and identity (§10.5) |
+| 10 | **Documents live in git.** Specs and maps are markdown files in the repo. See §6. **Extended 2026-09-11:** the issue *body* also lives in a file, frozen once published — beads holds state, edges and identity (§10.5). **Corrected 2026-09-11:** the original wording had an issue "point back with `--spec-id <path>`"; the built flow writes no document field at all, because the body path is derived from the issue's `handle` and `slug` alone (§10.5, §5.8) — and a field no reader reads is a second record of the same fact |
 | 11 | **Publish channel = `bd create --graph`**, not `bd create -f` (see §5.2 and §7.6) |
 | 12 | **Wayfinder mapping**: `claimed` → `assignee` + `in_progress`; `resolved` → `closed`; `Type: research/prototype/grilling/task` → bead type `decision` plus label `wayfinder:<type>` (mirrors the GitHub template's convention). **Amended 2026-09-11 (§10.4):** `resolved → closed` is legitimate only while nothing on the implementation side depends on a decision issue — a `closed` blocker releases its dependents unconditionally, whatever the closure meant, so the two domains are kept apart |
 | 13 | ~~**`FAILED` is category `wip`** — hidden from `bd ready`. Category `active` would mean the pick step automatically re-picks failed work: an unbounded retry loop, and a default behaviour nobody chose. A failure leaves the frontier; retrying is an explicit orchestrator action. If automatic retry is ever wanted it should be an explicit attempt-capped policy, not a side effect of a category~~ → **Reversed 2026-09-11 (§10.3), twice over.** First the mechanism fell: no custom status enters `bd ready` in *any* category (§5.6), so the category never protected anything. Then the status itself: a failure is an **event** — the reason is a comment and the issue returns to `open` — so the retry channel is `bd ready` itself, there is no union in `pick`, and nothing has to be registered in the store. What survives from the original decision is the retry cap: per-run, in `attempted-ids.json`, never in the store |
@@ -281,6 +281,10 @@ bd list --spec docs/specs/alpha-rollout.md          # "Filter by spec_id prefix"
 `bd show --json`. Also available: `--external-ref`, `--design`, `--acceptance`, `--metadata`
 (queryable with `bd list --metadata-field key=value`).
 
+**Superseded 2026-09-11 (§10.5):** the flow writes no `spec_id`. An issue's body path is derived from its
+`handle` and `slug`, and no reader of the store needs a document pointer; this section is kept as the
+measurement showing the store *can* hold one, not as a step anybody takes.
+
 ### 5.9 Read-only workers
 
 ```
@@ -321,7 +325,9 @@ Prerequisite: the additional repos must have `export.auto` enabled — verified 
 ## 6. Why documents live in git, not in beads
 
 `--spec-id`'s own help text calls a spec a **document**. So beads' native model already treats
-the spec as a file reference, not as a node — no container concept has to be invented.
+the spec as a file reference, not as a node — no container concept has to be invented. The built flow
+then writes no `spec_id` either: the body path is derived from the issue's `handle` and `slug` (§10.5),
+and a field no reader reads would be a second record of the same fact.
 
 Four independent reasons to follow it:
 
@@ -474,7 +480,7 @@ frontier). The right-hand column is the decided design, not a translation sugges
 | `Status: claimed` (wayfinder) | `assignee` + `in_progress` |
 | `Status: resolved` (wayfinder) | `closed` — legitimate only because the two domains never share an edge (§10.4) |
 | map = `map.md` | a markdown file in git |
-| child issue = a file | a bead, pointing at its document with `--spec-id` |
+| child issue = a file | a bead whose file path is derived from its `handle` and `slug` (the store carries no document field) |
 | frontier = scan the directory | the store's own answer: `bd ready` with the type and label filters, minus what this run already attempted (§10.4) |
 | `/implement` and conflict resolution leave the state alone | `BD_READONLY=1` |
 | triage's five roles | five labels; `ready-for-agent` is the gate, `needs-triage`/`needs-info` are the brake (§10.4) |
