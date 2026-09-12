@@ -864,7 +864,7 @@ shows the status and not the body, §6).
    exact subject the pack's own write uses, at most one parent, and a diff confined to the pack's runtime
    paths — an unreadable git is never a skip), the skip writes the existing `skip:` line and starts no
    session, and it deliberately leaves the reviewed position where it is, so a wrong "ours" stays visible in
-   the next run's line instead of disappearing behind the ref. `15` has a run report the configuration it used — every key has a usable
+   the next run's line instead of disappearing behind the ref. `15` has a run report the configuration it used — **done 2026-09-12** (`109ccc4`): one stderr line, `beads-dag: config: <key>=<value> (<source>)`, written after the store preflight and typed over the pack's own key list so a key added later cannot be left out of it; stderr because a node's stdout is its token channel. Every key has a usable
    default, so a Target whose config file is absent is not a mystery. A fifth defect is in the same feature
    for a different reason — the suite's off-PATH premise removed only the one directory the resolver
    happened to pick, so a second `bd` on `PATH` silently broke it: `.scratch/beads-dag/issues/16`.
@@ -874,8 +874,9 @@ shows the status and not the body, §6).
    (2026-09-12)**: `4326c13` the contract, `807f0a2` the operator skill, `b3bf0e1` the publish side,
    `c50a7fd` the rest of the edits, and `9998710` the install — the seven folders copied byte-identically
    into `~/.pi/agent/skills` and committed in the config repository (`e7980fd`), so the set is live.
-   `06`, the set's own acceptance, still waits: the walk reads a drain's report, and `12`–`14` change what
-   one says. This absorbs what used to be three separate items here (whether §1's template may be written
+   `06`, the set's own acceptance, still waits: the walk reads a drain's report, and `12`–`15` change what
+   one says — `.scratch/beads-skills/issues/07` moves the operator skill's report section onto them, and
+   `06` follows it. This absorbs what used to be three separate items here (whether §1's template may be written
    and where; the `to-tickets` hardcoding of §9; the stale wording in `to-tickets` and `implement`):
    they are all edits to the same set, and §10.7 settles them together. The operator skill in that set also
    carries the tool-level facts learned in step 1: whether a run succeeded is read from the run's own status

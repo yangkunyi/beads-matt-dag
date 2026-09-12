@@ -7,7 +7,7 @@ pre-written issue. The walk is: choose the tracker through the setup skill, writ
 issues with one blocking edge, run a drain, run a second drain, read both reports.
 
 **Spec:** `docs/specs/2026-09-11-beads-issue-tracker-consensus.md` (§10.6, §10.7)
-**Blocked by:** `05`
+**Blocked by:** `05`, `07`
 **Status:** BLOCKED
 
 - [ ] the walk happens with only the installed skills: the agent is told the Target and nothing else — no
