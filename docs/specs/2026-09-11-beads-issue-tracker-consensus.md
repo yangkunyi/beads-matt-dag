@@ -889,5 +889,11 @@ shows the status and not the body, §6).
    and a machine that drains has the store binary on PATH. Its section on how an operator reads a drain's
    report waits for `12`–`14`.
 3. **Accept the set on its own terms** (§10.7): another agent walks the loop in a `/tmp` lab using
-   only the set, and its observations are added to §10.6's list.
+   only the set, and its observations are added to §10.6's list. **Done 2026-09-12** (`b02ff72`): the walk
+   went from `bd init` through tracker, spec, three published issues and two drains with only the installed
+   files, and §10.6 gained the result as item 5. Its findings are in
+   `.scratch/beads-skills/issues/06-the-set-accepts-itself.md`: two sentences were fixed in the set (the
+   setup skill's init-before-step-4 rule, the drain's release-in-the-same-run rule) and two contract gaps
+   became `.scratch/beads-skills/issues/08` (the blocked read is not named, and a flag was guessed from its
+   neighbour) and `09` (the frontier is read per pick, not per run).
 4. Retire §9's unverified items as they are resolved.

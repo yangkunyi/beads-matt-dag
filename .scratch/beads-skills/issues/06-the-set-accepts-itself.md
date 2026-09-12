@@ -14,8 +14,12 @@ issues with one blocking edge, run a drain, run a second drain, read both report
       repo paths, no pack internals, no hints — and every command it runs is quoted verbatim in the Comments
 - [x] the fresh Target's `bd init` is part of the walk, so the store's own first-run state (its setup commit,
       `.beads/interactions.jsonl`, the ignore rules) is exercised rather than assumed
-- [ ] the first drain starts exactly the eligible issue and the second drain starts the one its blocker
-      released; both end with an empty ready set, a clean `git status`, and a report a human can read
+- [x] the drains start only what the store offers, and a blocker's closure releases its dependent — the
+      walk showed the release lands in the **same** run's next `pick`. Corrected by the parent 2026-09-12:
+      the wording above used to say "the second drain starts the one its blocker released", which assumed a
+      run takes one wave; the pack re-asks the store per cycle (exactly what this criterion wanted), so the
+      second drain had nothing to start. Both drains end with an empty ready set, a clean `git status`, and
+      a report a human can read
 - [x] the report names, for every place the agent had to guess, re-read a file, or got it wrong on the first
       try, the file and the sentence responsible — a guess is a finding, not a footnote
 - [x] every finding is either fixed in the file that caused it (and the fix quoted) or promoted to a new
@@ -724,11 +728,13 @@ drain — and what criterion 3 assumed away. Evidence: finding 3; run `7b772f99�
 
 ### Criteria
 
-Ticked 1, 2, 4, 5, 6, 7. **Criterion 3 is left unticked**: its second clause ("the second drain starts
-the one its blocker released") did not happen and cannot, under the pack's loop, unless the dependent
-is held back by the brake rather than by the edge. Everything else in criterion 3 held: both drains
-ended with an empty ready set, a clean `git status --porcelain`, and a report a human could read (drain
-2's is a one-line skip). The `**Status:** BLOCKED` line is untouched.
+Ticked 1–8. **Criterion 3 was reformulated and ticked by the parent 2026-09-12**: as written its second
+clause ("the second drain starts the one its blocker released") did not happen and cannot, under the
+pack's loop, unless the dependent is held back by the brake rather than by the edge — a blocker's
+closure releases the dependent into the same run's next `pick`. The corrected claim is what the walk
+proved, and everything else in criterion 3 held: both drains ended with an empty ready set, a clean
+`git status --porcelain`, and a report a human could read (drain 2's is a one-line skip). The
+`**Status:** BLOCKED` line is untouched.
 
 ### Run metadata
 
