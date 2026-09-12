@@ -49,7 +49,9 @@ The drain acts on the Target's Main and its store, and disables Archon's own wor
 issue gets its own under the Target's `worktrees/`. It opens the store — preflight, then repair of a
 killed run's leftovers — loops `pick` (claims up to `concurrency` eligible issues in one transaction)
 and `execute` (one issue per worktree; merge first, record after), then `review` and `summary`; it ends
-when `pick` finds nothing eligible.
+when `pick` finds nothing eligible. A blocker's closure inside the run releases its dependent into the
+same run — `pick` asks the store again on every cycle — so holding a dependent for a later drain takes
+the brake, not the edge.
 
 The Target's config is optional at `.scratch/beads-dag.yaml`:
 

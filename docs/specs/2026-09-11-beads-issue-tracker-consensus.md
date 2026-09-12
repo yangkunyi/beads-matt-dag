@@ -705,7 +705,12 @@ The new pack is validated in a throwaway lab under `/tmp`, never against a live 
 1. the frontier excludes type `decision`, and refuses anything without the gate label;
 2. an issue whose attempt failed is not retried inside its drain, and *is* retried by the next one;
 3. closure never crosses domains, so a decision issue can never release implementation work (§10.4);
-4. the merge precedes the stamp, and a kill between the two leaves a state the repair path fixes.
+4. the merge precedes the stamp, and a kill between the two leaves a state the repair path fixes;
+5. the set alone is executable end to end: another agent, in a fresh `/tmp` Target and given only the
+   installed files, went from `bd init` through tracker, spec, three published issues and two drains,
+   with every command and finding in `.scratch/beads-skills/issues/06-the-set-accepts-itself.md`; the
+   walk also settled that a blocker's closure releases its dependent into the same run, so the second
+   drain found nothing to start and both ended with an empty ready set and a clean `git status`.
 
 **Accepted 2026-09-12** (pack `ef11f13`): all four held in real runs, each named with its run id
 and its artifacts in `.scratch/beads-dag/issues/11-acceptance-in-a-lab.md` — which also records the

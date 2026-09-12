@@ -44,7 +44,7 @@ Default posture: these skills were designed for GitHub. If a `git remote` points
 - **GitHub** — issues live in the repo's GitHub Issues (uses the `gh` CLI)
 - **GitLab** — issues live in the repo's GitLab Issues (uses the [`glab`](https://gitlab.com/gitlab-org/cli) CLI)
 - **Local markdown** — issues live as files under `.scratch/<feature>/` in this repo (good for solo projects or repos without a remote)
-- **Beads** — issues live in the repo's own `.beads/` store, driven with the `bd` CLI; the prose stays as markdown under `.scratch/<feature>/issues/` and the store holds identity, status, edges and comments (uses the `store:` key in `.scratch/beads-dag.yaml`, then `bd` on `PATH`)
+- **Beads** — issues live in the repo's own `.beads/` store, driven with the `bd` CLI; the prose stays as markdown under `.scratch/<feature>/issues/` and the store holds identity, status, edges and comments (uses the `store:` key in `.scratch/beads-dag.yaml`, then `bd` on `PATH`). Initialise a repo with no store before step 4: `bd init --prefix <name>` writes its own agent-instruction blocks into both `AGENTS.md` and `CLAUDE.md` and commits them, so step 4 edits the file the init left — with both present, its first rule picks `CLAUDE.md`.
 - **Other** (Jira, Linear, etc.) — ask the user to describe the workflow in one paragraph; the skill will record it as freeform prose
 
 Record the choice in `docs/agents/issue-tracker.md`. The GitHub and GitLab templates carry a "PRs as a request surface" flag, defaulted **off** — leave it off and don't raise it; a user who wants external PRs in the triage queue can flip the flag in the file later.
