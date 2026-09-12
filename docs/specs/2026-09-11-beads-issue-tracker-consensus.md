@@ -837,16 +837,21 @@ shows the status and not the body, §6).
    issues and issues without the gate label never do; a failure is retried by the next drain and never
    by the one that failed it; closure never crosses domains; and a kill between the merge and the record
    is repaired by the next open. `.scratch/beads-dag/issues/11-acceptance-in-a-lab.md` holds the run ids
-   and the artifact behind each. Three operator-visible consequences came out of it and are recorded
-   rather than fixed: the drain-end report still does not say which attempts failed and how many times
-   (§10.3 — this build was told not to change what the report says); a merge repaired after a kill sits
-   inside **no** run's review range, so the next drain closes it with nobody having reviewed it; and a
-   first drain's range can consist only of the pack's own housekeeping commit, which a reviewer then
-   reviews.
+   and the artifact behind each. Three operator-visible consequences came out of it, and they are **fixed, not accepted**
+   (decided 2026-09-12, four follow-ups in the same feature): `.scratch/beads-dag/issues/12` gives the
+   report the failures and their counts (§10.3, read from the store's own history), `13` records "what was last
+   reviewed" in the Target so a run that dies before its review leaves nothing that nobody ever looks at,
+   `14` makes a range holding nothing but the pack's own bookkeeping a skip instead of ten minutes of
+   reviewer wall clock, and `15` has a run report the configuration it used — every key has a usable
+   default, so a Target whose config file is absent is not a mystery.
 2. **Write the skill set** (§10.7) — after step 1's acceptance, sourced in this repo, installed by
    copy. This absorbs what used to be three separate items here (whether §1's template may be written
    and where; the `to-tickets` hardcoding of §9; the stale wording in `to-tickets` and `implement`):
-   they are all edits to the same set, and §10.7 settles them together.
+   they are all edits to the same set, and §10.7 settles them together. The operator skill in that set also
+   carries the tool-level facts learned in step 1: whether a run succeeded is read from the run's own status
+   and artifacts and never from a wrapper's exit code; a run with no `attempted-ids.json` claimed nothing;
+   and a machine that drains has the store binary on PATH. Its section on how an operator reads a drain's
+   report waits for `12`–`14`.
 3. **Accept the set on its own terms** (§10.7): another agent walks the loop in a `/tmp` lab using
    only the set, and its observations are added to §10.6's list.
 4. Retire §9's unverified items as they are resolved.
