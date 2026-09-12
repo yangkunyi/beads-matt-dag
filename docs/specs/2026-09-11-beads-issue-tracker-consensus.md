@@ -860,7 +860,11 @@ shows the status and not the body, §6).
    not make and a repair it performed (including the ones that closed) — so a merge left by a run that dies
    before its review is still looked at,
    `14` makes a range holding nothing but the pack's own bookkeeping a skip instead of ten minutes of
-   reviewer wall clock, and `15` has a run report the configuration it used — every key has a usable
+   reviewer wall clock — **done 2026-09-12** (`3904a31`): recognition is positive and fail-closed (the
+   exact subject the pack's own write uses, at most one parent, and a diff confined to the pack's runtime
+   paths — an unreadable git is never a skip), the skip writes the existing `skip:` line and starts no
+   session, and it deliberately leaves the reviewed position where it is, so a wrong "ours" stays visible in
+   the next run's line instead of disappearing behind the ref. `15` has a run report the configuration it used — every key has a usable
    default, so a Target whose config file is absent is not a mystery. A fifth defect is in the same feature
    for a different reason — the suite's off-PATH premise removed only the one directory the resolver
    happened to pick, so a second `bd` on `PATH` silently broke it: `.scratch/beads-dag/issues/16`.

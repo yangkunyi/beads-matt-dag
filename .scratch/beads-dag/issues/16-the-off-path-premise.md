@@ -14,6 +14,6 @@ luck about which directory `storeBinary()` happened to pick.
 
 - [ ] `envWithoutStore()` drops every PATH entry under which an executable `bd` resolves, not only the one
       `storeBinary()` picked
-- [ ] with a second `bd` directory prepended to PATH, the suite is 18/18 again, and the premise is *shown*:
-      the same environment prints nothing for `command -v bd`
-- [ ] nothing else about the tests' environment changes: the suite is still 18/18 on the machine's own PATH
+- [ ] with a second `bd` directory prepended to PATH, the suite is green again (21 repros as of ticket
+      `14`), and the premise is *shown*: the same environment prints nothing for `command -v bd`
+- [ ] nothing else about the tests' environment changes: the suite still passes on the machine's own PATH
