@@ -13,7 +13,11 @@ close anything, derive the branch and worktree names from the handle and slug ex
 
 - [ ] `to-tickets` no longer writes, mentions or implies the `Status:` line, the eight-status lifecycle, or
       the `READY`/`BLOCKED` values; the published body is the prose and the handle, nothing else
-- [ ] publishing writes both metadata keys and the gate label, and nothing else about state
+- [ ] publishing writes both metadata keys and the gate label — **unconditionally**, because readiness is the
+      store's own derivation and a blocker is an edge, never a label value. The contract's shape:
+      `bd create "<title>" --type task --silent --metadata '{"handle":…,"slug":…}' --labels ready-for-agent`,
+      then one `bd dep add <blocked-id> <blocker-id>` per `Blocked by` entry. Writing no status at all is the
+      point: the local tracker's conditional `READY`/`BLOCKED` must **not** reappear as a conditional label
 - [ ] each `Blocked by` entry becomes one store edge in the direction the pack expects — the blocker blocks
       the dependent — and that direction is **read back**, not assumed: the Comments show the store's own
       answer (`ready` before, `blocked` after) from a throwaway Target
