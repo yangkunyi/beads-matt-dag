@@ -2,8 +2,9 @@
 
 **What to build:** `to-tickets` publishes into the store the way the contract says, and `implement` takes its
 input from the handle plus the body path instead of from a status line. Publishing writes the body file
-(frozen, no status in it) and the store row with the `handle` and `slug` metadata, adds the gate label only
-when the issue has no blockers, and records one edge per `Blocked by` entry. `implement`'s stale
+(frozen, no status in it) and the store row with the `handle` and `slug` metadata, applies the gate label
+**unconditionally** — readiness is the tracker's own derivation and a blocker is an edge, never a label value
+— and records one edge per `Blocked by` entry. `implement`'s stale
 "leave the `Status:` line unchanged" sentence becomes the hand-run contract: claim the issue first, never
 close anything, derive the branch and worktree names from the handle and slug exactly as the drain does.
 
