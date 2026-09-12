@@ -78,23 +78,73 @@ A run's views live under its artifacts directory: `artifacts/runs/<run-id>/` ben
 `output_root`, which `archon workflow get <run-id> --json` reports. A local Target's is
 `~/.archon/workspaces/_local/<repo>/artifacts/runs/<run-id>/`.
 
-- `summary.md` — open this first: the reviewers' findings, ranked and merged.
-- `review.md` — the findings behind it, one section per review axis.
+- `summary.md` — open this first: the summary turn's report on the range, then the run's own blocks
+  under it — `## Range`, `## Commits this run did not make`, `## Repairs at open`, `## Failed attempts`
+  in that order, the middle two only when they are non-empty.
+- `review.md` — the review that summary is built from, one section per axis; a `skip:` line or a
+  `review error:` line where no review ran, and either of those leaves the recorded position where the
+  run opened it, so the next run covers the same range again.
 - `pick-exclusions.json` — why the last `pick` cycle left each issue it offered out, with the rule.
 
-A report covers the diff **this run** merged (`review-base..Main`): bugs and incorrect assumptions in
-the diff, missing tests for changed behavior, cross-file breakage. An empty range is a skip line, not an
-agent. Today the report carries no failure counts and no repair — a failed attempt is a comment on its
-issue, and a repair this run performed at `open` prints on the run's own output.
+The range is `review-base..Main`: what no review has covered yet, which is why it can hold an earlier
+run's work. `## Range` names its two ends, how many commits Main itself gained in it (its first-parent
+line, so a branch's commits arrive inside the merge that brought them) and how many of those were this
+run's; `## Commits this run did not make` names the rest — an earlier run's merge, your own commit, a
+previous run's bookkeeping — one short SHA and subject per line. They are inside this range, so this
+review is where they were read.
+
+`## Repairs at open` names what the opening step did to the leftovers it found: `closed` (its merge had
+already landed), `reopened` (Main carries no merge for it, or the issue cannot be named in git), or
+`left alone` (a decision issue, which no drain claims), each with its reason. Nothing is owed for a
+repair, and a repair is named by the run that performed it: a later run carries only its merge, as a
+commit it did not make.
+
+`## Failed attempts` is the brake list: the issues this run attempted and left failing, each with the
+number of failures the store records for it — cumulative across drains, so an issue that has burned in
+three of them reads 3 — and the latest reason. An issue an opening repair reopened is named too, whether
+or not this run retried it. A run with nothing to report writes the one line `none this run` under the
+heading.
+
+The numbers are the node's readings, never a model's: the failure count is the store's own answer (the
+`attempt N failed:` comments it holds for the issue), the range's counts are git's — both read and
+written into the artifact by the node. The summary turn is handed the range and the review and never an
+id, a count or a row, and the node appends the blocks after the turn's answer, so a turn that failed or
+died leaves them in place.
+A run with failures to report and no review to merge keeps its skip line and writes the failures block
+under it. The line naming the configuration a run used is in no artifact: `open` prints it on the run's
+stderr.
+
+What the report does not carry:
+
+- the failures block names this run's own attempts. An issue that failed in an earlier run and was not
+  touched here is not in it; the store holds each issue's own history.
+- the range is set by the Target's recorded reviewed position (`refs/beads-dag/reviewed`), never by a
+  report: the review node advances that position as soon as it has findings, with no human step in
+  between. So a report skimmed, unread, or never written changes nothing about what the next run
+  reviews — and a merge no review has covered yet, a killed run's most of all, is inside the next range
+  and reviewed there.
+
+Two skips stand in for a review, written by the node and not by a model: `skip: empty diff
+<base>...main, skipped` where the range holds no commits, and `skip: only the pack's own bookkeeping
+<base>...main, skipped` where it holds nothing the pack did not write itself. Neither spends a session,
+and the summary carries the same reason on its own line, behind `skip: review.md:`.
+
+The prose of both artifacts is the model's, language included: the pack's prompts and its config name no
+language, so a report comes back in whatever language the runner's model answers in, and a Target that
+wants one fixed language pins it in its own configuration — the `model:` it names, and the runner's
+settings for it.
 
 ## Incidents
 
 **A drain stopped loudly.** Read the run's own record: `archon workflow get <run-id>`, `--verbose
 --json` for each node's state and output, and the run's log at
-`~/.archon/workspaces/_local/<repo>/logs/<run-id>.jsonl` for what a node printed. An `open` refusal (no
-store in the Target, no store binary, a `blocks` edge across the domains) names the fix and claimed
-nothing; a runner that cannot start fails the whole drain rather than recording an attempt on an issue
-no session ever saw, and the claim it left is repaired by the next drain's `open`.
+`~/.archon/workspaces/_local/<repo>/logs/<run-id>.jsonl` for what a node printed. `open` writes one line
+naming the configuration the run is using — `beads-dag: config: runner=…, model=…, thinkingLevel=…,
+concurrency=…, store=…`, each value followed by its source: `(default)`, the Target's resolved config
+file, or `PATH` for a store found there — so what actually ran is read rather than guessed. An `open`
+refusal (no store in the Target, no store binary, a `blocks` edge across the domains) names the fix and
+claimed nothing; a runner that cannot start fails the whole drain rather than recording an attempt on an
+issue no session ever saw, and the claim it left is repaired by the next drain's `open`.
 
 **A run's verdict is its own.** Whether a run succeeded is read from its own status and artifacts,
 never from a wrapper's exit code — `archon workflow wait` prints `Run … failed.` and still exits 0.
@@ -107,12 +157,15 @@ never from a wrapper's exit code — `archon workflow wait` prints `Run … fail
 store's own ready answer — `bd ready` — is the whole retry channel, and the next drain works it like
 fresh work. There is no retry command, and no lever that narrows a drain to one issue: a drain starts
 every eligible issue. To stop one burning worker slots, brake it, fix what is wrong, then let it back
-in; how often it has burned is in its comments and the store's history.
+in; how often it has burned is the count in `## Failed attempts`, read from the store's comments.
 
 **A run was killed.** The next drain's `open` repairs every issue the killed run left `in_progress`,
 from git: Main carries the merge, so the issue is closed with the same `merged <branch>` reason a live
-run writes; Main does not, so it goes back to `open` with the reason as a comment. The repair is named
-on the next run's `open` output; the next run's report does not replay it.
+run writes; Main does not, so it goes back to `open` with the reason as a comment. That repair is named
+in the repairing run's `## Repairs at open`, and the killed run's merge is inside the same run's range —
+no review moved the recorded position — so the range section names it as a commit that run did not make
+and the review reads it. A repair reaches only the report of the run that performed it; after that, the
+merge is what stays visible.
 
 **Did it claim anything?** The run's `attempted-ids.json` holds the ids it claimed: a run with no
 `attempted-ids.json` claimed nothing (an absent file, not `[]`).
