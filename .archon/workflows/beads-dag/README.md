@@ -209,24 +209,46 @@ store has released its dependents.
 
 ## The drain-end report
 
-The run's two readers report on the range **this run** merged. The opening node records Main's tip as
-`review-base` in the run's artifacts before any merge; review and summary read `base..Main`, so no
-other run's work is in this run's report and this run's report is not the repository's history.
+The run's two readers report on the range **since the recorded position** — what nobody has looked at
+yet. The position is a local git ref in the Target (`refs/beads-dag/reviewed`): a ref, because the fact
+is a git fact and a ref can only name a commit in this repository and moves with it; not a file the pack
+maintains elsewhere, and not a store field, because it says nothing about any issue (ADR-0005). The
+opening node records Main's tip as the first position on a Target that has none — absence is not an
+error — and writes `review-base` in the run's artifacts; review and summary read that one artifact, so
+both cover the same range and the review's advance below cannot hide the range from the summary.
+Nothing before the base is in this run's report.
 
+- **only a review that wrote findings advances the position.** The review node advances it to the
+  range's end when review.md holds findings. A skipped review, and a failed one — review.md is the
+  protocol's `review error:` line, which is what every axis failing or answering nothing produces —
+  leave the position where the run opened it, so the next run reports that range again. A run killed
+  between its merge and its review therefore leaves that merge inside the next run's range. The
+  position is never moved backwards.
 - **review** (`review.md`) runs one reviewer per axis over the range - bugs and incorrect assumptions
   in the diff, missing tests for changed behavior, cross-file breakage - and joins their sections into
   one artifact. The reviewers fetch the range themselves; the diff is never pasted into a prompt.
 - **summary** (`summary.md`) reads review.md and ranks, dedupes and merges the reviews into the one
-  report a human reads first, then appends the run's failures block (below). It runs a session only when
-  review.md holds findings; with failures to report and no review to merge it writes the block itself.
+  report a human reads first, then appends the run's range section and its failures block (below). It
+  runs a session only when review.md holds findings; with failures to report and no review to merge it
+  writes the failures block itself.
 
 An empty range is a clean no-op, not a failure: both readers spend no agent and write a skip line naming
 the empty range - and print the `nothing` token, unless the run has a failure to report, in which case the
 summary keeps that line, writes the failures block under it, and prints `reported`. So a drain that merged
-nothing says so, and a second drain in the same repository reports only its own merges (its base is past
-the first drain's). A reader that wrote a report prints `reported`. The three artifacts live in the run's
-`ARTIFACTS_DIR`, beside `pick-exclusions.json` and `attempted-ids.json`.
+nothing says so, and a second drain in the same repository reports exactly what the first drain's review
+left unviewed (its base is the recorded position). A reader that wrote a report prints `reported`. The
+three artifacts live in the run's `ARTIFACTS_DIR`, beside `pick-exclusions.json`, `attempted-ids.json`,
+`main-commits.json` and `repairs.json`.
 
+- **the range section** (at the end of summary.md, above the failures block). The summary node writes it,
+  from the run's own record and from git: the range both readers covered, then - when Main gained commits
+  in it that this run did not make - one line naming each of them, then the leftovers the opening step
+  repaired, **closes included**. A merge this run made and a merge an earlier run made look identical on
+  Main (a subject is not a record of authorship), and a repair that closed an issue writes nothing at all
+  (its close reason is the settlement's own), so the run writes down what it did: `main-commits.json`, the
+  Main commits it made, appended under the Main lock by the settlement and the ignore-rules step, and
+  `repairs.json`, written once by the opening node. They are run-scoped bookkeeping, like
+  `attempted-ids.json` - read by that run's report, kept nowhere else, and never consulted as state.
 - **the failures block** (`## Failed attempts`, at the end of summary.md). The summary node itself writes
   it, from the store: one row per issue this run attempted and left `open` with a failure, each with the
   number of `attempt N failed:` comments the store holds for it (`bd comments <id> --json`) and the latest
@@ -236,21 +258,22 @@ the first drain's). A reader that wrote a report prints `reported`. The three ar
   where the reason lives.
 - an issue an **opening repair reopened** is named too, with the repair's own reason, whether or not this
   run retried it (its record is a failure comment like any other). A repair that **closed** an issue wrote
-  no comment at all - its close reason is exactly the settlement's `merged <branch>` - so it has no row
-  here; the merge a reader can see is the *range's* business, not the failures block's.
+  no comment at all, so it has no row here; the range section names it and the merge it closed above.
 - nothing is invented: an issue that never failed gets no row, a run with nothing to say writes the one
   line `none this run` under the heading, and a run whose summary is a `skip:` with nothing to report
   keeps that line and gains no block. A run that has failures to report and merged nothing - the run that
   used to print `nothing` while it burned a worker slot - keeps its skip line and writes the block under
   it.
 - the numbers are the node's, not a model's: the summary role's brief is the review and the range, the
-  block is appended after whatever the turn answered, and it is still there when the turn answered nothing
-  at all. A Target whose store cannot be read fails the summary node loudly rather than reporting that
-  nothing failed.
+  blocks are appended after whatever the turn answered, and they are still there when the turn answered
+  nothing at all. A Target whose store cannot be read fails the summary node loudly rather than reporting
+  that nothing failed.
 
-The base is recorded after the opening node's repair, and the order is not load-bearing: the repair
-does not move Main (it closes an issue whose merge already landed, or reopens one that never merged),
-so it records the commit the run opened on either way.
+The position is recorded in the opening node, after its repair: the repair does not move Main (it closes
+an issue whose merge already landed, or reopens one that never merged), so the commit recorded is the one
+the run opened on. Recording it there, before the loop, is what makes it one commit per run and before
+every merge the run can make. It is read there and **only** there — a reader that read the ref again
+after the review had advanced it would see an empty range.
 
 Both readers share one wall clock (`REVIEW_WALL_MS`, 30 min) and the same read-only contract as every
 worker: the environment the role call carries puts the store in its own read-only mode, so a reader
@@ -348,8 +371,10 @@ The modules the two workflows share, all in the drain's `scripts/`:
 | `reconcile.ts` | the repair of a killed run's leftovers: closed from git, or reopened with a reason |
 | `domains.ts` | the domain boundary: the decision type, and the cross-domain graph preflight |
 | `failures.ts` | the drain-end failures block: the store's own failure records, and how they read |
-| `report-artifacts.ts` | the drain-end artifacts: the run's review base, review.md/summary.md, the skip protocol |
+| `report-artifacts.ts` | the drain-end artifacts: the range's base, review.md/summary.md, the skip protocol |
 | `report-node.ts` | the skeleton both drain-end readers ride: the base, the run's range, the agents, the artifact |
+| `review-position.ts` | the recorded position: the Target's local ref, how a run opens on it, how a review advances it |
+| `run-record.ts` | the run's own bookkeeping: the Main commits it made, the repairs its open performed, the range section |
 | `roles.ts` | the role table: a role's arguments, session key, persona, brief, wall clock |
 | `prompt.ts` | the personas themselves |
 | `agent.ts` | the agent seam: one turn in, one session's report out, and the two runners behind it |

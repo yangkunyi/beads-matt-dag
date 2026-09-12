@@ -3,6 +3,7 @@ import { runNode } from "./node-entry.ts";
 import { nodeLine, OPENED } from "./node-outcomes.ts";
 import { reconcileLeftovers } from "./reconcile.ts";
 import { writeReviewBase } from "./report-artifacts.ts";
+import { writeRepairs } from "./run-record.ts";
 import { preflightStore, recomputeBlocked } from "./store.ts";
 
 /**
@@ -14,14 +15,16 @@ import { preflightStore, recomputeBlocked } from "./store.ts";
  * blocked by a decision issue, naming the edge (nothing may be claimed or repaired first, because the
  * store has already released such a dependent and the drain must not work it); the blocked-ness
  * recompute that replaces the predecessor's rebuild-every-cycle scan; the repair of what a killed run
- * left claimed - read from git, before pick, so a repaired issue is a candidate of this same run; and
- * the base of the range the drain-end readers report on.
+ * left claimed - read from git, before pick, so a repaired issue is a candidate of this same run;
+ * the run's own record of what that repair did (a repair's close leaves no trace the drain-end report
+ * could read otherwise); and the base of the range the drain-end readers report on.
  *
- * The base is recorded after the repair on purpose, and the order is not load-bearing: the repair does
- * not move Main (it closes an issue whose merge already landed, or reopens one that never merged), so a
- * base taken before the repair and one taken after it are the same commit. What matters is that this
- * node is always-run and runs before the loop, so the base is one commit per run, taken before any
- * merge the run can make.
+ * The base is the Target's recorded position (review-position.ts), recorded here on a Target that has
+ * none: the run does not move Main before this point - the repair either closes an issue whose merge
+ * already landed or reopens one that never merged - so the position is the commit the run opened on,
+ * and it is taken before any merge the run can make. The position is read here and nowhere else: the
+ * range both drain-end readers use lives in the run's review-base artifact, so the review's advance
+ * cannot empty the summary's range.
  */
 if (import.meta.main) {
   await runNode({
@@ -30,7 +33,7 @@ if (import.meta.main) {
       const store = preflightStore(target, config);
       assertNoCrossDomainEdges(store, target);
       recomputeBlocked(store, target);
-      await reconcileLeftovers(target, store);
+      writeRepairs(artifactsDir, await reconcileLeftovers(target, store, artifactsDir));
       writeReviewBase(target, artifactsDir);
       return nodeLine(OPENED);
     },

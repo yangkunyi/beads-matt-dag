@@ -68,9 +68,11 @@ function reopen(store: Store, target: string, issue: StoreIssue, reason: string)
 /**
  * Resolve every implementation issue the store holds `in_progress`: close it when git shows its work
  * landed, otherwise put it back to `open` with the reason recorded. A decision issue is left alone and
- * reported instead. Returns what each leftover was resolved to, in the store's order.
+ * reported instead. Returns what each leftover was resolved to, in the store's order - the opening node
+ * writes that to the run's own record (run-record.ts), because a close leaves no other trace a report
+ * could read (ticket 12's measurement: a repair's close reason is the settlement's own).
  */
-export async function reconcileLeftovers(target: string, store: Store): Promise<Repair[]> {
+export async function reconcileLeftovers(target: string, store: Store, artifactsDir: string): Promise<Repair[]> {
   const repairs: Repair[] = [];
   for (const issue of inProgressIssues(store, target)) {
     const label = issue.handle ?? issue.id;
@@ -92,7 +94,7 @@ export async function reconcileLeftovers(target: string, store: Store): Promise<
     if (landed !== undefined) {
       // `settleMerged` finds this merge rather than making a second one, records the close, and drops
       // the worktree and branch — exactly the state the killed run was interrupted before reaching.
-      const { mergeCommit } = await settleMerged(target, store, issue, names);
+      const { mergeCommit } = await settleMerged(target, store, issue, names, artifactsDir);
       console.error(`${label}: repaired: ${mergeCommit} had already landed, so the issue is closed`);
       repairs.push({ id: issue.id, handle: issue.handle, outcome: "merged", mergeCommit });
       continue;

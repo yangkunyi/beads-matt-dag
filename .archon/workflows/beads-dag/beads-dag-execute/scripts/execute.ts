@@ -30,6 +30,7 @@ import { bodyPath, issueNames } from "../../beads-dag-drain/scripts/naming.ts";
 import { runNode } from "../../beads-dag-drain/scripts/node-entry.ts";
 import { FAILED, MERGED, nodeLine } from "../../beads-dag-drain/scripts/node-outcomes.ts";
 import { roleAgent } from "../../beads-dag-drain/scripts/roles.ts";
+import { recordMainCommit } from "../../beads-dag-drain/scripts/run-record.ts";
 import { settleFailed, settleMerged } from "../../beads-dag-drain/scripts/settle.ts";
 import { issueByHandle, preflightStore } from "../../beads-dag-drain/scripts/store.ts";
 import { abortMerge, bringMainIn, ensureWorktree, mainBranch, mergeUnderway } from "../../beads-dag-drain/scripts/worktree.ts";
@@ -54,7 +55,13 @@ export async function executeIssue(target: string, issueHandle: string, opts: Ex
 
   // Main has to stay clean while the issue's worktree sits under it, and the line that makes that true
   // is a Main write: it happens once per Target, idempotently, under the lock, before the worktree.
-  await withMainLock(target, () => ensureWorktreesIgnored(target));
+  // Its commit, when it makes one, is this run's Main write too, and the report can only tell it from
+  // an earlier run's by the run's own record - so it is recorded in the same lock.
+  await withMainLock(target, () => {
+    if (ensureWorktreesIgnored(target)) {
+      recordMainCommit(opts.artifactsDir, revParse(target, mainBranch(target)));
+    }
+  });
 
   const worktree = ensureWorktree(target, names);
   const runAgent = opts.runAgent ?? defaultAgent;
@@ -137,7 +144,7 @@ export async function executeIssue(target: string, issueHandle: string, opts: Ex
   // execution has no turn left for. If that integration does conflict, the merge is left standing in
   // the worktree and the conflict turn resolves it; then both steps run again.
   const settle = () =>
-    settleMerged(target, store, issue, names, () => bringMainIn(worktree.path, mainBranch(target)));
+    settleMerged(target, store, issue, names, opts.artifactsDir, () => bringMainIn(worktree.path, mainBranch(target)));
 
   try {
     await settle();

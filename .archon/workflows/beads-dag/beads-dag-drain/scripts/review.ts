@@ -1,17 +1,32 @@
 import { git } from "./git.ts";
 import { nodeLine } from "./node-outcomes.ts";
 import { axisHeading, reviewAxes } from "./prompt.ts";
-import { REVIEW_MD_REL, reviewErrorLine, reviewErrorText, skipLine } from "./report-artifacts.ts";
+import {
+  isReviewError,
+  REVIEW_MD_REL,
+  reviewErrorDetail,
+  reviewErrorLine,
+  reviewErrorText,
+  reviewWroteFindings,
+  skipLine,
+} from "./report-artifacts.ts";
 import { reportNodeCli, runReportNode, type ReportNode, type ReportOpts } from "./report-node.ts";
+import { advanceReviewed } from "./review-position.ts";
 import { mainBranch } from "./worktree.ts";
 
 /**
- * The first of the drain's two readers. It reports on the range this run actually merged - the opening
- * node records that range's base, and the range is `base..Main` - rather than on what was planned or on
- * the repository's whole history. Reviewers fetch the range themselves; nothing is pasted.
+ * The first of the drain's two readers. It reports on the range since the recorded position - the base
+ * the opening node put in the run's artifacts, which is Main's tip on a Target that had no position
+ * yet - rather than on what was planned or on the repository's whole history. Reviewers fetch the
+ * range themselves; nothing is pasted.
  *
- * An empty range is a skip, not a report: a run that merged nothing spends no reviewer, and its
+ * An empty range is a skip, not a report: a run with nothing unviewed spends no reviewer, and its
  * review.md says the range was empty.
+ *
+ * Once the artifact is written the node advances the recorded position past the range, but only when
+ * the artifact holds findings: a skip and a failed review leave the position where the run opened it,
+ * so the next run covers that range again. The summary reads the same base from the run's artifact, so
+ * the advance cannot hide the range from the report that follows it.
  */
 const REVIEW_NODE: ReportNode = {
   rel: REVIEW_MD_REL,
@@ -27,7 +42,8 @@ const REVIEW_NODE: ReportNode = {
     return {
       report: async (range) => {
         // One reviewer per axis, in parallel; each axis' failure is that axis' section, never the
-        // other two. The sections join into the one review.md the summary node reads.
+        // other two. The sections join into the one review.md the summary node reads - unless every
+        // axis failed, in which case the whole artifact is the protocol's own failure line (below).
         const sections = await Promise.all(
           reviewAxes().map(async (axis) => {
             const heading = axisHeading(axis);
@@ -41,7 +57,10 @@ const REVIEW_NODE: ReportNode = {
                   head: range.head,
                   log: range.log,
                 },
-                fallback: "(no review text)",
+                // A turn that answered nothing has not reviewed its axis, so its section is that
+                // axis' failure: a review made only of such answers is a failed review, and a failed
+                // review does not move the recorded position.
+                fallback: reviewErrorText("the reviewer produced no answer"),
               });
               return { heading, body: text.trim() };
             } catch (e) {
@@ -50,9 +69,19 @@ const REVIEW_NODE: ReportNode = {
             }
           }),
         );
+        if (sections.length > 0 && sections.every((s) => isReviewError(s.body))) {
+          const reasons = [...new Set(sections.map((s) => reviewErrorDetail(s.body)))];
+          return reviewErrorText(`all ${sections.length} review axes failed: ${reasons.join("; ")}`);
+        }
         return sections.map((s) => `${s.heading}\n\n${s.body}\n`).join("\n");
       },
     };
+  },
+  after: (range, body) => {
+    // The position advances only past a review that actually wrote findings: a skip, or a failed
+    // review read back through reviewSkipReason, leaves it where the run opened - so the next run
+    // reports the same range again.
+    if (reviewWroteFindings(body)) advanceReviewed(range.target, range.head);
   },
 };
 

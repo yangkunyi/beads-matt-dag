@@ -18,10 +18,15 @@
  * **A failure records, and never closes.** The reason becomes a comment and the issue goes back to
  * `open`, so nothing was merged, its dependents stay exactly where they were, and the next drain's
  * `bd ready` offers it again.
+ *
+ * A merge this call creates is also written into the run's own bookkeeping (run-record.ts), inside the
+ * same Main lock as the merge: the report has no other way to tell this run's commits from an earlier
+ * run's, and the lock is what keeps two concurrent settlements from losing each other's record.
  */
 import { withMainLock } from "./lock.ts";
 import { mergeIntoMain, removeMergedWorktree } from "./main-writes.ts";
 import type { IssueNames } from "./naming.ts";
+import { recordMainCommit } from "./run-record.ts";
 import { closeIssue, recordFailedAttempt, type Store, type StoreIssue } from "./store.ts";
 
 /**
@@ -55,11 +60,17 @@ export async function settleMerged(
   store: Store,
   issue: StoreIssue,
   names: IssueNames,
+  /** The run's artifacts: where a merge this call creates is recorded as this run's own. */
+  artifactsDir: string,
   integrateMain?: () => void,
 ): Promise<{ mergeCommit: string; created: boolean }> {
   const landed = await withMainLock(target, () => {
     integrateMain?.();
-    return mergeIntoMain(target, names);
+    const merged = mergeIntoMain(target, names);
+    // The record is written inside the merge's own lock: the two writes belong together, and two
+    // executions settling at once cannot lose one another's entry.
+    if (merged.created) recordMainCommit(artifactsDir, merged.mergeCommit);
+    return merged;
   });
 
   // The record. Outside the lock, on purpose: the store has its own transaction, and the lock is for

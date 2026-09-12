@@ -3,22 +3,24 @@
  *
  * Three names, all relative to the run's ARTIFACTS_DIR:
  *
- * - **review-base** — Main's tip when the drain opened, written once by the opening node before any
- *   merge. It is the source of the range both readers report on: `base..Main` is this run's work, and
- *   nothing before the base can be this run's.
+ * - **review-base** — the range's base, written once by the opening node before any merge: the
+ *   recorded position (`review-position.ts`) when the Target has one, else Main's tip as this run
+ *   opened on it. It is the source of the range both readers report on, so a review that advances the
+ *   position cannot empty the summary's range: `base..Main` is what this run and its predecessors left
+ *   unviewed, and nothing before the base can be in this run's report.
  * - **review.md** — the reviewers' findings, one section per axis.
  * - **summary.md** — the one report a human reads first, merged from review.md.
  *
  * The skip protocol lives here with them, so producer and consumer cannot spell a sentinel differently:
  * a node with nothing to report writes one line instead of spending an agent, and the consumer reads it
  * back through `reviewSkipReason`. `review error:` is a skip with a reason, so a review that failed is
- * never summarised as if it held findings.
+ * never summarised as if it held findings - and it is what `reviewWroteFindings` reads back before the
+ * recorded position may advance.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { gitOrThrow } from "./git.ts";
 import { nodeLine } from "./node-outcomes.ts";
-import { mainBranch } from "./worktree.ts";
+import { positionToOpenOn } from "./review-position.ts";
 
 /** The drain-end artifacts, relative to ARTIFACTS_DIR. */
 export const REVIEW_BASE_REL = "review-base";
@@ -57,6 +59,27 @@ export function reviewSkipReason(reviewMd: string): string | null {
   return first.startsWith(SKIP) || first.startsWith(REVIEW_ERROR) ? first : null;
 }
 
+/**
+ * Whether one review's artifact holds findings - the readback the review node makes before advancing
+ * the recorded position. The protocol answers it: a `skip:` line (nothing to look at) and a
+ * `review error:` line (the review failed) are what `reviewSkipReason` reads back, and anything else
+ * is a review. An empty artifact is no review either; review.ts cannot produce one, but a reader
+ * must never advance on a file it could not read.
+ */
+export function reviewWroteFindings(reviewMd: string): boolean {
+  return reviewMd.trim().length > 0 && reviewSkipReason(reviewMd) === null;
+}
+
+/** True when one axis' section body is that axis' failure rather than a review of it. */
+export function isReviewError(body: string): boolean {
+  return body.trimStart().startsWith(REVIEW_ERROR);
+}
+
+/** One failed axis' reason, stripped of the marker; "" when the body is not a failure. */
+export function reviewErrorDetail(body: string): string {
+  return isReviewError(body) ? body.trimStart().slice(REVIEW_ERROR.length).trim() : "";
+}
+
 /** One drain-end artifact ends with exactly one newline, the convention every node token follows. */
 export function writeArtifact(file: string, body: string): void {
   writeFileSync(file, body.endsWith("\n") ? body : nodeLine(body));
@@ -75,20 +98,17 @@ export function readReviewBase(artifactsDir: string): ReviewBaseRead {
 }
 
 /**
- * Record the range's base: Main's tip as this run finds it, before anything is merged.
+ * Record the range's base: the Target's recorded position, before anything is merged.
  *
- * The opening node is where this runs, and its order is deliberate but not load-bearing: the repair it
- * runs just before this neither moves Main (it closes an issue whose merge already landed, or reopens
- * one that never merged) nor makes a commit, so a base taken before the repair and one taken after it
- * are the same commit. Recording it here, in the always-run opening step, is what makes it once per
- * run and before every merge: the loop that can merge runs after this node, so no merge of this run
- * can precede its own base.
+ * A Target with no recorded position behaves as every run did before the position existed - the base
+ * is Main's tip as this run finds it, and this is where the Target starts recording, through
+ * `positionToOpenOn` (review-position.ts). The opening node is where this runs, so the base is one
+ * commit per run, taken before any merge the run can make - and the repair it runs just before this
+ * neither moves Main nor makes a commit, so the order does not change the base.
  */
 export function writeReviewBase(target: string, artifactsDir: string): string {
   mkdirSync(artifactsDir, { recursive: true });
-  // The Target's own checkout: its checked-out branch is Main (worktree.ts), which is what merges land
-  // on. The readers resolve the same branch for the range's end.
-  const sha = gitOrThrow(target, ["rev-parse", mainBranch(target)]);
-  writeArtifact(join(artifactsDir, REVIEW_BASE_REL), sha);
-  return sha;
+  const base = positionToOpenOn(target);
+  writeArtifact(join(artifactsDir, REVIEW_BASE_REL), base);
+  return base;
 }

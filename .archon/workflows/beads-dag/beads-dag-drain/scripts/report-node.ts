@@ -2,17 +2,19 @@
  * The skeleton both drain-end report nodes run: read review-base and stop with the owner's skip line
  * when it is not there, let the node read its own input (the range probe, review.md), read Main and the
  * range's commit menu, run the node's agents and take each answer off the runner (else the runner's
- * failure report, else the node's own fallback), write the artifact, and turn a throw from the report
- * into the node's own error line.
+ * failure report, else the node's own fallback), write the artifact, run the node's after-step, and
+ * turn a throw from the report into the node's own error line.
  *
  * Review and summary were two copies of those steps, differing only in the shape they produce (one
- * reviewer per axis, one summariser over review.md) and in the word their error line starts with. A node
- * states those two differences and nothing else, so a fourth report node is a shape rather than another
- * copy.
+ * reviewer per axis, one summariser over review.md), in the word their error line starts with, and in
+ * what the review does once its artifact is written (advance the recorded position). A node states
+ * those differences and nothing else, so a fourth report node is a shape rather than another copy.
  *
- * The range is this run's, and its source is the base the opening node recorded: `base..Main` is what
- * the drain merged, and no run's report can reach past its own base. A run that merged nothing reads an
- * empty range, writes its skip line, spends no agent, and reports `nothing`.
+ * The range is the run's, and its source is the base the opening node recorded: `base..Main` is what
+ * the drain has left unviewed, and no run's report can reach past its own base. The base lives in the
+ * run's artifact and not in the position ref, because the review advance moves the ref while the
+ * summary still has to read the range the review covered: one run, one range, ref advanced once.
+ * A run with no range reads an empty diff, writes its skip line, spends no agent, and reports `nothing`.
  */
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
@@ -81,6 +83,13 @@ export type ReportNode = {
    * runs only for a range git can read.
    */
   read: (input: ReportInput) => Promise<ReportPrep> | ReportPrep;
+  /**
+   * The node's step after its artifact is written, when it has one that depends on the artifact's
+   * content: the review advances the recorded position past a review that holds findings, and does
+   * nothing for a skip or a failure. A throw here fails the node - a position that could not be
+   * written leaves the range to the next run, which is the safe side.
+   */
+  after?: (range: ReportRange, body: string) => void | Promise<void>;
 };
 
 /** A reader node's whole outcome: it reported, or it had nothing to report. */
@@ -139,6 +148,7 @@ export async function runReportNode(node: ReportNode, target: string, opts: Repo
     body = node.errorLine(e instanceof Error ? e.message : String(e));
   }
   writeArtifact(outFile, body);
+  await node.after?.(range, body);
   return REPORTED;
 }
 

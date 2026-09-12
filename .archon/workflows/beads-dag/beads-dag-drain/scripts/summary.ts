@@ -5,21 +5,24 @@ import { failedIssues, failuresBlock } from "./failures.ts";
 import { nodeLine } from "./node-outcomes.ts";
 import { REVIEW_MD_REL, reviewSkipReason, skipLine, SUMMARY_MD_REL } from "./report-artifacts.ts";
 import { reportNodeCli, runReportNode, type ReportNode, type ReportOpts } from "./report-node.ts";
+import { readMainCommits, readRepairs, rangeSection } from "./run-record.ts";
 import { preflightStore } from "./store.ts";
 
 /**
  * The second of the drain's two readers: one report over what the first one found, for the human who
- * reads the run afterwards. It merges the review of the range this run merged - the same range, read
- * through the same base - so no other run's work is in it.
+ * reads the run afterwards. It merges the review of the range since the recorded position - the same
+ * base the review read, taken from the run's review-base artifact and never from the position ref,
+ * which the review may already have advanced - so no other run's work is in it and the review cannot
+ * hide its own range from it.
  *
  * It spends a session only when there is something to merge: a skipped or errored review is not worth
  * one, and the artifact says which case it was.
  *
- * The run's failures are appended below whatever the summary turned out to be, and the node writes them
- * itself (failures.ts): they are a reading of the store, not something a model produces, and a turn that
- * dies takes its prose with it but not the numbers. A run with failures but nothing merged writes them
- * under its review's skip line, because "what burned a worker slot" is exactly what that run has to say;
- * a run with neither keeps the skip line and nothing else.
+ * Two blocks are the node's own, and both sit below whatever the summary turned out to be (failures.ts
+ * and run-record.ts): the run's failures, read from the store, and the range it covered with the
+ * commits in it this run did not make and the repairs its opening step performed, read from the run's
+ * own record. They are a reading, not something a model produces, so a turn that dies takes its prose
+ * with it but not the numbers or the range.
  */
 
 /** The node's failure line, by the skeleton's convention: `summary error: <detail>`. */
@@ -35,6 +38,11 @@ const SUMMARY_NODE: ReportNode = {
     const store = preflightStore(target, config);
     const rows = failedIssues(target, store, readAttempted(artifactsDir));
     const block = failuresBlock(rows);
+    // The run's own record of what it did, read once: the range section below is built from it.
+    const made = readMainCommits(artifactsDir);
+    const repairs = readRepairs(artifactsDir);
+    const section = (range: { base: string; head: string }) =>
+      rangeSection({ target, base: range.base, head: range.head, made, repairs });
     /**
      * A review this node will not summarise. With no failure to report the artifact stays exactly the
      * skip line it always was; with one, the line is kept and the node's own block is written under it,
@@ -51,8 +59,8 @@ const SUMMARY_NODE: ReportNode = {
     return {
       report: async (range) => {
         // A runner that cannot start throws rather than answering: the node's own error line stands in
-        // for the prose, and the block is still appended - the failures are the node's, so a broken
-        // model cannot take them out of the report.
+        // for the prose, and the blocks are still appended - they are the node's, so a broken model
+        // cannot take them out of the report.
         const text = await range
           .ask({
             role: "summary",
@@ -60,7 +68,7 @@ const SUMMARY_NODE: ReportNode = {
             fallback: "(no summary text)",
           })
           .catch((e) => summaryErrorLine(e instanceof Error ? e.message : String(e)));
-        return `${text.trimEnd()}\n\n${block}`;
+        return `${text.trimEnd()}\n\n${section(range)}\n\n${block}`;
       },
     };
   },

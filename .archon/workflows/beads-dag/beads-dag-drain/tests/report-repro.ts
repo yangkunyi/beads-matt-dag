@@ -30,6 +30,7 @@ import {
   SUMMARY_MD_REL,
 } from "../scripts/report-artifacts.ts";
 import { reviewDrain } from "../scripts/review.ts";
+import { reviewedPosition } from "../scripts/review-position.ts";
 import { summarizeDrain } from "../scripts/summary.ts";
 import { READONLY_ENV } from "../scripts/worker-env.ts";
 import { mainBranch } from "../scripts/worktree.ts";
@@ -127,18 +128,21 @@ const CONFIG = {
 };
 
 try {
-  // The base is Main's tip when the run opens, recorded in the run's artifacts.
+  // A fresh Target has no recorded position: the base is Main's tip when the run opens, recorded in
+  // the run's artifacts - and the run records that tip as the Target's first position.
   await withTarget(async (root, artifacts) => {
     const tip = gitC(root, "rev-parse", "main");
+    expectEqual("a fresh Target has no position", reviewedPosition(root), undefined);
     const opened = runScript(drain.script("open"), root, { ARTIFACTS_DIR: artifacts });
     expectEqual("open still speaks the protocol", opened.stdout, nodeLine(OPENED));
     expectEqual("open exits clean", opened.status, 0);
     expectEqual("the base is Main's tip at open time", readReviewBase(artifacts), { base: tip });
     expectEqual("and it is the artifact review-base", artifact(artifacts, REVIEW_BASE_REL).trim(), tip);
+    expectEqual("and the Target now records it as the position", reviewedPosition(root), tip);
   });
 
-  // The repair does not move Main, so the base is the same commit whether it is taken before it or
-  // after it: recording it in the opening step, after the repair, still records the run's start.
+  // The repair does not move Main, so opening on the position and opening on Main's tip are the same
+  // commit whether the repair ran before or after it: the opening step still records the run's start.
   await withTarget(async (root, artifacts) => {
     const issue = publishIssue(root, {
       title: "merged then killed",
@@ -161,8 +165,9 @@ try {
     expectEqual("so the base is the commit the run opened on", artifact(artifacts, REVIEW_BASE_REL).trim(), tip);
   });
 
-  // Two runs in one repository: each report reads its own range, and a third run that merges nothing
-  // says so. The pack's own setup commit is in a run's range but is not a merge, so it is not work.
+  // Two runs in one repository: each report reads its own range, and a third run that has nothing
+  // unviewed says so. The pack's own setup commit is in a run's range but is not a merge, so it is not
+  // work - while the ignore-rules commit the run itself makes is its own Main write and is counted.
   await withTarget(async (root, artifacts) => {
     writeTargetConfig(root, `store: ${storeBinary()}\n`);
     const run1 = join(artifacts, "run-1");
@@ -192,6 +197,8 @@ try {
     expectEqual("run 1 merges its issue", executed1.stdout, nodeLine(MERGED));
     const head1 = gitC(root, "rev-parse", "main");
     expect("run 1's merge moved Main", head1 !== base1, { base1, head1 });
+    // Run 1's report: the ignore-rules commit and the merge are both Main writes this run made.
+    const range1 = `## Range\n\n\`${base1}..${head1}\` — 2 commits on Main, 2 made by this run, 0 not made by this run`;
 
     // The run's delivered work is the range's merges. The pack's setup commit is inside the range and
     // is not a merge, so it is never mistaken for a delivered issue.
@@ -248,9 +255,9 @@ try {
     expect(`its persona pins the run's range`, summarySeen.persona.includes(`${base1}...HEAD`));
     expectEqual("its brief is the range, its menu and the review, exactly", summarySeen.prompt, summaryBrief(base1, head1, menu1, review1));
     expectEqual(
-      "summary.md is the summariser's answer, then the node's failures block",
+      "summary.md is the summariser's answer, the node's range section, then its failures block",
       artifact(run1, SUMMARY_MD_REL),
-      `run 1's report\n\n${NO_FAILURES_BLOCK}`,
+      `run 1's report\n\n${range1}\n\n${NO_FAILURES_BLOCK}`,
     );
 
     // The readers' read-only contract: the environment a reader's turn runs under refuses a store
@@ -276,16 +283,15 @@ try {
     });
     gitC(root, "add", "-A");
     gitC(root, "commit", "-m", "the second brief");
+    const secondBrief = gitC(root, "rev-parse", "main");
 
     const open2 = runScript(drain.script("open"), root, { ARTIFACTS_DIR: run2 });
     expectEqual("run 2 opens", open2.stdout, nodeLine(OPENED));
-    const base2 = gitC(root, "rev-parse", "main");
-    expectEqual("run 2's base is where run 2 opened", artifact(run2, REVIEW_BASE_REL).trim(), base2);
-    expect(
-      "run 2's base is past run 1's merge",
-      base2 !== head1 && isAncestor(root, head1, base2),
-      { head1, base2 },
-    );
+    // The base is the position run 1's review advanced to, not the tip run 2 opened on: the second
+    // brief's commit is inside the range and will be named as one this run did not make.
+    const base2 = head1;
+    expectEqual("run 2's base is run 1's reviewed head", artifact(run2, REVIEW_BASE_REL).trim(), base2);
+    expectEqual("which is the recorded position", reviewedPosition(root), base2);
 
     const executed2 = runScript(execute.script("execute"), root, {
       INPUTS_ISSUE: second.handle,
@@ -298,6 +304,11 @@ try {
       subjectFor(second),
     ]);
 
+    // Run 2's report names its own merge as its own, and the lab's setup commit that landed after run
+    // 1's review as one it did not make.
+    const range2 =
+      `## Range\n\n\`${base2}..${head2}\` — 2 commits on Main, 1 made by this run, 1 not made by this run\n\n` +
+      `## Commits this run did not make\n\n- ${secondBrief.slice(0, 12)} the second brief`;
     const reviewer2 = recordingAgent("run 2 findings");
     const reviewed2 = await reviewDrain(root, { artifactsDir: run2, runAgent: reviewer2.run, config: CONFIG });
     expectEqual("run 2's review reports", reviewed2, nodeLine(REPORTED));
@@ -314,11 +325,11 @@ try {
     );
     const summariser2 = recordingAgent("run 2's report");
     await summarizeDrain(root, { artifactsDir: run2, runAgent: summariser2.run, config: CONFIG });
-    expectEqual("run 2's summary is its own", artifact(run2, SUMMARY_MD_REL), `run 2's report\n\n${NO_FAILURES_BLOCK}`);
+    expectEqual("run 2's summary is its own", artifact(run2, SUMMARY_MD_REL), `run 2's report\n\n${range2}\n\n${NO_FAILURES_BLOCK}`);
 
     // Run 1's artifacts are run 1's: running run 2 did not touch them.
     expectEqual("run 1's review is unchanged", artifact(run1, REVIEW_MD_REL), review1);
-    expectEqual("run 1's summary is unchanged", artifact(run1, SUMMARY_MD_REL), `run 1's report\n\n${NO_FAILURES_BLOCK}`);
+    expectEqual("run 1's summary is unchanged", artifact(run1, SUMMARY_MD_REL), `run 1's report\n\n${range1}\n\n${NO_FAILURES_BLOCK}`);
 
     // ---- Run 3: nothing to merge. It completes cleanly and says so. ---------------------------------
     const open3 = runScript(drain.script("open"), root, { ARTIFACTS_DIR: run3 });
@@ -346,14 +357,17 @@ try {
 
     // ---- The node protocol itself: both readers run as scripts, with the run's fake runner. --------
     // An out-of-band merge after the base is inside the run's window: the readers report the range
-    // base..Main, whoever landed it, and the node scripts speak the reported/nothing tokens.
+    // base..Main, whoever landed it, the node scripts speak the reported/nothing tokens, and the merge
+    // is named as a commit this run did not make.
     const run4 = join(artifacts, "run-4");
     gitC(root, "checkout", "-b", "operator/side-work", "main");
     commitFile(root, "SIDE.md", "side\n", "the operator's side work");
     gitC(root, "checkout", "main");
     const open4 = runScript(drain.script("open"), root, { ARTIFACTS_DIR: run4 });
     expectEqual("run 4 opens", open4.stdout, nodeLine(OPENED));
+    const base4 = artifact(run4, REVIEW_BASE_REL).trim();
     gitC(root, "merge", "--no-ff", "-m", "the operator's merge", "operator/side-work");
+    const operatorMerge = gitC(root, "rev-parse", "main");
 
     const reviewed4 = runScript(drain.script("review"), root, {
       ARTIFACTS_DIR: run4,
@@ -377,10 +391,13 @@ try {
       PI_SDK_PATH: fakePiSdk(artifacts, "answer"),
     });
     expectEqual("the summary node reports over the review", summarised4.stdout, nodeLine(REPORTED));
+    const range4 =
+      `## Range\n\n\`${base4}..${operatorMerge}\` — 1 commit on Main, 0 made by this run, 1 not made by this run\n\n` +
+      `## Commits this run did not make\n\n- ${operatorMerge.slice(0, 12)} the operator's merge`;
     expectEqual(
-      "and its artifact is its runner's answer, then the failures block",
+      "and its artifact is its runner's answer, then the range it covered and its failures block",
       artifact(run4, SUMMARY_MD_REL),
-      `the session's answer\n\n${NO_FAILURES_BLOCK}`,
+      `the session's answer\n\n${range4}\n\n${NO_FAILURES_BLOCK}`,
     );
     expect(
       "its session landed under the run's artifacts",

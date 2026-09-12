@@ -186,7 +186,7 @@ try {
     });
     expectEqual("the summary still reports", token, nodeLine(REPORTED));
     const summary = artifact(artifacts, SUMMARY_MD_REL);
-    expectEqual("the node kept the failure block despite the failed turn", summary.startsWith(`the summariser died\n\n${FAILURES_HEADING}\n\n`), true);
+    expectEqual("the node kept the failure block despite the failed turn", summary.startsWith(`the summariser died\n\n## Range\n\n`), true);
     expectEqual("and the store's count is in it", countIn(blockOf(summary)), 1);
 
     // A runner that cannot start throws instead of answering: the error line replaces the prose, and the
@@ -199,8 +199,8 @@ try {
     expectEqual("a thrown turn still reports", thrown, nodeLine(REPORTED));
     const failedSummary = artifact(artifacts, SUMMARY_MD_REL);
     expect(
-      "and the artifact is the node's error line, then the block",
-      failedSummary.startsWith(`summary error: the runner could not start\n\n${FAILURES_HEADING}\n\n`),
+      "and the artifact is the node's error line, then the range, then the block",
+      failedSummary.startsWith(`summary error: the runner could not start\n\n## Range\n\n`),
       failedSummary,
     );
     expectEqual("with the store's count intact", countIn(blockOf(failedSummary)), 1);
