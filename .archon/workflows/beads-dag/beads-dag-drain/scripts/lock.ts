@@ -16,13 +16,22 @@
  * waiting for itself. That is what lets a compound step call one writer after another and still hold one
  * lock, and it is per async context, so a second task in the same process that did not enter the
  * callback still waits.
+ *
+ * **This is the Main lock and only the Main lock.** A drain also holds a lock that is not about Main at
+ * all - one run at a time per Target, held for a whole run - and it is deliberately a second file beside
+ * this one (`run-lock.ts`, `beads-dag-run.lock`). Sharing this file would break both: a Main write from
+ * another process of the run itself would find the run's live pid in the file and wait LOCK_WAIT_MS,
+ * then throw, because re-entrancy here saves `withMainLock` from itself and nothing else; and a second
+ * drain would wait a run's length where it has to refuse. The mechanisms the two locks share -
+ * exclusive create, the pid check, stealing a dead holder's - live here, so there is one spelling of
+ * each.
  */
 import { AsyncLocalStorage } from "node:async_hooks";
 import { closeSync, constants, existsSync, openSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { gitOrThrow } from "./git.ts";
 
-/** The lock file's name, inside the Target's git directory. */
+/** The Main lock file's name, inside the Target's git directory. */
 export const LOCK_NAME = "beads-dag.lock";
 
 /** How long a process waits for another's lock before giving up, in milliseconds. */
@@ -38,21 +47,69 @@ export function isMainLockHeld(): boolean {
   return held.getStore() === true;
 }
 
-/** The lock's one path: the Target's git directory. */
+/** The Target's git directory: where every lock file lives, so all processes resolve the same path. */
+export function gitDir(target: string): string {
+  return gitOrThrow(target, ["rev-parse", "--absolute-git-dir"]);
+}
+
+/** The Main lock's one path: the Target's git directory. */
 export function lockFilePath(target: string): string {
-  return join(gitOrThrow(target, ["rev-parse", "--absolute-git-dir"]), LOCK_NAME);
+  return join(gitDir(target), LOCK_NAME);
+}
+
+/** What a lock file records: the holder's pid, and the holder's own name when it wrote one. */
+export type LockHolder = { pid: number; name?: string };
+
+/**
+ * A lock file's holder, read the one way: the pid on the first line, the holder's name (if any) after
+ * it. An unreadable file or an unusable pid reads as no holder, which every caller treats as a dead
+ * one - a lock half-written by a kill must be stolen, never waited for.
+ */
+export function readLockHolder(path: string): LockHolder | undefined {
+  let raw: string;
+  try {
+    raw = readFileSync(path, "utf8");
+  } catch {
+    return undefined;
+  }
+  const lines = raw.split("\n");
+  const pid = Number((lines[0] ?? "").trim());
+  if (!Number.isInteger(pid) || pid <= 0) return undefined;
+  const name = lines.slice(1).join("\n").trim();
+  return name === "" ? { pid } : { pid, name };
 }
 
 /**
  * Whether the process that wrote the lock file is still there. A pid that exists but belongs to another
- * user answers EPERM, which is alive: this only steals a lock whose holder is gone.
+ * user answers EPERM, which is alive: this only steals a lock whose holder is gone. No readable holder
+ * means no living holder.
  */
-function pidAlive(pid: number): boolean {
+export function lockHolderAlive(holder: LockHolder | undefined): boolean {
+  if (holder === undefined) return false;
   try {
-    process.kill(pid, 0);
+    process.kill(holder.pid, 0);
     return true;
   } catch (e) {
     return (e as { code?: string }).code === "EPERM";
+  }
+}
+
+/**
+ * Create a lock file exclusively for this holder. The one place a lock file is written, so the pid
+ * first-line format has one producer; EEXIST is the caller's to interpret.
+ */
+export function createLockFile(path: string, holder: LockHolder): number {
+  const fd = openSync(path, constants.O_CREAT | constants.O_EXCL | constants.O_RDWR);
+  writeFileSync(fd, holder.name === undefined ? `${holder.pid}\n` : `${holder.pid}\n${holder.name}\n`);
+  return fd;
+}
+
+/** Remove a lock file this process found dead, tolerating a waiter that got there first. */
+export function removeLockFile(path: string): void {
+  try {
+    unlinkSync(path);
+  } catch {
+    /* another waiter got there first */
   }
 }
 
@@ -65,21 +122,12 @@ async function acquire(path: string): Promise<number> {
   const started = Date.now();
   for (;;) {
     try {
-      const fd = openSync(path, constants.O_CREAT | constants.O_EXCL | constants.O_RDWR);
-      writeFileSync(fd, `${process.pid}\n`);
-      return fd;
+      return createLockFile(path, { pid: process.pid });
     } catch (e) {
       if ((e as { code?: string }).code !== "EEXIST") throw e;
-      if (existsSync(path)) {
-        const pid = Number(readFileSync(path, "utf8").trim());
-        if (!Number.isInteger(pid) || pid <= 0 || !pidAlive(pid)) {
-          try {
-            unlinkSync(path);
-          } catch {
-            /* another waiter got there first */
-          }
-          continue;
-        }
+      if (existsSync(path) && !lockHolderAlive(readLockHolder(path))) {
+        removeLockFile(path);
+        continue;
       }
       if (Date.now() - started > LOCK_WAIT_MS) throw new Error(`timeout waiting for the Main lock ${path}`);
       await sleep(POLL_MS);

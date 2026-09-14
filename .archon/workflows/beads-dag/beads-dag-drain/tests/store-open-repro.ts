@@ -9,8 +9,9 @@
  * falling back. The step also recomputes blocked-ness, so an issue whose blocker was closed outside the
  * drain is eligible in the same run.
  */
+import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import { OPENED, nodeLine } from "../scripts/node-outcomes.ts";
 import {
   GATE_LABEL,
@@ -62,14 +63,20 @@ try {
   await withTarget(async (root, artifacts) => {
     // A PATH the test chooses, so the assertion is about the directories the message names - which is
     // what an operator reads - and not about whichever directory happens to sit first on the machine's
-    // own PATH (the store binary's own directory, when it is, is one the search did not need).
-    const searched = [join(root, "first-on-path"), join(root, "second-on-path")].join(":");
-    const opened = runScript(drain.script("open"), root, { ARTIFACTS_DIR: artifacts, PATH: searched });
+    // own PATH (the store binary's own directory, when it is, is one the search did not need). Git stays
+    // on it: the run lock resolves the Target's git directory before the store, and a machine without
+    // git cannot drain at all - what this case removes is the store binary, not git.
+    const gitDir = dirname(execFileSync("which", ["git"], { encoding: "utf8" }).trim());
+    const searched = [join(root, "first-on-path"), join(root, "second-on-path")];
+    const opened = runScript(drain.script("open"), root, {
+      ARTIFACTS_DIR: artifacts,
+      PATH: [gitDir, ...searched].join(delimiter),
+    });
     expectEqual("an unresolvable store prints no token", opened.stdout, "");
     expect("an unresolvable store fails the node", opened.status !== 0, opened.status);
     expect("the reason names the config file", opened.stderr.includes(".scratch/beads-dag.yaml"), opened.stderr);
     expect("the reason names PATH", opened.stderr.includes("PATH"), opened.stderr);
-    for (const dir of searched.split(":")) {
+    for (const dir of searched) {
       expect("the reason lists every directory it searched", opened.stderr.includes(dir), opened.stderr);
     }
     expect("the reason is the one that says it looked", /looked in:/.test(opened.stderr), opened.stderr);

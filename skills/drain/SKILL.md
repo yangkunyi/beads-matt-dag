@@ -87,6 +87,8 @@ A run's views live under its artifacts directory: `artifacts/runs/<run-id>/` ben
   `review error:` line where no review ran, and either of those leaves the recorded position where the
   run opened it, so the next run covers the same range again.
 - `pick-exclusions.json` — why the last `pick` cycle left each issue it offered out, with the rule.
+- `run-lock.json` — the run lock this run holds: the run id, the runner's pid, and what dead holder it
+  was stolen from when it was; the refused second drain names the same run id.
 
 The range is `review-base..Main`: what no review has covered yet, which is why it can hold an earlier
 run's work. `## Range` names its two ends, how many commits Main itself gained in it (its first-parent
@@ -144,10 +146,14 @@ settings for it.
 naming the configuration the run is using — `beads-dag: config: runner=…, model=…, thinkingLevel=…,
 concurrency=…, store=…`, each value followed by its source: `(default)`, the Target's resolved config
 file, or `PATH` for a store found there — so what actually ran is read rather than guessed. A refusal —
-no store in the Target, no store binary, a blocking relation across the domains — names the fix. It can
-arrive at `open`, where it writes nothing at all, or at a `pick` cycle, which stops the run: work those
-cycles already merged stands, nothing from the refused cycle is claimed, and removing the edge is the
-operator's move before the next drain. A runner that cannot start fails the whole drain rather than
+no store in the Target, no store binary, a blocking relation across the domains, another drain already
+running against this Target — names the fix. It can arrive at `open`, where it writes nothing at all, or
+at a `pick` cycle, which stops the run: work those cycles already merged stands, nothing from the refused
+cycle is claimed, and removing the edge is the operator's move before the next drain. The run-lock
+refusal names the holder's run id and the pid of the runner that started it, and it refuses rather than
+waits — a second drain must not spend a run's length waiting to read a state that would be a run old; a
+run killed before its end leaves the lock behind, and the next drain steals a dead holder's lock, so
+nothing has to be cleaned up by hand. A runner that cannot start fails the whole drain rather than
 recording an attempt on an issue no session ever saw, and the claim it left is repaired by the next
 drain's `open`.
 

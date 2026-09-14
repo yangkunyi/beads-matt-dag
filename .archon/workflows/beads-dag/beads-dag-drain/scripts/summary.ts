@@ -6,6 +6,7 @@ import { nodeLine } from "./node-outcomes.ts";
 import { REVIEW_MD_REL, reviewSkipReason, skipLine, SUMMARY_MD_REL } from "./report-artifacts.ts";
 import { reportNodeCli, runReportNode, type ReportNode, type ReportOpts } from "./report-node.ts";
 import { readMainCommits, readRepairs, rangeSection } from "./run-record.ts";
+import { releaseRunLock } from "./run-lock.ts";
 import { preflightStore } from "./store.ts";
 
 /**
@@ -23,6 +24,10 @@ import { preflightStore } from "./store.ts";
  * commits in it this run did not make and the repairs its opening step performed, read from the run's
  * own record. They are a reading, not something a model produces, so a turn that dies takes its prose
  * with it but not the numbers or the range.
+ *
+ * Being the run's last node, this is also where the run lock (run-lock.ts) is given back by a run that
+ * ends normally; a run that never reaches here leaves the file behind, and the next drain steals it by
+ * its dead holder pid.
  */
 
 /** The node's failure line, by the skeleton's convention: `summary error: <detail>`. */
@@ -74,9 +79,19 @@ const SUMMARY_NODE: ReportNode = {
   },
 };
 
-/** The node's whole behaviour, minus the protocol: the run's report, and the token its outcome prints. */
+/**
+ * The node's whole behaviour, minus the protocol: the run's report, and the token its outcome prints.
+ *
+ * Summary is the run's last node, so this is where a run that ends normally gives its run lock back
+ * (run-lock.ts). It is released after the report, deliberately: whatever the report says, the run is
+ * over when this returns, and a release that cannot happen leaves a file whose holder pid the next
+ * drain finds dead and steals. No node after this one exists, and none before it may end the run, so
+ * the release has exactly one home.
+ */
 export async function summarizeDrain(target: string, opts: ReportOpts): Promise<string> {
-  return nodeLine(await runReportNode(SUMMARY_NODE, target, opts));
+  const outcome = await runReportNode(SUMMARY_NODE, target, opts);
+  releaseRunLock(target, opts.artifactsDir);
+  return nodeLine(outcome);
 }
 
 const runSummaryCli = reportNodeCli(summarizeDrain);

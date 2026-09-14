@@ -27,10 +27,10 @@ binary's resolution on PATH included — so a run says what it runs even when th
 
 ## The store
 
-A Target owns a real beads store in its own `.beads/`. The drain opens it before anything else, so a
-broken or missing store fails at the opening node — before pick, before a worktree — naming what was
-missing and everywhere it looked. The store binary is resolved with the Target's config override first,
-then from the environment:
+A Target owns a real beads store in its own `.beads/`. The drain opens it before any work — its run
+lock (below) aside — so a broken or missing store fails at the opening node, before pick, before a
+worktree, naming what was missing and everywhere it looked. The store binary is resolved with the
+Target's config override first, then from the environment:
 
 ```yaml
 store: /home/me/.local/node-v24.19.0-linux-x64/bin/bd   # optional; unset, bd is looked for on PATH
@@ -49,6 +49,38 @@ below), before anything is claimed or repaired — and `pick` makes that same ch
 ```
 bun ~/.archon/workflows/beads-dag/beads-dag-drain/backup.ts
 ```
+
+## One drain at a time
+
+`lock.ts` serialises the writes that move Main; it does nothing about two runs, and two drains against
+one Target are not a slower version of one: the second run's opening repair reads the first run's live
+claim as a leftover, and its `pick` can offer an issue the first is implementing right now. So `open`
+takes a Target-level **run lock** before it does anything, and a second drain **refuses** — exit 1, one
+line naming the holder, nothing claimed, nothing written — rather than waiting a run's length for a
+read that would be a run old when it woke.
+
+The lock is its own file, `beads-dag-run.lock` beside the Main lock `beads-dag.lock` in the Target's git
+directory. It must not be the Main lock's file: a run lock is held by the workflow runner process for
+the run's whole length, so a Main write from another process of that same run would find a live pid in
+the file, wait `LOCK_WAIT_MS` and throw — the Main lock's re-entrancy saves `withMainLock` from itself,
+in one async context, and would not save this one. Two files, two lifetimes.
+
+The lock names the run — the basename of the run's artifacts directory, Archon's per-run
+`artifacts/runs/<run-id>/` — and the process it trusts to be alive for the run: `process.ppid`, the
+workflow runner every node of the run shares. A pid that is gone is a killed run's leftover and is
+stolen exactly as `lock.ts` steals one, with one line saying so; a live one refuses, and the refusal on
+stderr names the holder's run id and pid, so `archon workflow status` finds the run to wait for — or to
+kill. `summary`, the run's last node, releases the lock, and `open` releases it when its own work fails
+before the loop; but no node after `open` is guaranteed to run, so a run killed or failed on the way
+leaves the file behind, which is exactly what the dead-pid steal is for. The run also records the lock it
+took in its artifacts (`run-lock.json`, one line, saying what it stole when it stole one), so a refusal
+can be checked against the holder's own record.
+
+It is a file and not a store field on purpose: it is mutual exclusion between the processes on this
+machine, not something about any issue. A store field would be backed up and restorable into a state
+that says "held" with nothing holding it, visible to every store reader, and it has no pid to check —
+and it would enter the issue database as drain bookkeeping, which the pack keeps out (ADR-0005, the
+`attempted-ids.json` precedent).
 
 ## The frontier
 
@@ -153,7 +185,8 @@ the report.
 **The lock guards git, not the store** (ADR-0002). Every function that writes Main (`main-writes.ts`)
 refuses to run unless the caller holds the Main-write lock; the store write that records an outcome is
 deliberately outside it, under the store's own transaction. The lock is one file in the Target's git
-directory (`beads-dag.lock`): a second process waits for it, a call made while this process holds it
+directory (`beads-dag.lock`; the run lock is a second file beside it, `One drain at a time` above): a
+second process waits for it, a call made while this process holds it
 joins the same transaction, and a lock left behind by a killed run (its pid gone) is stolen rather than
 waited for. `main-writes.ts` also writes the `.gitignore` rules that keep the checkout clean - `/worktrees/`
 and `/.beads/interactions.jsonl` - and untracks the store's interaction log, which `bd init` commits and
@@ -261,8 +294,8 @@ the range is one of them. One commit the pack did not write, an operator's own i
 is reviewed, the pack's own commits and all. So a drain that merged nothing says so, and a second drain
 in the same repository reports exactly what the first drain's review left unviewed (its base is the
 recorded position). A reader that wrote a report prints `reported`. The three artifacts live in the
-run's `ARTIFACTS_DIR`, beside `pick-exclusions.json`, `attempted-ids.json`, `main-commits.json` and
-`repairs.json`.
+run's `ARTIFACTS_DIR`, beside `pick-exclusions.json`, `attempted-ids.json`, `run-lock.json`,
+`main-commits.json` and `repairs.json`.
 
 - **the range section** (at the end of summary.md, above the failures block). The summary node writes it,
   from the run's own record and from git: the range both readers covered, then - when Main gained commits
@@ -397,6 +430,7 @@ The modules the two workflows share, all in the drain's `scripts/`:
 | `git.ts` | git plumbing: the two calls the readers and writers share |
 | `worktree.ts` | the issue's worktree: create, resume, bring Main in, and the standing-merge state |
 | `lock.ts` | the Main-write lock: one writer at a time on the Target's branch |
+| `run-lock.ts` | the run lock: one drain at a time per Target, the refusal a second one gets |
 | `main-writes.ts` | every git write to Main: the merge, the ignore line, the removal after a merge |
 | `settle.ts` | the one order: merge then record, or record the failure and reopen |
 | `reconcile.ts` | the repair of a killed run's leftovers: closed from git, or reopened with a reason |

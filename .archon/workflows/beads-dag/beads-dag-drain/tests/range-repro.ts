@@ -38,6 +38,7 @@ import {
   SUMMARY_MD_REL,
 } from "../scripts/report-artifacts.ts";
 import { reviewedPosition, advanceReviewed } from "../scripts/review-position.ts";
+import { releaseRunLock } from "../scripts/run-lock.ts";
 import { reviewDrain } from "../scripts/review.ts";
 import { summarizeDrain } from "../scripts/summary.ts";
 import {
@@ -125,6 +126,14 @@ function openRun(root: string, artifacts: string): string {
   const base = readReviewBase(artifacts);
   if ("skip" in base) throw new Error(`open left no base: ${base.skip}`);
   return base.base;
+}
+
+/**
+ * The previous run ended: its last node would give the run lock back, so the next open is not refused.
+ * Every second `openRun` below is a new run over the same Target, and a real one leaves no lock behind.
+ */
+function endRun(root: string, artifacts: string): void {
+  expectEqual("the previous run releases its lock", releaseRunLock(root, artifacts), true);
 }
 
 /** One issue merged the way a run merges it, for a range the run itself made. */
@@ -219,6 +228,7 @@ try {
 
     // The next run opens on the same commit and reports that range again.
     const run2 = join(artifacts, "run-2");
+    endRun(root, artifacts);
     expectEqual("the next run's base is the same range", openRun(root, run2), base);
     const reviewer = stubAgent("a finding");
     expectEqual("and its review covers it", await reviewDrain(root, { artifactsDir: run2, runAgent: reviewer.run, config: CONFIG }), nodeLine(REPORTED));
@@ -290,6 +300,7 @@ try {
 
     // Run 2 opens on the recorded position, so its range holds both.
     const run2 = join(artifacts, "run-2");
+    endRun(root, run1);
     expectEqual("run 2 opens on the position, not on Main's tip", openRun(root, run2), base);
     expect("which is behind the newer work", base !== head, { base, head });
 
@@ -325,6 +336,7 @@ try {
     bd(root, "update", killed.id, "-s", "in_progress");
 
     const run2 = join(artifacts, "run-2");
+    endRun(root, run1);
     expectEqual("the repairing run opens on the recorded position", openRun(root, run2), base);
     expectEqual("the leftover is closed", storeIssue(root, killed.id).status, "closed");
     expectEqual(
@@ -362,6 +374,7 @@ try {
     // A second open in fresh artifacts repairs; the first open recorded the position, so the range is
     // the same either way.
     const run2 = join(artifacts, "run-2");
+    endRun(root, artifacts);
     expectEqual("the repairing open", openRun(root, run2), base);
     const reason = `leftover in progress and main carries no merge commit of beads/feat/04-the-leftover`;
     const reviewer = stubAgent("a finding");
