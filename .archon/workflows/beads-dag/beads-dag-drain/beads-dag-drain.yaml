@@ -1,9 +1,9 @@
 name: beads-dag-drain
 description: |
   Drain implementation issues on this Target: ask the store what can start, run one issue per worktree,
-  merge it into Main, and record the outcome in the store only after the merge landed. Copy the
-  beads-dag pack folder to ~/.archon/workflows/ (copy, not a symlink). The Target does not commit
-  .archon/.
+  merge it into Main, and record the outcome in the store only after the merge landed. Install this
+  pack folder as ~/.archon/workflows/beads-dag; a symlink to a checkout is the intended install. The
+  Target does not commit .archon/.
 worktree:
   enabled: false
 inputs:

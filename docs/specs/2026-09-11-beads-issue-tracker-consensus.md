@@ -563,9 +563,11 @@ it is the `ticket-dag` orchestration flow moving onto beads. The pack's source i
   reference it, and deleting it would strand them.
 - The **new pack's source lives in this repo**, installed by copy into `~/.archon/workflows/` — the same
   relation `/data3/yky/workflow` has to the installed `ticket-dag` today. The old pack is frozen
-  read-only.
+  read-only. **Revised 2026-09-14 (§13):** installed by symlink into a checkout, so the checkout is the
+  version, and this repository is published (`git@github.com:yangkunyi/beads-matt-dag.git`, private).
 - **`ticket-dag` is not edited in place**: it was draining a live Target (`/data3/yky/endo_label`,
-  started 16:41, `multi-user/14` in flight) when this was decided.
+  started 16:41, `multi-user/14` in flight) when this was decided. **Retired 2026-09-14 (§13):** its
+  install at `~/.archon/workflows/ticket-dag` is removed; `/data3/yky/workflow` stays as the artifact.
 
 ### 10.2 Vocabulary and identity
 
@@ -736,8 +738,11 @@ Settled 2026-09-11. The tracker template of §1 is the centre of a *set*, not a 
   installed one and silently do nothing. Same names ⇒ exactly one copy ⇒ no `beads-` prefix.
 - **Sourced here, installed as an action.** The set is authored under `skills/` in this repo — not a
   discovery path, so authoring changes nothing about the running agent — and installing it is a copy
-  into `pi-agent-config/skills/`, the same rule the pack follows into `~/.archon/workflows/`. Writing
-  the installed skills is a change to live tooling, so it stays a separate, reviewable step.
+  into the shared skills root, the same rule the pack follows into `~/.archon/workflows/`. Writing the
+  installed skills is a change to live tooling, so it stays a separate, reviewable step. **Revised
+  2026-09-14 (§13):** the destination is `~/.agents/skills/`, the root pi, grok and the other agents
+  read (directly or by link) rather than the config repository's `skills/`, which is now a snapshot;
+  and the root is cc-switch's storage location, carried over WebDAV.
 - **Entry points keep their filenames; the prose speaks §10.2's words** (`issue`, `handle`, `drain`).
   The names are the interface — muscle memory and cross-references — and a prefix buys nothing a
   sentence cannot.
@@ -916,3 +921,31 @@ called noticed-but-uncovered, and the operator-visible parts of them are in the 
    with them (`c3b581d`): `review-base` is the recorded position rather than Main's tip (stale since `13`),
    and `pick-exclusions.json` holds the run's last cycle.
 4. Retire §9's unverified items as they are resolved.
+5. **One tree, one home per pack, one channel each (2026-09-14).** The machine's configuration was
+   consolidated after the set was live, because three trees carried the same skills and two repos
+   carried the same pack.
+   - **Skills have three roles, one holder each.** The live tree is `~/.agents/skills/` (56 members:
+     this repo's seven, the config repository's nineteen, `caveman`, and the twenty-nine the
+     lark/archon installers placed there). git holds the sources — `skills/` here for the seven, the
+     config repository's `skills/` for the other nineteen — and is the snapshot for rollback.
+     cc-switch is the channel: storage location `unified`, sync method `symlink`, so every other
+     agent's directory points into the root, and the whole root rides WebDAV as `skills.zip`
+     (measured: 2,003,922 bytes at `cc-switch-sync/v2/db-v6/default/skills.zip`). pi's own
+     `~/.pi/agent/skills/` is gone: pi reads the root natively, and its row in cc-switch's matrix is
+     off for every skill, so nothing re-creates it.
+   - **A managed app directory must not be a symlink into a repository.** cc-switch's `sync` cleans up
+     deployments for apps where a skill is disabled; while `~/.pi/agent/skills/` was a symlink to
+     `pi-agent-config/skills`, that cleanup deleted the repository's working tree (105 tracked files,
+     restored from git within the hour, nothing lost — the root and the tarball backups held the same
+     bytes). The link is deleted, and the rule is that an external manager gets a directory it owns.
+   - **The pack is installed by symlink, and its home is published.** `~/.archon/workflows/beads-dag`
+     links to `.archon/workflows/beads-dag` in this repo, whose remote makes updating a machine
+     `git pull`. The copy-and-`diff -rq` convention is retired, and the two places that stated it (the
+     pack's `README.md` and its `beads-dag-drain.yaml` description) state the link instead.
+   - **Retired with it:** `ticket-dag`'s install and the `orchestrator` skill (its CLI binary is gone;
+     the skill lived only in the grok tree, and unification would have handed pi a skill for a dead
+     binary). `ponytail` ×6 was uninstalled by the same decision, and `caveman` stays.
+   - **What it cost:** the pi-side configuration files (`agents/`, `AGENTS.md`, `settings.json`,
+     `optimizer.json`) are local files now rather than links into the config repository — that
+     repository is a snapshot and no longer manages pi's configuration; `models.json` belongs to
+     cc-switch.

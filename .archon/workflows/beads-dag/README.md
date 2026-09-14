@@ -7,11 +7,15 @@ it is built against is `docs/specs/2026-09-11-beads-dag.md`, with the decision r
 
 ## Install
 
-Copy the folder — copy, not a symlink, because the runner reads it as its own:
+The pack's home is this repository. A machine's Archon home points a symlink at the pack folder inside
+a checkout, so the checkout *is* the installed version:
 
 ```
-cp -r .archon/workflows/beads-dag ~/.archon/workflows/beads-dag
+ln -sfn "/path/to/beads-matt-dag/.archon/workflows/beads-dag" ~/.archon/workflows/beads-dag
 ```
+
+Updating an install is `git pull` in that checkout: there is nothing to re-copy and no diff to run,
+because the tracked working tree is what runs. Archon discovers the pack through the link.
 
 Then, from the Target:
 

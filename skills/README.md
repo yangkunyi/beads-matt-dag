@@ -1,7 +1,8 @@
 # The skill set
 
 This folder is the **source** of the seven skills that know about an issue tracker. Each machine
-carries one installed **copy** of every member under `~/.pi/agent/skills/`. The members, exactly:
+carries one installed **copy** of every member under `~/.agents/skills/` — the shared Agent Skills
+root every agent reads, directly or through a link of its own. The members, exactly:
 
 - `setup-matt-pocock-skills` — the setup skill, with the store-backed contract
   (`issue-tracker-beads.md`) beside the tracker templates it already carried
@@ -19,13 +20,15 @@ Copy one folder per member, whole: `SKILL.md`, `agents/`, and every reference fi
 and the check from this repo's root.
 
 ```
-mkdir -p ~/.pi/agent/skills && cp -a skills/{setup-matt-pocock-skills,drain,to-tickets,implement,to-spec,triage,ask-matt} ~/.pi/agent/skills/
+mkdir -p ~/.agents/skills && cp -a skills/{setup-matt-pocock-skills,drain,to-tickets,implement,to-spec,triage,ask-matt} ~/.agents/skills/
 ```
 
-`~/.pi/agent/skills/` is the destination — pi's global skill directory. On this machine it is a
-symlink to `/data3/yky/pi-agent-config/skills`, so the copy is also a change to that repository's
-working tree. One copy per machine is the rule, which is why the copy goes to the global directory
-and not into a project.
+`~/.agents/skills/` is the destination — the shared Agent Skills root. pi reads it natively (the
+agent's own `docs/skills.md` lists it beside `~/.pi/agent/skills/`, which no longer exists on this
+machine), `~/.grok/skills` is a symlink to it, and the other agents' directories carry links into it
+too. cc-switch owns that root here — its storage location is `unified` and it rides WebDAV as a
+snapshot — so this copy is live locally and leaves the machine at the next upload. One copy per
+machine is the rule, which is why the copy goes to the shared root and not into a project.
 
 ## The check that proves the install
 
@@ -33,7 +36,7 @@ and not into a project.
 member list off `skills/*/` — this folder is the set — so the check cannot drift from it:
 
 ```
-for s in skills/*/; do s=${s#skills/}; s=${s%/}; printf '%-26s' "$s"; diff -rq "skills/$s" "$HOME/.pi/agent/skills/$s" && echo "identical"; done
+for s in skills/*/; do s=${s#skills/}; s=${s%/}; printf '%-26s' "$s"; diff -rq "skills/$s" "$HOME/.agents/skills/$s" && echo "identical"; done
 ```
 
 When the install holds, the loop prints one verdict per member and nothing from `diff`:
@@ -69,7 +72,7 @@ Two facts that keep the installation honest:
 
 ## Why the names are unchanged
 
-pi keeps the first skill found on a name collision, and it searches `~/.pi/agent/skills/` before a
+pi keeps the first skill found on a name collision, and it searches the shared root before a
 project's `.pi/skills/` or `.agents/skills/` (`pi`'s own `docs/skills.md`: "Name collisions (same
 name from different locations) warn and keep the first skill found."). Two bad outcomes, both
 avoided by the rule:
