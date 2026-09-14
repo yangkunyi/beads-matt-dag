@@ -172,3 +172,14 @@ here does. *Spec:* all six criteria are implemented and pinned; §10.4's release
 happens without weakening `open`; the cost is stated and argued; the contract and its install are fixed;
 the README is the only other file touched, and only where the behaviour it described changed.
 
+
+### Closed after landing
+
+- *(Left open 3.)* The reviewer fixed `skills/drain/SKILL.md`'s refusal line in
+  `skills: a refusal can arrive at pick, and it is a blocking relation` — it said `open` only, which stopped
+  being the whole inventory here. The same edit made the wording edge-agnostic ("a blocking relation across
+  the domains") so ticket `19`'s ancestry walk needs no second pass over that file; the install was refreshed.
+- *(Left open 1.)* A decision closed between `pick`'s graph read and its `bd batch` still releases into that
+  cycle. Kept as a recorded two-command window: no store-side transaction spans a read and a claim, the flow
+  is single-machine and single-operator, and the refusal above is what turns the ordinary case (a closure
+  during a run) from silent into loud.

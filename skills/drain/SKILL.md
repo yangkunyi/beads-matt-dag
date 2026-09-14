@@ -143,10 +143,13 @@ settings for it.
 `~/.archon/workspaces/_local/<repo>/logs/<run-id>.jsonl` for what a node printed. `open` writes one line
 naming the configuration the run is using — `beads-dag: config: runner=…, model=…, thinkingLevel=…,
 concurrency=…, store=…`, each value followed by its source: `(default)`, the Target's resolved config
-file, or `PATH` for a store found there — so what actually ran is read rather than guessed. An `open`
-refusal (no store in the Target, no store binary, a `blocks` edge across the domains) names the fix and
-claimed nothing; a runner that cannot start fails the whole drain rather than recording an attempt on an
-issue no session ever saw, and the claim it left is repaired by the next drain's `open`.
+file, or `PATH` for a store found there — so what actually ran is read rather than guessed. A refusal —
+no store in the Target, no store binary, a blocking relation across the domains — names the fix. It can
+arrive at `open`, where it writes nothing at all, or at a `pick` cycle, which stops the run: work those
+cycles already merged stands, nothing from the refused cycle is claimed, and removing the edge is the
+operator's move before the next drain. A runner that cannot start fails the whole drain rather than
+recording an attempt on an issue no session ever saw, and the claim it left is repaired by the next
+drain's `open`.
 
 **A run's verdict is its own.** Whether a run succeeded is read from its own status and artifacts,
 never from a wrapper's exit code — `archon workflow wait` prints `Run … failed.` and still exits 0.
