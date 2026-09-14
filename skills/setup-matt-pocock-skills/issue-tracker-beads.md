@@ -230,10 +230,10 @@ consults one as the truth.
 
 | Artifact | Holds |
 | --- | --- |
-| `review-base` | Main's tip when the run opened — the base of the range it reports on |
+| `review-base` | the base of the range it reports on: the position the last review reached (the Target's `refs/beads-dag/reviewed`), or Main's tip when it has none |
 | `review.md` | the reviewers' findings for that range |
 | `summary.md` | the one report a human reads first |
-| `pick-exclusions.json` | every issue the store offered and the frontier left out, with the rule that excluded it |
+| `pick-exclusions.json` | the issues the store offered in the run's **last** `pick` cycle and the frontier left out, with the rule that excluded each |
 | `attempted-ids.json` | the ids this run claimed — run bookkeeping, never store state |
 
 The store is not committed and neither are the artifacts; the bodies under

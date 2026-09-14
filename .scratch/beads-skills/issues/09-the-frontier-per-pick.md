@@ -262,6 +262,10 @@ Ticked 1–4.
 - The artifact table's `pick-exclusions.json` row still reads "every issue the store offered and the
   frontier left out" without saying the file holds only the last cycle (walk `06`'s observation, never
   ticketed) — untouched, outside this ticket.
+  **Closed after landing** by the reviewer (`skills: two contract rows catch up with the pack`): the row now
+  says "in the run's **last** `pick` cycle". The same commit corrected the neighbouring `review-base` row,
+  which ticket `13` had made stale — it still claimed "Main's tip when the run opened" although the base is
+  now the recorded position (`refs/beads-dag/reviewed`), Main's tip only for a Target that has none.
 - TDD does not apply: prose only, no code seam. The evidence is the store lab, the two code quotes and the
   install check.
 - The install's `M` in `/data3/yky/pi-agent-config` stays uncommitted by instruction; that repository is the
