@@ -198,6 +198,17 @@ earlier cycles merged stays merged. Removing the crossing edge is the operator's
 bd dep remove <dependent> <blocker>
 ```
 
+**Two domains is not the rule — the closure is.** Every issue's `closed` means whatever its own domain
+says it means, and a blocking edge between two domains would let one domain's completion release work in
+another: a question answered is not built work, and a recorded result is neither. A Target that records
+runs adds a third domain — a run's issue closes when its result is recorded — and the rule travels with
+it: domains never share a blocking edge, whatever their types are called.
+
+The check above names the `decision` type because that is the domain the drain knows. So adding a domain
+to a Target is two acts, not one: its type exists in the store, **and** the drain is taught to refuse
+chains that reach it. Until it is, an issue of the new type blocks like any other — which means the new
+type must not enter a blocking chain from either side.
+
 ## When a skill says "fetch the relevant ticket"
 
 The user normally passes the handle (`auth/02`) or the bead's id; read the body from its derived path,
@@ -267,3 +278,33 @@ of type `decision`.
 - **Resolve**: `bd comment <id> "<answer>"`, then `bd close <id>`, then a context pointer (gist + link)
   in the map's Decisions-so-far. A decision issue's `closed` means its question is answered, which is
   legitimate only because the two domains never share an edge.
+
+### Reading, and the corpus
+
+A `research` ticket is the AFK leg: an agent reads, and what it leaves behind is a **document**, never a
+store write. It runs with the store in its read-only mode (`BD_READONLY=1`, the mode a drain's worker runs
+under), so it cannot comment, close or create: the session that holds the map is the one that records the
+answer. The tooling that fetches and writes the documents is a target-side script — not part of the pack,
+and `bd` is not involved in it.
+
+Under the effort's own directory (`.scratch/<effort>/`):
+
+| Path | Holds |
+| --- | --- |
+| `sources/<slug>.md` | one **receipt** per source: line 1 the URL that was fetched, then the id, a title, any aliases, a sha256 of the text, and the text itself |
+| `notes/<slug>.md` | one **note** per question: the claims the reading supports, each citing a source, a locator and a quote |
+
+- **A quote must re-anchor.** A claim enters a note only when its quote is found again in the source that
+owns it — the same text, whitespace aside. With a live fetch behind it, re-anchoring fetches again and the
+hash is what moves. A claim whose quote cannot be found is refused, and the reader says so out loud rather
+than writing it down: a claim nobody can re-find is a claim nobody can check.
+- **A challenge is a reference, not a verdict.** A claim may name the claim it challenges; the note shows
+both — `⚠ challenged by c4` beside the challenged claim, `Challenges c1.` on the challenger — and decides
+nothing. Two readers disagreeing is information for the operator, who is the one who weighs it.
+- **An id is not a URL.** It is the stable key a claim cites — a DOI, an OpenAlex id, an arxiv id — and the
+receipt carries it whole even where the file name cannot (a DOI's slashes, an arxiv id's colon). An arxiv
+id is an *alias* on a source whose copy was fetched from somewhere else, because arxiv itself answers only
+behind a proxy.
+- **These documents land on Main like any other document**, so a drain running later reports them in its
+range section as commits the run did not make. That is the boundary working, not the drain being
+polluted.
