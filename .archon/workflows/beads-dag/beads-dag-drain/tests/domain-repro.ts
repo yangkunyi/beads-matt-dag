@@ -36,6 +36,7 @@ import {
   mkTemp,
   moveToTriage,
   publishIssue,
+  registerType,
   runScript,
   storeBlocked,
   storeIssue,
@@ -246,6 +247,17 @@ try {
     });
     bd(root, "update", merged.id, "-s", "in_progress");
     bd(root, "update", plain.id, "-s", "in_progress");
+    // The experiment domain's issues are not the drain's either, whatever their status: an experiment
+    // under way belongs to whoever is running it.
+    registerType(root, "experiment");
+    const running = publishIssue(root, {
+      title: "an experiment under way",
+      type: "experiment",
+      handle: "feat/23",
+      slug: "an-experiment-under-way",
+      labels: [GATE_LABEL],
+    });
+    bd(root, "update", running.id, "-s", "in_progress");
 
     // The claimed one has a merge on Main even: the state a repair that ignored domains would close.
     const branch = "beads/feat/20-a-claimed-decision";
@@ -261,6 +273,7 @@ try {
     for (const [issue, why] of [
       [merged, "its answer is on Main"],
       [plain, "nothing is in git"],
+      [running, "an experiment's status is its runner's"],
     ] as const) {
       expectEqual(
         `the repair leaves ${issue.handle} where the wayfinder put it (${why})`,
@@ -276,11 +289,46 @@ try {
     expectEqual("and the worktree stays", existsSync(worktree), true);
 
     const picked = pick(root, artifacts);
-    expectEqual("pick claims no decision issue", JSON.parse(picked.stdout), []);
+    expectEqual("pick claims no non-work issue", JSON.parse(picked.stdout), []);
     expectEqual("not even the gate-labelled ready one", storeIssue(root, ready.id).status, "open");
+    expectEqual("nor the experiment under way", storeIssue(root, running.id).status, "in_progress");
     const report = readReport(artifacts);
-    expectEqual("the ready decision is reported by type", ruleFor(report, ready.id), "decision-type");
+    expectEqual("the ready decision is reported by type", ruleFor(report, ready.id), "non-work-type");
     expectEqual("and the claimed ones were never in the store's answer", report.excluded.map((e) => e.id), [ready.id]);
+  });
+
+  // The same walk, into the other non-work type: an experiment issue's closure means its result is
+  // recorded, and a recorded result releases implementation work just as an answered question does — the
+  // crossing ADR-0004 keeps closed is any chain into a domain whose closure is not a merge. The run is a
+  // no-op, exactly as above, and the refusal names the experiment issue rather than a decision.
+  await withTarget(async (root, artifacts) => {
+    const impl = publishIssue(root, {
+      title: "work a result would justify",
+      handle: "feat/40",
+      slug: "work-a-result-would-justify",
+      labels: [GATE_LABEL],
+    });
+    registerType(root, "experiment");
+    const experiment = publishIssue(root, {
+      title: "the sweep that would justify it",
+      type: "experiment",
+      handle: "feat/41",
+      slug: "the-sweep-that-would-justify-it",
+    });
+    bd(root, "dep", "add", impl.id, experiment.id); // the work waits on the experiment
+    bd(root, "close", experiment.id, "-r", "the result is recorded");
+    expectEqual("staged: closing the experiment released the work", storeReadyAll(root).includes(impl.id), true);
+
+    const opened = open(root, artifacts);
+    expectEqual("open fails with exit 1", opened.status, 1);
+    expectEqual("and prints no token", opened.stdout, "");
+    expect("the reason is the preflight's own", opened.stderr.includes("closure would cross domains:"), opened.stderr);
+    expect(
+      "the chain names the experiment issue and the edge",
+      /is blocked by the experiment issue .* \(blocks\)/.test(opened.stderr),
+      opened.stderr,
+    );
+    expectEqual("nothing was claimed", storeIssue(root, impl.id).status, "open");
   });
 
   // The graph preflight: an implementation issue blocked by a decision issue is refused loudly, naming

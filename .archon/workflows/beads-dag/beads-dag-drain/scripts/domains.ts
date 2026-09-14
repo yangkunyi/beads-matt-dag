@@ -1,34 +1,39 @@
 /**
  * The domain boundary: closure never crosses domains (ADR-0004).
  *
- * A decision issue's `closed` means "the question is answered"; an implementation issue's `closed`
- * means "the work is in Main". Closing an issue releases whatever waits on it, so an implementation
- * issue whose blocking ancestry reaches a decision issue would let the answer to a question release
- * implementation work that was never built — which is exactly what ADR-0004 forbids. The store cannot
- * police this: `bd ready` treats a closed blocker as done whoever closed it and whatever its type, and
- * the release travels down `parent-child` too — a child inherits its parent's blocked-ness, so closing
- * the parent's own blocker releases the whole subtree with no `blocks` edge of the child's for a
- * `blocks`-only walk to see (§7.2). This module does, in the graph preflight every node that can claim
- * runs: `open`, before anything is claimed or repaired, and `pick`, at each cycle's own claim. The
- * second is not a second opinion but the same check on a fresh read, and it exists because the run it
- * guards outlives a reading: a question answered while the drain is under way — a store write like any
- * other, made by whoever owns the decision issues — releases the implementation issue waiting on it
- * into the very next cycle, and open read the graph before the edge existed.
+ * A non-work issue's `closed` never means the work is in Main: a decision issue's means "the question is
+ * answered", an experiment issue's that "the result is recorded". Closing an issue releases whatever
+ * waits on it, so an implementation issue whose blocking ancestry reaches one of those would let an
+ * answer — or a recorded result — release implementation work that was never built, which is exactly
+ * what ADR-0004 forbids. The store cannot police this: `bd ready` treats a closed blocker as done
+ * whoever closed it and whatever its type, and the release travels down `parent-child` too — a child
+ * inherits its parent's blocked-ness, so closing the parent's own blocker releases the whole subtree
+ * with no `blocks` edge of the child's for a `blocks`-only walk to see (§7.2). This module does, in the
+ * graph preflight every node that can claim runs: `open`, before anything is claimed or repaired, and
+ * `pick`, at each cycle's own claim. The second is not a second opinion but the same check on a fresh
+ * read, and it exists because the run it guards outlives a reading: one of those issues closing while
+ * the drain is under way — a store write like any other, made by whoever owns it — releases the
+ * implementation issue waiting on it into the very next cycle, and open read the graph before the edge
+ * existed.
  *
  * The rest of the boundary lives where the boundary is crossed:
  *
- *   - `pick` excludes decision-type issues from the frontier (by type, so a new flavour of question
- *     cannot leak in by omission), so no path claims one;
- *   - `reconcile` leaves every decision issue's status alone, because nothing in this flow ever claims
+ *   - `pick` excludes the non-work types from the frontier (by type, so a new flavour of question — or
+ *     of experiment — cannot leak in by omission), so no path claims one;
+ *   - `reconcile` leaves every non-work issue's status alone, because nothing in this flow ever claims
  *     one and its status belongs to whoever did.
- *
- * "decision" is spelled once here, so the frontier's exclusion, the repair and the preflight cannot drift
- * apart.
  */
 import { allIssues, type Store, type StoreIssue } from "./store.ts";
 
-/** The other domain. Excluded by type, so a new flavour of question cannot leak in by omission. */
-export const DECISION_TYPE = "decision";
+/**
+ * The types that are not a drain's work, spelled once here so the frontier's exclusion, the repair and
+ * the preflight cannot drift apart. A type is a domain: `decision` is the inquiry domain's (a question,
+ * an idea, a wayfinding ticket — whether one of those is done has to be judged), and `experiment` is the
+ * experiment domain's (a plan, its run record and its result — done means the record is complete).
+ * Development is everything left over, and its closure is the one meaning ADR-0004 gives the word: the
+ * work is in Main.
+ */
+export const NON_WORK_TYPES: ReadonlySet<string> = new Set(["decision", "experiment"]);
 
 /** The hierarchy edge's name, spelled once: the walk and the chain's rendering both use it. */
 const PARENT_CHILD = "parent-child";
@@ -70,16 +75,16 @@ function blockingHops(issue: StoreIssue): { id: string; edge: string }[] {
 }
 
 /**
- * Every chain from `start` to a decision issue through blocking ancestry, breadth first, so each one is
- * the shortest path to the decision it names. A decision ends its chain: what waits on a decision is
- * beyond the boundary this check guards. Nothing outside the store is read, an edge whose target the
- * store no longer holds is skipped, and the visited set makes the walk finite even if the graph it
- * reads has a cycle the store's own checks would refuse.
+ * Every chain from `start` to a non-work issue through blocking ancestry, breadth first, so each one is
+ * the shortest path to the issue it names. A non-work issue ends its chain: what waits on one is beyond
+ * the boundary this check guards. Nothing outside the store is read, an edge whose target the store no
+ * longer holds is skipped, and the visited set makes the walk finite even if the graph it reads has a
+ * cycle the store's own checks would refuse.
  */
 function crossDomainChains(start: StoreIssue, byId: Map<string, StoreIssue>): CrossDomainChain[] {
   const chains: CrossDomainChain[] = [];
   const seen = new Set<string>([start.id]);
-  const decisions = new Set<string>();
+  const boundaries = new Set<string>();
   const queue: BlockingHop[][] = [[]];
   while (queue.length > 0) {
     const path = queue.shift()!;
@@ -89,9 +94,9 @@ function crossDomainChains(start: StoreIssue, byId: Map<string, StoreIssue>): Cr
       if (ancestor === undefined || seen.has(ancestor.id)) continue;
       seen.add(ancestor.id);
       const next = [...path, { edge: hop.edge, issue: ancestor }];
-      if (ancestor.type === DECISION_TYPE) {
-        if (!decisions.has(ancestor.id)) {
-          decisions.add(ancestor.id);
+      if (NON_WORK_TYPES.has(ancestor.type)) {
+        if (!boundaries.has(ancestor.id)) {
+          boundaries.add(ancestor.id);
           chains.push({ start, hops: next });
         }
         continue;
@@ -104,14 +109,15 @@ function crossDomainChains(start: StoreIssue, byId: Map<string, StoreIssue>): Cr
 
 /**
  * One chain as the refusal says it: the refused issue, then each blocking ancestor with the edge that
- * reaches it, ending at the decision issue. Naming the whole chain is the point — with a two-deep
- * chain the operator has to see which hop crosses the boundary, because that is the edge to remove.
+ * reaches it, ending at the non-work issue, named by its own type so the operator sees which domain the
+ * chain ran into. Naming the whole chain is the point — with a two-deep chain the operator has to see
+ * which hop crosses the boundary, because that is the edge to remove.
  */
 function renderChain(chain: CrossDomainChain): string {
   let text = describe(chain.start);
   chain.hops.forEach((hop, index) => {
-    const decision = index === chain.hops.length - 1;
-    const target = decision ? `the decision issue ${describe(hop.issue)}` : describe(hop.issue);
+    const boundary = index === chain.hops.length - 1;
+    const target = boundary ? `the ${hop.issue.type} issue ${describe(hop.issue)}` : describe(hop.issue);
     const relation = hop.edge === PARENT_CHILD ? "is parented under" : "is blocked by";
     text += index === 0 ? ` ${relation} ${target} (${hop.edge})` : `, which ${relation} ${target} (${hop.edge})`;
   });
@@ -119,12 +125,12 @@ function renderChain(chain: CrossDomainChain): string {
 }
 
 /**
- * Refuse the run while any implementation issue's blocking ancestry reaches a decision issue.
+ * Refuse the run while any implementation issue's blocking ancestry reaches a non-work issue.
  *
- * Every issue is read, closed ones included: a decision issue the wayfinder has already closed is the
- * dangerous case, because the store has released its dependents and a drain would claim work whose
- * blocker's closure means only that a question was answered. The same holds for the subtree a
- * `parent-child` edge hangs under such a decision. Naming the chain is the point — the operator's fix
+ * Every issue is read, closed ones included: a non-work issue that is already closed is the dangerous
+ * case — the wayfinder has answered a question, or a session has recorded an experiment's result —
+ * because the store has released its dependents and a drain would claim work whose blocker's closure
+ * means neither. The same holds for the subtree a `parent-child` edge hangs under such an issue. Naming the chain is the point — the operator's fix
  * is to remove the edge that crosses the domain (`bd dep remove <dependent> <blocker>`, which removes
  * either relation) or restructure the dependency, and removing edges is an operator's act, never the
  * drain's.
@@ -146,14 +152,15 @@ export function assertNoCrossDomainEdges(store: Store, target: string): void {
   const byId = new Map(issues.map((issue) => [issue.id, issue]));
   const chains: string[] = [];
   for (const issue of issues) {
-    if (issue.type === DECISION_TYPE) continue;
+    if (NON_WORK_TYPES.has(issue.type)) continue;
     for (const chain of crossDomainChains(issue, byId)) chains.push(renderChain(chain));
   }
   if (chains.length === 0) return;
   throw new Error(
     `closure would cross domains: ${chains.join("; ")}; an implementation issue may only be blocked by ` +
-      "another implementation issue (ADR-0004), because a decision's closure means its question is answered, " +
-      "not that work is in Main. Remove the edge that crosses the domains with the store's dependency " +
+      "another implementation issue (ADR-0004): another domain's closure never means the work is in Main — " +
+      "a decision's means the question is answered, an experiment's that the result is recorded. Remove " +
+      "the edge that crosses the domains with the store's dependency " +
       "command (`dep remove <dependent> <blocker>`) or restructure the dependency; the drain claims nothing " +
       "while the edge stands.",
   );

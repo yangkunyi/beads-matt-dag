@@ -24,12 +24,13 @@
  * earlier attempt of the same issue merged — is therefore never read as landed, and neither is a merge
  * commit that merely mentions the branch in its subject.
  *
- * Decision issues are skipped, not repaired: nothing in this flow ever claims one, so an `in_progress`
- * decision issue belongs to whoever did claim it (the wayfinder operator), and reopening or closing it
- * would fight them — and a close would release implementation work across the domain boundary that
- * ADR-0004 exists to keep closed. The repair reports each one it left alone instead.
+ * Non-work issues are skipped, not repaired: nothing in this flow ever claims one, so an `in_progress`
+ * decision issue belongs to whoever did claim it (the wayfinder operator) and an `in_progress` experiment
+ * issue to whoever is running it, and reopening or closing either would fight them — and a close would
+ * release implementation work across a domain boundary that ADR-0004 exists to keep closed. The repair
+ * reports each one it left alone instead.
  */
-import { DECISION_TYPE } from "./domains.ts";
+import { NON_WORK_TYPES } from "./domains.ts";
 import { mergedOnMain } from "./main-writes.ts";
 import { issueNames, type IssueNames } from "./naming.ts";
 import { settleFailed, settleMerged } from "./settle.ts";
@@ -37,7 +38,7 @@ import { inProgressIssues, type Store, type StoreIssue } from "./store.ts";
 import { mainBranch } from "./worktree.ts";
 
 /** What one leftover was resolved to: a close a merge had already earned, a recorded failure, or a
- * decision issue the drain leaves where it found it. */
+ * non-work issue the drain leaves where it found it. */
 export type Repair =
   | { id: string; handle: string | undefined; outcome: "merged"; mergeCommit: string }
   | { id: string; handle: string | undefined; outcome: "failed"; reason: string }
@@ -76,8 +77,8 @@ export async function reconcileLeftovers(target: string, store: Store, artifacts
   const repairs: Repair[] = [];
   for (const issue of inProgressIssues(store, target)) {
     const label = issue.handle ?? issue.id;
-    if (issue.type === DECISION_TYPE) {
-      const reason = "a decision issue's status is not this drain's to repair: nothing in this flow claims one";
+    if (NON_WORK_TYPES.has(issue.type)) {
+      const reason = `a ${issue.type} issue's status is not this drain's to repair: nothing in this flow claims one`;
       console.error(`${label}: left alone: ${reason}`);
       repairs.push({ id: issue.id, handle: issue.handle, outcome: "left-alone", reason });
       continue;

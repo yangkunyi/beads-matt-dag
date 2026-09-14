@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { addAttempted, readAttempted } from "./attempted.ts";
-import { assertNoCrossDomainEdges, DECISION_TYPE } from "./domains.ts";
+import { assertNoCrossDomainEdges, NON_WORK_TYPES } from "./domains.ts";
 import { runNode } from "./node-entry.ts";
 import { nodeLine } from "./node-outcomes.ts";
 import { claimIssues, preflightStore, readyIssues, type StoreIssue } from "./store.ts";
@@ -12,7 +12,7 @@ import { claimIssues, preflightStore, readyIssues, type StoreIssue } from "./sto
  *
  * It is the store's own answer, minus what only this run knows:
  *
- *   ready issues − decision-type issues − issues without the gate label − issues already attempted
+ *   ready issues − non-work-type issues − issues without the gate label − issues already attempted
  *     → truncated to config.concurrency → claimed in one transaction
  *
  * The store owns readiness — `open`, not blocked — and that is one query, `readyIssues`. It cannot own
@@ -40,7 +40,7 @@ export const GATE_LABEL = "ready-for-agent";
  * ones it can explain: anything the store itself excluded (blocked, in progress, closed) never reaches
  * this step and is answered by asking the store.
  */
-type ExclusionRule = "decision-type" | "missing-gate-label" | "attempted-by-this-run";
+type ExclusionRule = "non-work-type" | "missing-gate-label" | "attempted-by-this-run";
 
 type ExcludedIssue = { id: string; handle: string | undefined; rule: ExclusionRule };
 
@@ -59,7 +59,7 @@ const EXCLUSION_REPORT_FILE = "pick-exclusions.json";
  * drain's work at all), then the operator's gate, then this run's own bookkeeping.
  */
 function exclusionRule(issue: StoreIssue, attempted: Set<string>): ExclusionRule | undefined {
-  if (issue.type === DECISION_TYPE) return "decision-type";
+  if (NON_WORK_TYPES.has(issue.type)) return "non-work-type";
   if (!issue.labels.includes(GATE_LABEL)) return "missing-gate-label";
   if (attempted.has(issue.id)) return "attempted-by-this-run";
   return undefined;

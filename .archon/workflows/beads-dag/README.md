@@ -91,8 +91,8 @@ and it would enter the issue database as drain bookkeeping, which the pack keeps
 The drain starts what the store says can start, minus what the store cannot know. `pick` asks one
 question — `bd ready`, the whole answer, not the store's default cap — and then applies three rules:
 
-- **the other domain.** Type `decision` never enters a drain, excluded by type, so a new flavour of
-  question cannot leak in by omission.
+- **the other domains.** Types `decision` and `experiment` never enter a drain, excluded by type, so a
+  new flavour of question — or of experiment — cannot leak in by omission.
 - **the gate label.** An issue without `ready-for-agent` is not the drain's work; pulling that label back
   is the operator's brake. The drain reads the gate and nothing else: a triage move is the role label
   replacing `ready-for-agent`, and the brake holds from every side — fresh work, a retried failure, an
@@ -213,10 +213,11 @@ repaired:
   left for the report, exactly as an ordinary failed attempt leaves them.
 - **the issue cannot be named in git** (no `handle`/`slug` metadata): it goes back to `open` with the
   naming failure as its reason, rather than one unresolvable issue failing the whole drain.
-- **a decision issue.** Nothing in this flow claims one, so an `in_progress` decision issue is the
-  wayfinder operator's, not the drain's: the repair leaves it exactly where it found it and reports it on
-  stderr, rather than closing or reopening a status it does not own. A decision issue never enters the
-  frontier, so its closure never releases implementation work.
+- **a non-work issue.** Nothing in this flow claims one, so an `in_progress` decision issue is the
+  wayfinder operator's and an `in_progress` experiment issue its runner's, not the drain's: the repair
+  leaves either exactly where it found it and reports it on stderr, rather than closing or reopening a
+  status it does not own. Neither type enters the frontier, so neither one's closure releases
+  implementation work.
 
 A repaired failure is deliberately **not** put in the run's `attempted-ids.json`: this run never attempted
 it, so the same run's `pick` offers it as a retry. That is what running the repair before pick is for. A
@@ -232,25 +233,26 @@ itself, and the two resolutions it can take are the same two the settle step has
 
 ## Closure never crosses domains
 
-Only the settlement closes an issue, and only to mean the work is in Main (ADR-0004). A decision issue's
-`closed` means its question is answered, so an implementation issue whose blocking ancestry reaches a
-decision issue would let an answer release implementation work that was never built — and the store cannot
+Only the settlement closes an issue, and only to mean the work is in Main (ADR-0004). A non-work issue's
+`closed` never means that: a decision issue's means its question is answered, an experiment issue's that
+its result is recorded, so an implementation issue whose blocking ancestry reaches one of those would let
+an answer — or a recorded result — release implementation work that was never built — and the store cannot
 police it, because `bd ready` trusts a closed blocker whoever closed it and whatever its type, and the
 release travels down the `parent-child` hierarchy too: a child inherits its parent's blocked-ness.
 
 So the drain refuses while such a chain exists, naming it hop by hop: the implementation issue, each
-blocking ancestor with the store edge that reaches it (`blocks` or `parent-child`), and the decision issue
-at the end. `open` runs the check before anything is claimed or repaired, so a run refused there is a
-no-op, and `pick` runs the same check — the same function, so the two cannot drift — on a read of its own
-before each cycle's claim:
+blocking ancestor with the store edge that reaches it (`blocks` or `parent-child`), and the non-work issue
+at the end, named by its own type. `open` runs the check before anything is claimed or repaired, so a run
+refused there is a no-op, and `pick` runs the same check — the same function, so the two cannot drift — on
+a read of its own before each cycle's claim:
 
 ```
 closure would cross domains: lab/11 [lab-vn5] is blocked by lab/13 [lab-vn4] (blocks), which is parented
 under the decision issue lab/12 [lab-8dx] (parent-child); an implementation issue may only be blocked by
-another implementation issue (ADR-0004), because a decision's closure means its question is answered, not
-that work is in Main. Remove the edge that crosses the domains with the store's dependency command (`dep
-remove <dependent> <blocker>`) or restructure the dependency; the drain claims nothing while the edge
-stands.
+another implementation issue (ADR-0004): another domain's closure never means the work is in Main — a
+decision's means the question is answered, an experiment's that the result is recorded. Remove the edge
+that crosses the domains with the store's dependency command (`dep remove <dependent> <blocker>`) or
+restructure the dependency; the drain claims nothing while the edge stands.
 ```
 
 A refused `open` exits non-zero with nothing claimed or repaired; a refused cycle claims nothing, writes no
@@ -258,8 +260,9 @@ report and fails the run, and what the cycles before it merged stays merged. Rem
 operator's act, never the drain's. Only blocking relations are refused — `blocks` at any depth, and the
 `parent-child` hierarchy, which the store propagates blocked-ness down; a `relates-to` link carries no
 blocking, and implementation-to-implementation ancestry is the graph working as designed, however deep —
-and every issue is read, closed ones included, because a decision the wayfinder has already closed is
-exactly the state where the store has released its dependents. That is also why the check cannot be left
+and every issue is read, closed ones included, because a non-work issue that is already closed — a question
+the wayfinder answered, an experiment whose result a session recorded — is exactly the state where the
+store has released its dependents. That is also why the check cannot be left
 to the opening node alone: the ancestry that appears while the run is under way is exactly the dangerous
 one, and the claim is where the drain would otherwise work the work it released.
 
@@ -438,7 +441,7 @@ The modules the two workflows share, all in the drain's `scripts/`:
 | `main-writes.ts` | every git write to Main: the merge, the ignore line, the removal after a merge |
 | `settle.ts` | the one order: merge then record, or record the failure and reopen |
 | `reconcile.ts` | the repair of a killed run's leftovers: closed from git, or reopened with a reason |
-| `domains.ts` | the domain boundary: the decision type, and the cross-domain graph preflight |
+| `domains.ts` | the domain boundary: the non-work types, and the cross-domain graph preflight |
 | `failures.ts` | the drain-end failures block: the store's own failure records, and how they read |
 | `report-artifacts.ts` | the drain-end artifacts: the range's base, review.md/summary.md, the skip protocol |
 | `report-node.ts` | the skeleton both drain-end readers ride: the base, the run's range, the agents, the artifact, and the recognition of a range the pack wrote itself |

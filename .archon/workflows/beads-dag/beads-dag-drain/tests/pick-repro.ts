@@ -25,6 +25,7 @@ import {
   failAttempt,
   mkTemp,
   publishIssue,
+  registerType,
   runScript,
   storeBinary,
   storeIssue,
@@ -77,6 +78,17 @@ try {
       labels: [GATE_LABEL],
     });
     const unlabelled = publishIssue(root, { title: "braked", handle: "feat/05", slug: "braked" });
+    // A domain whose issues are not questions at all: an experiment ticket is not this drain's work
+    // either, and the exclusion is by type here too — the gate label does not change that. Its type has
+    // to exist in the store before bd will create one at all.
+    registerType(root, "experiment");
+    const experiment = publishIssue(root, {
+      title: "a result recorded and waiting to be read",
+      type: "experiment",
+      handle: "feat/07",
+      slug: "a-result-recorded",
+      labels: [GATE_LABEL],
+    });
     // An attempt that failed: the reason is a comment, and the issue is open again.
     const retried = publishIssue(root, { title: "retried", handle: "feat/06", slug: "retried", labels: [GATE_LABEL] });
     failAttempt(root, retried.id, "the implementer could not reach the API");
@@ -85,7 +97,7 @@ try {
     expectEqual("a retried issue is open", storeIssue(root, retried.id).status, "open");
     expectEqual("the failure left a comment and nothing else", storeIssue(root, retried.id).comment_count, 1);
     expectEqual("the store offers it exactly like fresh work", storeReady(root).sort(), [eligible.id, retried.id].sort());
-    expect("the store offers the decision issues too", [decision.id, bareDecision.id].every((id) => storeReadyAll(root).includes(id)));
+    expect("the store offers the decision issues too", [decision.id, bareDecision.id, experiment.id].every((id) => storeReadyAll(root).includes(id)));
     expect("the blocked issue is not the store's answer", !storeReadyAll(root).includes(blocked.id));
 
     const run = pick(root, artifacts);
@@ -96,20 +108,21 @@ try {
     ]);
     expectEqual("the eligible issue is claimed", storeIssue(root, eligible.id).status, "in_progress");
     expectEqual("the retried issue is claimed", storeIssue(root, retried.id).status, "in_progress");
-    for (const untouched of [blocked, decision, bareDecision, unlabelled]) {
+    for (const untouched of [blocked, decision, bareDecision, experiment, unlabelled]) {
       expectEqual(`${untouched.handle} was not claimed`, storeIssue(root, untouched.id).status, "open");
     }
 
     // The report: what was claimed, and the rule that left each other candidate out.
     const report = readReport(artifacts);
     expectEqual("the report names what was picked", report.picked.map((p) => p.handle).sort(), ["feat/01", "feat/06"]);
-    expectEqual("the report names the brand new flavour by its type", ruleFor(report, decision.id), "decision-type");
-    expectEqual("the report names a decision with no wayfinder label too", ruleFor(report, bareDecision.id), "decision-type");
+    expectEqual("the report names the brand new flavour by its type", ruleFor(report, decision.id), "non-work-type");
+    expectEqual("the report names a decision with no wayfinder label too", ruleFor(report, bareDecision.id), "non-work-type");
+    expectEqual("and names the experiment ticket by its type as well", ruleFor(report, experiment.id), "non-work-type");
     expectEqual("the report names the missing gate label", ruleFor(report, unlabelled.id), "missing-gate-label");
     expectEqual(
       "the report explains every candidate it left out, and no other issue",
       report.excluded.map((e) => e.id).sort(),
-      [bareDecision.id, decision.id, unlabelled.id].sort(),
+      [bareDecision.id, decision.id, experiment.id, unlabelled.id].sort(),
     );
     // The blocked issue never reached this step: the store excluded it, so there is no rule to report.
     expectEqual("a blocked issue is not this step's to explain", ruleFor(report, blocked.id), undefined);

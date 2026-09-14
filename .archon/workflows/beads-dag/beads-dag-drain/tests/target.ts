@@ -139,6 +139,16 @@ export function initStore(root: string, prefix = "target"): void {
   bd(root, "init", "--prefix", prefix, "--non-interactive", "--skip-agents", "--skip-hooks");
 }
 
+/**
+ * Register a custom issue type in a Target's store: `bd config set types.custom experiment`. This is the
+ * store's own half of adding a domain — bd refuses a type it does not know at `create`, so an
+ * experiment ticket cannot silently be created as work — and the drain's half ships with the pack
+ * (domains.ts's NON_WORK_TYPES), which is why no Target configures the exclusion.
+ */
+export function registerType(root: string, type: string): void {
+  bd(root, "config", "set", "types.custom", type);
+}
+
 export type PublishOpts = {
   title: string;
   handle: string;
@@ -187,7 +197,9 @@ export function publishIssue(root: string, opts: PublishOpts): PublishedIssue {
 
 /** The store's answer to "what can start": ready, gate-labelled, decision issues excluded. */
 export function storeReady(root: string): string[] {
-  return JSON.parse(bd(root, "ready", "--exclude-type", "decision", "-l", GATE_LABEL, "--json")).map(
+  // Both non-work types, spelled out rather than imported: this is the store's answer as a human would
+  // ask for it, and the test of the pack's exclusion should not agree with the pack by construction.
+  return JSON.parse(bd(root, "ready", "--exclude-type", "decision,experiment", "-l", GATE_LABEL, "--json")).map(
     (i: { id: string }) => i.id,
   );
 }

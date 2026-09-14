@@ -110,8 +110,8 @@ blocker is closed.
 On top of that answer a drain applies the three rules the store cannot hold — and applies them itself,
 so its exclusion report can name the rule per issue:
 
-- **the decision type**: an issue of type `decision` (alias `adr`) is a question, never work, and never
-  enters a drain;
+- **the non-work types**: an issue of type `decision` (alias `adr` — a question, an idea) or of type
+  `experiment` (a plan and its run record) is never work, and never enters a drain;
 - **the gate**: an issue without `ready-for-agent` is not the drain's work;
 - **this run's attempts**: an issue this run already tried is kept out by the run's own
   `attempted-ids.json`, bookkeeping that lives beside the run and never in the store.
@@ -181,18 +181,20 @@ answer. The body is frozen; the conversation is the store's.
 
 ## Closure never crosses domains
 
-Implementation issues and decision issues are two domains, and a blocking relation between them would let
-a decision's closure release implementation work that was never built. So an implementation issue may only
-wait on another implementation issue; a decision issue is reached by changing an issue, not by a blocking
-relation. Blocking is not only the `blocks` edge: the `parent-child` relation is blocking too — a child
-inherits its parent's blocked-ness — so the drain refuses while an implementation issue's **blocking
-ancestry**, through either relation and at any depth, reaches a decision issue. It names the chain, from
-the implementation issue to the decision issue — at `open`, before anything is claimed or repaired, **and
-again at each claim** (`pick`), because a question can be answered while the drain is running and that
-close releases its dependent into the very next cycle. So a run can fail **after** its open: the cycle
-that reads the chain claims nothing and exits non-zero with no token, the run stops there, and what its
-earlier cycles merged stays merged. Removing the crossing edge is the operator's act, never the drain's —
-`bd dep remove` removes either relation, and `bd update <id> --parent ""` unparents a child:
+Implementation issues and non-work issues are two domains — the inquiry domain's `decision`, the
+experiment domain's `experiment` — and a blocking relation between them would let another domain's closure
+release implementation work that was never built. So an implementation issue may only wait on another
+implementation issue; a non-work issue is reached by changing an issue, not by a blocking relation.
+Blocking is not only the `blocks` edge: the `parent-child` relation is blocking too — a child inherits its
+parent's blocked-ness — so the drain refuses while an implementation issue's **blocking ancestry**, through
+either relation and at any depth, reaches a non-work issue. It names the chain, from the implementation
+issue to the non-work issue and naming that issue's own type — at `open`, before anything is claimed or
+repaired, **and again at each claim** (`pick`), because a question can be answered — or a result recorded —
+while the drain is running, and that close releases its dependent into the very next cycle. So a run can
+fail **after** its open: the cycle that reads the chain claims nothing and exits non-zero with no token,
+the run stops there, and what its earlier cycles merged stays merged. Removing the crossing edge is the
+operator's act, never the drain's — `bd dep remove` removes either relation, and `bd update <id> --parent
+""` unparents a child:
 
 ```bash
 bd dep remove <dependent> <blocker>
@@ -204,10 +206,16 @@ another: a question answered is not built work, and a recorded result is neither
 runs adds a third domain — a run's issue closes when its result is recorded — and the rule travels with
 it: domains never share a blocking edge, whatever their types are called.
 
-The check above names the `decision` type because that is the domain the drain knows. So adding a domain
-to a Target is two acts, not one: its type exists in the store, **and** the drain is taught to refuse
-chains that reach it. Until it is, an issue of the new type blocks like any other — which means the new
-type must not enter a blocking chain from either side.
+**A type is a domain.** `decision` is the inquiry domain's — every question, idea and wayfinding ticket;
+`experiment` is the experiment domain's; everything else is development. Both non-work types are spelled
+once, in the pack, so the frontier's exclusion, the repair's skip and the preflight's walk read the same
+set and cannot drift. Adding a domain the flow already knows is therefore **one act** for a Target: its
+type has to exist in the store, because `bd` refuses a type it does not know at `create` —
+`bd config set types.custom experiment` (the setup skill does this beside `bd init`).
+
+A Target that invents a **fourth** domain has two acts, not one: its type exists in the store, **and** the
+pack is taught to refuse chains that reach it. Until it is, an issue of the new type blocks like any
+other — which means the new type must not enter a blocking chain from either side.
 
 **A link may cross; a gate never does.** What joins two domains carries information, and the flow names
 exactly two kinds for it, both non-blocking:
@@ -336,6 +344,11 @@ counts as success changes the question, and the old numbers stay comparable to t
 for.
 
 **The budget is recorded and never enforced**: nothing refuses to start and nothing kills a run.
+
+**The kind.** An experiment ticket is an issue of type `experiment` — the store has to know the type, and
+the drain refuses any blocking chain reaching one, which is what keeps a recorded result from releasing
+implementation work. It carries an `experiment` label so the tickets are one filter (`bd list -l
+experiment`), and never the gate label: nothing about an experiment ticket is a drain's work.
 
 ## Wayfinding operations
 
