@@ -53,6 +53,9 @@ if (!query && sources.length === 0) {
 				`         ${src.http} · ${src.text.length} chars · ${src.title.slice(0, 72)}` +
 					(thin ? "  ⚠ metadata only — no abstract came down, so nothing here is quotable" : ""),
 			);
+			if (src.redirectedFrom) {
+				console.log(`         ↪ the page sent the fetch to ${src.url}`);
+			}
 		} catch (err) {
 			console.log(`\nFAILED   ${id}: ${(err as Error).message}`);
 			process.exitCode = 1;

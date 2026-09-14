@@ -33,6 +33,12 @@ export type Source = {
 	kind: SourceKind;
 	/** The status the fetch really saw: a receipt states it, and nothing here pretends it was a 200. */
 	http: number;
+	/** How the stored text was derived from what came down, when that is not simply "the body". A quote
+	 *  has to be re-found through the same extraction, so a receipt has to be able to say which one ran. */
+	extract?: string;
+	/** The URL the caller asked for, when the page sent it elsewhere — a meta-refresh stub, say. The
+	 *  receipt says so instead of pretending the reader asked for the page that actually answered. */
+	redirectedFrom?: string;
 	title: string;
 	/** The fetched text, verbatim: a quote is anchored against this and nothing else. */
 	text: string;

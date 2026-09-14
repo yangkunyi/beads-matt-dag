@@ -45,6 +45,8 @@ export function writeReceipt(corpusDir: string, src: Source, fetchedAt = new Dat
 			`SOURCE-ID: ${src.id}`,
 			`TITLE: ${src.title}`,
 			...(src.aliases.length ? [`ALIASES: ${src.aliases.join(" ")}`] : []),
+			...(src.extract ? [`EXTRACT: ${src.extract}`] : []),
+			...(src.redirectedFrom ? [`REDIRECTED-FROM: ${src.redirectedFrom}`] : []),
 			`SHA256: ${sha}`,
 			"",
 			src.text,

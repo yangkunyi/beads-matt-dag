@@ -11,32 +11,8 @@
  */
 
 import { fetchText, proxyFromEnv } from "../fetch-text";
+import { blockWithClass, htmlToText } from "../html-text";
 import type { Source } from "../retrieval";
-
-const ENTITIES: Record<string, string> = {
-	amp: "&",
-	lt: "<",
-	gt: ">",
-	quot: '"',
-	"#39": "'",
-	apos: "'",
-	nbsp: " ",
-};
-
-/** The inner text of the first `<tag class="…marker…">`. arxiv's page is stable enough for this and no
- *  more: when the shape changes the caller gets "no abstract", never a wrong one. */
-function blockWithClass(html: string, tag: string, marker: string): string {
-	const re = new RegExp(`<${tag}[^>]*class="[^"]*${marker}[^"]*"[^>]*>([\\s\\S]*?)</${tag}>`, "i");
-	return re.exec(html)?.[1] ?? "";
-}
-
-function plain(html: string): string {
-	return html
-		.replace(/<[^>]*>/g, " ")
-		.replace(/&([a-z0-9#]+);/gi, (whole, entity: string) => ENTITIES[entity.toLowerCase()] ?? whole)
-		.replace(/\s+/g, " ")
-		.trim();
-}
 
 export function arxivAbs(arxivId: string): Source {
 	const proxy = proxyFromEnv();
@@ -49,8 +25,8 @@ export function arxivAbs(arxivId: string): Source {
 	const url = `https://arxiv.org/abs/${arxivId}`;
 	const { status, body, via } = fetchText(url, { proxy, timeoutSec: 45 });
 	if (status !== 200) throw new Error(`arxiv answered ${status} for ${arxivId}${via ? ` (via ${via})` : ""}`);
-	const title = plain(blockWithClass(body, "h1", "title")).replace(/^Title:\s*/i, "");
-	const abstract = plain(blockWithClass(body, "blockquote", "abstract")).replace(/^Abstract:\s*/i, "");
+	const title = htmlToText(blockWithClass(body, "h1", "title")).replace(/^Title:\s*/i, "");
+	const abstract = htmlToText(blockWithClass(body, "blockquote", "abstract")).replace(/^Abstract:\s*/i, "");
 	if (!abstract) throw new Error(`no abstract on the arxiv page for ${arxivId} — the page answered, its shape changed`);
 	return {
 		id: `arxiv:${arxivId}`,
@@ -58,6 +34,7 @@ export function arxivAbs(arxivId: string): Source {
 		url,
 		kind: "arxiv",
 		http: status,
+		extract: "abs page, title + abstract",
 		title: title || "(untitled)",
 		text: `${title}\n\n${abstract}`,
 	};

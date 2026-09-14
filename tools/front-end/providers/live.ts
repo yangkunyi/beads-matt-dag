@@ -11,15 +11,38 @@
  */
 
 import { fetchText, proxyFromEnv } from "../fetch-text";
+import { htmlToText, metaRedirect, pageTitle } from "../html-text";
 import type { Provider, Source } from "../retrieval";
 import { arxivAbs } from "./arxiv";
 import { openalexSearch, openalexWork } from "./openalex";
 
-function urlSource(url: string): Source {
-	const { status, body, via } = fetchText(url, { proxy: proxyFromEnv(), timeoutSec: 45 });
-	if (status !== 200) throw new Error(`${url} answered ${status}${via ? ` (via ${via})` : ""}`);
-	const title = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(body)?.[1]?.replace(/\s+/g, " ").trim() ?? url;
-	return { id: `url:${url}`, aliases: [], url, kind: "url", http: status, title, text: body };
+/** A page is quotable only once it is text: the receipt keeps the text and says how it got it, because a
+ *  quote has to be re-found through the same extraction. */
+function urlSource(requested: string): Source {
+	let url = requested;
+	let fetched = fetchText(url, { proxy: proxyFromEnv(), timeoutSec: 45 });
+	if (fetched.status !== 200) throw new Error(`${url} answered ${fetched.status}${fetched.via ? ` (via ${fetched.via})` : ""}`);
+	let text = htmlToText(fetched.body);
+	// A stub that only redirects answers 200 and would make a worthless receipt. One hop, no more — and
+	// the receipt names both URLs rather than pretending the reader asked for the second one.
+	const hop = text.length < 600 ? metaRedirect(fetched.body, url) : undefined;
+	if (hop) {
+		fetched = fetchText(hop, { proxy: proxyFromEnv(), timeoutSec: 45 });
+		if (fetched.status !== 200) throw new Error(`${hop} answered ${fetched.status} after ${requested} redirected to it`);
+		text = htmlToText(fetched.body);
+		url = hop;
+	}
+	return {
+		id: `url:${requested}`,
+		aliases: [],
+		url,
+		kind: "url",
+		http: fetched.status,
+		extract: "html → text",
+		title: pageTitle(fetched.body, url),
+		text,
+		...(url === requested ? {} : { redirectedFrom: requested }),
+	};
 }
 
 export const liveProvider: Provider = {
