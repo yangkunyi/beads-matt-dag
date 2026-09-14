@@ -18,7 +18,7 @@ export function arxivAbs(arxivId: string): Source {
 	const proxy = proxyFromEnv();
 	if (!proxy) {
 		throw new Error(
-			"arxiv answers only behind a proxy; set FRONT_END_PROXY (or https_proxy) to the BoostNet shell, " +
+			"arxiv answers only behind a proxy; set INQUIRY_PROXY (or https_proxy) to the BoostNet shell, " +
 				"e.g. socks5h://127.0.0.1:23379",
 		);
 	}

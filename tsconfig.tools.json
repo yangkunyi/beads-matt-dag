@@ -1,4 +1,4 @@
-// Typecheck gate for the front end's tooling. Dev-only, and it lives here rather than beside the tool for
+// Typecheck gate for the inquiry domain's tooling. Dev-only, and it lives here rather than beside the tool for
 // the same reason the pack's gate does: what a runner loads must carry nothing the runtime cannot use.
 //
 // Run from the repository root:

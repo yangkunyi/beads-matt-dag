@@ -1,7 +1,7 @@
 /**
  * The live path: discovery through OpenAlex, then a receipt for every source actually read.
  *
- *   FRONT_END_PROXY=socks5h://127.0.0.1:23379 bun tools/front-end/fetch.ts \
+ *   INQUIRY_PROXY=socks5h://127.0.0.1:23379 bun tools/inquiry/fetch.ts \
  *     --query "attention is all you need" --sources arxiv:1706.03762,doi:10.5555/x --corpus .scratch/<effort>
  *
  * The reading is not here: this stops at the receipts, and the note is the reader's product. Nothing here

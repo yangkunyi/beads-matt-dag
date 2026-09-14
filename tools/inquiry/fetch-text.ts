@@ -2,7 +2,7 @@
  * The transport, one function wide: curl, because the machine's egress is the environment's business and
  * not this tool's.
  *
- * The proxy is read from the environment, never hard-coded here — `FRONT_END_PROXY` first (so one call
+ * The proxy is read from the environment, never hard-coded here — `INQUIRY_PROXY` first (so one call
  * can be pointed at the BoostNet shell without exporting anything for the whole process), then
  * `https_proxy` / `http_proxy` / `all_proxy`. Curl takes an `http://` or a `socks5h://` address alike.
  *
@@ -25,19 +25,19 @@ export type Fetched = {
 	via?: string;
 };
 
-const USER_AGENT = "front-end-retrieval/0.1";
+const USER_AGENT = "inquiry-retrieval/0.1";
 
 export function proxyFromEnv(env: NodeJS.ProcessEnv = process.env): string | undefined {
-	return env.FRONT_END_PROXY || env.https_proxy || env.http_proxy || env.all_proxy || undefined;
+	return env.INQUIRY_PROXY || env.https_proxy || env.http_proxy || env.all_proxy || undefined;
 }
 
 /** The polite-pool address OpenAlex asks for; empty when the operator has not set one. */
 export function contactFromEnv(env: NodeJS.ProcessEnv = process.env): string {
-	return env.FRONT_END_MAILTO ?? "";
+	return env.INQUIRY_MAILTO ?? "";
 }
 
 export function fetchText(url: string, opts: { proxy?: string; timeoutSec?: number } = {}): Fetched {
-	const dir = mkdtempSync(join(tmpdir(), "front-end-fetch-"));
+	const dir = mkdtempSync(join(tmpdir(), "inquiry-fetch-"));
 	const bodyPath = join(dir, "body");
 	try {
 		const args = [

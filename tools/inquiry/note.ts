@@ -1,7 +1,7 @@
 /**
  * The reader's side of the corpus: claims in, a note out.
  *
- *   bun tools/front-end/note.ts --corpus .scratch/<effort> --question "…" --claims claims.json
+ *   bun tools/inquiry/note.ts --corpus .scratch/<effort> --question "…" --claims claims.json
  *
  * `claims.json` is what a reader — an agent, a person — wrote down after reading the receipts in
  * `sources/`, one object per claim:
@@ -24,7 +24,7 @@ const arg = (name: string): string | undefined => {
 	return at >= 0 ? args[at + 1] : undefined;
 };
 
-const READER = `usage: bun tools/front-end/note.ts --corpus <dir> --question "…" --claims <claims.json> --slug <slug>`;
+const READER = `usage: bun tools/inquiry/note.ts --corpus <dir> --question "…" --claims <claims.json> --slug <slug>`;
 
 const corpusDir = arg("corpus") ?? join(process.cwd(), ".scratch/research-flow/live-corpus");
 const question = arg("question");

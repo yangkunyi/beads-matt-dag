@@ -18,9 +18,10 @@ below — if a term can only be explained by a command, it belongs in a spec.
 - **body** — an issue's prose: the file at `.scratch/<feature>/issues/<NN>-<slug>.md`, frozen once
   published. It carries the handle and no status — identity belongs in a document, state does not
   (ADR-0005).
-- **front end** — the flow's half before work: literature, notes and ideas turned into decided
+- **inquiry** — the flow's half before work: literature, notes and ideas turned into decided
   questions. Its issues are the `decision` type, and it produces decisions, not deliverables. The
-  design record's "research half" (§8) means this half.
+  design record's "research half" (§8) means this half. Called the front end until 2026-09-14, when the
+  name turned out to read as a UI.
 - **verification leg** — the flow's half that checks a result against something the flow cannot supply
   itself: an instrument, a benchmark, an outside referee. The design record's "science half" (§7)
   means this one. Not designed yet.
@@ -55,7 +56,7 @@ below — if a term can only be explained by a command, it belongs in a spec.
 
 ## Domains
 
-- **domain** — a family of issues whose closure means the same thing. Three: the front end
+- **domain** — a family of issues whose closure means the same thing. Three: inquiry
   (`closed` = the question is answered), development (`closed` = the work is in Main), experiments
   (`closed` = the result is recorded).
 - **crossing** — `relates-to` is the only link that joins two domains; a blocking relation never does

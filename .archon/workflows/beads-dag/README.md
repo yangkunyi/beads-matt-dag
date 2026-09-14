@@ -457,6 +457,6 @@ reports on one that did — is the drain's alone (`lock.ts`, `run-lock.ts`, `mai
 `worktree.ts`, `reconcile.ts`, `review-position.ts`, `run-record.ts`, `failures.ts`,
 `report-artifacts.ts`, `report-node.ts`). What a run shares with the rest of the flow is only what
 touches the store's graph and git documents: `store.ts`, `naming.ts` (the body path — the branch and
-worktree names are a run's own), `domains.ts`, and `worker-env.ts`, whose read-only mode is the front
-end's AFK leg too. A future front-end workflow is a separate pack folder that imports those, never a node
-in this one: a node here is a claim, a worktree and a merge, and the front end has none of the three.
+worktree names are a run's own), `domains.ts`, and `worker-env.ts`, whose read-only mode is the inquiry
+domain's AFK leg too. A future inquiry workflow is a separate pack folder that imports those, never a node
+in this one: a node here is a claim, a worktree and a merge, and inquiry has none of the three.

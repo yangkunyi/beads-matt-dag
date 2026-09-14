@@ -3,7 +3,7 @@
  *
  * Run it with the AFK leg's own environment, which is the point of it running at all:
  *
- *   BD_READONLY=1 bun tools/front-end/run.ts
+ *   BD_READONLY=1 bun tools/inquiry/run.ts
  *
  * Nothing here touches the store — a reader's whole output is documents — so the run must not notice
  * the read-only mode. That is the claim this driver demonstrates; the claim it *refuses*, and the
