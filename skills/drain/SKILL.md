@@ -10,9 +10,10 @@ The operator surface for the `beads-dag` pack. The store's own commands live in 
 `docs/agents/issue-tracker.md`; this file names the pack and the `archon` calls that drive it, and
 points there for everything the store does.
 
-The pack is a folder installed by copy at `~/.archon/workflows/beads-dag` — the copy is what the runner
-reads, so an update is a re-copy — and `archon workflow list` shows `beads-dag-drain` when it is in
-place. The drain is that workflow; `beads-dag-execute` is not an entry point.
+The pack is a folder in a git checkout, installed as a symlink at `~/.archon/workflows/beads-dag`, so
+the checkout is what the runner reads and an update is `git pull` there — and `archon workflow list`
+shows `beads-dag-drain` when it is in place. The drain is that workflow; `beads-dag-execute` is not an
+entry point.
 
 The operator has two actions: **run a drain**, and **move the gate label**. Everything else a drain
 does itself, or the store derives.
