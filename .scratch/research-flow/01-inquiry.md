@@ -60,10 +60,10 @@ real question has gone through it (2026-09-14, `lab-zfl.1` in the Target's store
   Semantic Scholar needs a key. (1/Q5)
 - **An idea is a tracked object, and its development is the point.** Not a note and not a line in a
   document: what has to survive is *how* the idea changed — what was added, dropped or argued down, on
-  whose saying — because judging whether an idea is ripe means reading how it got there. An idea carries
-  its origin (operator or agent) and does not close: it graduates into an issue, or it is dropped. Chosen
-  over "ideas are material, like notes, and are not tracked" (2026-09-14, asked while charting the
-  experiments map → b). **Owed before this can be built:** its states, where it lives, what links it to
+  whose saying — because judging whether an idea is ripe means reading how it got there. An idea does not
+  close: it graduates into an issue, or it is dropped. No provenance field is recorded on it — 6:4 is not
+  counted, above. Chosen over "ideas are material, like notes, and are not tracked" (2026-09-14, asked
+  while charting the experiments map → b). **Owed before this can be built:** its states, where it lives, what links it to
   the question or experiment it came from and to whatever it became, and who writes it.
 
 ## Mock (2026-09-14)
