@@ -14,9 +14,9 @@ import { preflightStore, recomputeBlocked } from "./store.ts";
  * happens in this order: the preflight that fails the run when the store binary cannot be resolved or
  * the Target has no store; the one-line report of the effective configuration on stderr - the run's
  * only record of which values the Target's file wrote and which defaulted, and the store's source
- * among them; the graph preflight that refuses the run while an implementation issue is
- * blocked by a decision issue, naming the edge (nothing may be claimed or repaired first, because the
- * store has already released such a dependent and the drain must not work it); the blocked-ness
+ * among them; the graph preflight that refuses the run while an implementation issue's blocking
+ * ancestry reaches a decision issue, naming the chain (nothing may be claimed or repaired first, because
+ * the store has already released such a dependent and the drain must not work it); the blocked-ness
  * recompute that replaces the predecessor's rebuild-every-cycle scan; the repair of what a killed run
  * left claimed - read from git, before pick, so a repaired issue is a candidate of this same run;
  * the run's own record of what that repair did (a repair's close leaves no trace the drain-end report

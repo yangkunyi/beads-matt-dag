@@ -181,15 +181,18 @@ answer. The body is frozen; the conversation is the store's.
 
 ## Closure never crosses domains
 
-Implementation issues and decision issues are two domains, and an edge between them would let a
-decision's closure release implementation work that was never built. So an implementation issue may
-only be blocked by another implementation issue; a decision issue is reached by changing an issue, not
-by an edge. The drain refuses while a `blocks` edge crosses the domains, and names it — at `open`, before
-anything is claimed or repaired, **and again at each claim** (`pick`), because a question can be answered
-while the drain is running and that close releases its dependent into the very next cycle. So a run can
-fail **after** its open: the cycle that reads the edge claims nothing and exits non-zero with no token,
-the run stops there, and what its earlier cycles merged stays merged. Removing the edge is the operator's
-act, never the drain's:
+Implementation issues and decision issues are two domains, and a blocking relation between them would let
+a decision's closure release implementation work that was never built. So an implementation issue may only
+wait on another implementation issue; a decision issue is reached by changing an issue, not by a blocking
+relation. Blocking is not only the `blocks` edge: the `parent-child` relation is blocking too — a child
+inherits its parent's blocked-ness — so the drain refuses while an implementation issue's **blocking
+ancestry**, through either relation and at any depth, reaches a decision issue. It names the chain, from
+the implementation issue to the decision issue — at `open`, before anything is claimed or repaired, **and
+again at each claim** (`pick`), because a question can be answered while the drain is running and that
+close releases its dependent into the very next cycle. So a run can fail **after** its open: the cycle
+that reads the chain claims nothing and exits non-zero with no token, the run stops there, and what its
+earlier cycles merged stays merged. Removing the crossing edge is the operator's act, never the drain's —
+`bd dep remove` removes either relation, and `bd update <id> --parent ""` unparents a child:
 
 ```bash
 bd dep remove <dependent> <blocker>

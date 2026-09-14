@@ -196,30 +196,35 @@ itself, and the two resolutions it can take are the same two the settle step has
 ## Closure never crosses domains
 
 Only the settlement closes an issue, and only to mean the work is in Main (ADR-0004). A decision issue's
-`closed` means its question is answered, so an edge from an implementation issue to a decision issue would
-let an answer release implementation work that was never built — and the store cannot police it, because
-`bd ready` trusts a closed blocker whoever closed it and whatever its type.
+`closed` means its question is answered, so an implementation issue whose blocking ancestry reaches a
+decision issue would let an answer release implementation work that was never built — and the store cannot
+police it, because `bd ready` trusts a closed blocker whoever closed it and whatever its type, and the
+release travels down the `parent-child` hierarchy too: a child inherits its parent's blocked-ness.
 
-So the drain refuses while such an edge exists, naming it. `open` runs the check before anything is
-claimed or repaired, so a run refused there is a no-op, and `pick` runs the same check — the same
-function, so the two cannot drift — on a read of its own before each cycle's claim:
+So the drain refuses while such a chain exists, naming it hop by hop: the implementation issue, each
+blocking ancestor with the store edge that reaches it (`blocks` or `parent-child`), and the decision issue
+at the end. `open` runs the check before anything is claimed or repaired, so a run refused there is a
+no-op, and `pick` runs the same check — the same function, so the two cannot drift — on a read of its own
+before each cycle's claim:
 
 ```
-closure would cross domains: lab/11 [lab-vn5] is blocked by the decision issue lab/12 [lab-8dx]; an
-implementation issue may only be blocked by another implementation issue (ADR-0004), because a decision's
-closure means its question is answered, not that work is in Main. Remove the edge with the store's
-dependency command (`dep remove <dependent> <blocker>`) or restructure the dependency; the drain claims
-nothing while the edge stands.
+closure would cross domains: lab/11 [lab-vn5] is blocked by lab/13 [lab-vn4] (blocks), which is parented
+under the decision issue lab/12 [lab-8dx] (parent-child); an implementation issue may only be blocked by
+another implementation issue (ADR-0004), because a decision's closure means its question is answered, not
+that work is in Main. Remove the edge that crosses the domains with the store's dependency command (`dep
+remove <dependent> <blocker>`) or restructure the dependency; the drain claims nothing while the edge
+stands.
 ```
 
 A refused `open` exits non-zero with nothing claimed or repaired; a refused cycle claims nothing, writes no
 report and fails the run, and what the cycles before it merged stays merged. Removing the edge is the
-operator's act, never the drain's. Only blocking (`blocks`) edges are refused — a `relates-to` link carries
-no blocking, and implementation-to-implementation blocking is the graph working as designed — and every
-issue is read, closed ones included, because a decision the wayfinder has already closed is exactly the
-state where the store has released its dependents. That is also why the check cannot be left to the
-opening node alone: the edge that appears while the run is under way is exactly the dangerous one, and the
-claim is where the drain would otherwise work the work it released.
+operator's act, never the drain's. Only blocking relations are refused — `blocks` at any depth, and the
+`parent-child` hierarchy, which the store propagates blocked-ness down; a `relates-to` link carries no
+blocking, and implementation-to-implementation ancestry is the graph working as designed, however deep —
+and every issue is read, closed ones included, because a decision the wayfinder has already closed is
+exactly the state where the store has released its dependents. That is also why the check cannot be left
+to the opening node alone: the ancestry that appears while the run is under way is exactly the dangerous
+one, and the claim is where the drain would otherwise work the work it released.
 
 ## The drain-end report
 

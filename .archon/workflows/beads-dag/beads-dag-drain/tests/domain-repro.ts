@@ -10,10 +10,12 @@
  *
  * The other domain: a decision issue is never claimed by a drain, and the repair never touches one's
  * status — an `in_progress` decision issue is the wayfinder operator's, and the repair says so instead
- * of closing or reopening it. And because closing an issue releases whatever waits on it, the opening
- * node refuses the whole run while an implementation issue is blocked by a decision issue, naming the
- * edge before anything is claimed or repaired — the case where the wayfinder has already closed the
- * decision and the store has quietly released implementation work that was never built.
+ * of closing or reopening it. And because closing an issue releases whatever waits on it — including
+ * down the `parent-child` hierarchy, where a child inherits its parent's blocked-ness — the opening
+ * node refuses the whole run while an implementation issue's blocking ancestry reaches a decision
+ * issue, at any depth and through either blocking edge type, naming the chain before anything is
+ * claimed or repaired: the case where the decision's own blocker closed and the store has quietly
+ * released implementation work that was never built.
  *
  * Each case drives the nodes the way the runner does and reads only the store's answers, the run's
  * artifacts, and git.
@@ -410,6 +412,177 @@ try {
     const after = pick(root, artifacts);
     expectEqual("the cycle runs once the edge is gone", after.status, 0);
     expectEqual("and claims the issue the answer released", JSON.parse(after.stdout), [impl.handle]);
+  });
+
+  // Blocking ancestry, not just a direct `blocks` edge: the store propagates blocked-ness down the
+  // `parent-child` hierarchy too (§7.2), so an implementation issue parented under a decision issue
+  // waits for the decision's own blockers, and closing one of them releases implementation work with
+  // no `blocks` edge of its own for a `blocks`-only walk to see. The walk is over the whole blocking
+  // ancestry at any depth, and the refusal names the chain: the implementation issue, then each
+  // blocking ancestor, then the decision issue.
+  await withTarget(async (root, artifacts) => {
+    const work = publishIssue(root, {
+      title: "work the question waits on",
+      handle: "feat/70",
+      slug: "work-the-question-waits-on",
+      labels: [GATE_LABEL],
+    });
+    const decision = publishIssue(root, {
+      title: "a question waiting on that work",
+      type: "decision",
+      handle: "feat/71",
+      slug: "a-question-waiting-on-that-work",
+    });
+    bd(root, "dep", "add", decision.id, work.id); // the question waits on the work
+    const child = publishIssue(root, {
+      title: "work parented under the question",
+      handle: "feat/72",
+      slug: "work-parented-under-the-question",
+      labels: [GATE_LABEL],
+    });
+    bd(root, "update", child.id, "--parent", decision.id);
+    const grandchild = publishIssue(root, {
+      title: "work blocked by the child",
+      handle: "feat/73",
+      slug: "work-blocked-by-the-child",
+      labels: [GATE_LABEL],
+    });
+    bd(root, "dep", "add", grandchild.id, child.id);
+    const leftover = publishIssue(root, {
+      title: "a leftover from a killed run",
+      handle: "feat/74",
+      slug: "a-leftover-from-a-killed-run",
+      labels: [GATE_LABEL],
+    });
+    bd(root, "update", leftover.id, "-s", "in_progress");
+
+    // The danger, staged the way the hierarchy makes it real: while the question waits on the work,
+    // the child inherits the question's blocked-ness and the grandchild the child's; closing the work
+    // releases the question and, with it, the child — implementation work with no `blocks` edge of its
+    // own crossing the domains.
+    expectEqual(
+      "staged: the store withholds the child while the question waits",
+      storeReadyAll(root).includes(child.id),
+      false,
+    );
+    bd(root, "close", work.id, "-r", `merged beads/${work.handle}-${work.slug}`);
+    expectEqual("staged: closing the work releases the child", storeReadyAll(root).includes(child.id), true);
+
+    const opened = open(root, artifacts);
+    expectEqual("open fails with exit 1", opened.status, 1);
+    expectEqual("and prints no token", opened.stdout, "");
+    for (const token of [child.id, child.handle, decision.id, decision.handle, grandchild.id, grandchild.handle]) {
+      expect(`the reason names ${token}`, opened.stderr.includes(token), opened.stderr);
+    }
+    expect(
+      "the chain names the parent relation and its edge type",
+      /is parented under the decision issue .* \(parent-child\)/.test(opened.stderr),
+      opened.stderr,
+    );
+    expect(
+      "and carries the rest of the chain through the blocking edge",
+      /is blocked by .* \(blocks\), which is parented under/.test(opened.stderr),
+      opened.stderr,
+    );
+    expectEqual("nothing was claimed", storeIssue(root, child.id).status, "open");
+    expectEqual("and the grandchild stays open too", storeIssue(root, grandchild.id).status, "open");
+    expectEqual("the leftover was not repaired either", storeIssue(root, leftover.id).status, "in_progress");
+    expectEqual("with no comment on it", storeIssue(root, leftover.id).comment_count, 0);
+  });
+
+  // The same ancestry arriving after open, which is what the claim-time check is for: the parent
+  // relation is a store write like any other, and open read the graph before it existed. The child is
+  // offered by `bd ready` the moment it is parented — an open, unblocked decision holds nothing back,
+  // which is why the hierarchy alone is the wrong shape whatever the decision's own blocked-ness — and
+  // the cycle still refuses it and nothing else.
+  await withTarget(async (root, artifacts) => {
+    const opened = open(root, artifacts);
+    expectEqual("open exits clean on a store with no issues in it", opened.status, 0);
+    expectEqual("and speaks the protocol", opened.stdout, nodeLine(OPENED));
+
+    const decision = publishIssue(root, {
+      title: "a question published mid-run",
+      type: "decision",
+      handle: "feat/81",
+      slug: "a-question-published-mid-run",
+    });
+    const child = publishIssue(root, {
+      title: "published under that question",
+      handle: "feat/80",
+      slug: "published-under-that-question",
+      labels: [GATE_LABEL],
+    });
+    bd(root, "update", child.id, "--parent", decision.id);
+    expectEqual("the store offers the child", storeReadyAll(root).includes(child.id), true);
+
+    const picked = pick(root, artifacts);
+    expectEqual("the claim fails with exit 1", picked.status, 1);
+    expectEqual("and prints no token", picked.stdout, "");
+    expect("the reason is the preflight's own", picked.stderr.startsWith("closure would cross domains:"), picked.stderr);
+    for (const token of [child.id, child.handle, decision.id, decision.handle]) {
+      expect(`the chain names ${token}`, picked.stderr.includes(token), picked.stderr);
+    }
+    expectEqual("nothing was claimed", storeIssue(root, child.id).status, "open");
+    expectEqual("no cycle report was written", existsSync(join(artifacts, REPORT)), false);
+    expectEqual("and nothing was recorded as attempted", existsSync(join(artifacts, "attempted-ids.json")), false);
+
+    // The operator's fix is the check's own: unparent the child and the same run directory claims it.
+    bd(root, "update", child.id, "--parent", "");
+    const after = pick(root, artifacts);
+    expectEqual("the cycle runs once the parent is gone", after.status, 0);
+    expectEqual("and claims the child", JSON.parse(after.stdout), [child.handle]);
+  });
+
+  // The walk is over ancestry that **reaches a decision issue**, so an all-implementation chain is
+  // legal however deep it is and whichever blocking relation carries it: implementation-to-
+  // implementation blocking is the graph working as designed. Two levels deep is the shape an
+  // over-broad walk would refuse, so it is pinned through the nodes — open passes, and the work the
+  // chain releases is claimed normally.
+  await withTarget(async (root, artifacts) => {
+    const first = publishIssue(root, {
+      title: "the first implementation issue",
+      handle: "feat/90",
+      slug: "the-first-implementation-issue",
+      labels: [GATE_LABEL],
+    });
+    const second = publishIssue(root, {
+      title: "blocked by the first",
+      handle: "feat/91",
+      slug: "blocked-by-the-first",
+      labels: [GATE_LABEL],
+    });
+    bd(root, "dep", "add", second.id, first.id);
+    const third = publishIssue(root, {
+      title: "parented under the second",
+      handle: "feat/92",
+      slug: "parented-under-the-second",
+      labels: [GATE_LABEL],
+    });
+    bd(root, "dep", "add", third.id, second.id, "--type", "parent-child");
+
+    expectEqual(
+      "staged: the hierarchy holds the child back while its parent is blocked",
+      storeReadyAll(root).includes(third.id),
+      false,
+    );
+
+    const opened = open(root, artifacts);
+    expectEqual("open exits clean on a two-deep implementation chain", opened.status, 0);
+    expectEqual("and speaks the protocol", opened.stdout, nodeLine(OPENED));
+
+    const head = pick(root, artifacts);
+    expectEqual("the drain works the head of the chain", JSON.parse(head.stdout), [first.handle]);
+    expectEqual("and leaves the rest open", [storeIssue(root, second.id).status, storeIssue(root, third.id).status], ["open", "open"]);
+    // The head's merge lands, and its closure releases the middle link; the child of implementation
+    // work is released with it, because an unblocked parent holds nothing back. The chain is reviewed
+    // normally, and neither the `blocks` link nor the `parent-child` link is refused.
+    bd(root, "close", first.id, "-r", `merged beads/${first.handle}-${first.slug}`);
+    const rest = pick(root, artifacts);
+    expectEqual(
+      "the next cycle works the rest of the chain, the parent-child link included",
+      JSON.parse(rest.stdout).sort(),
+      [second.handle, third.handle].sort(),
+    );
   });
 
   // The check at the claim is the preflight itself, so it reads what the preflight reads — every issue,

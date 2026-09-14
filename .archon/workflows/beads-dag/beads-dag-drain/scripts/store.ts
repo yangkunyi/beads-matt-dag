@@ -129,11 +129,18 @@ export type StoreIssue = {
   /** `<feature>/<NN>`, when the tracker published one: what branch and worktree names derive from. */
   handle: string | undefined;
   slug: string | undefined;
+  /**
+   * The parent the store answers for a `parent-child` edge, when the issue has one. The domain
+   * preflight reads it beside the edges: the store propagates a parent's blocked-ness down that
+   * relation, so an implementation issue parented under a decision issue waits on the decision's own
+   * blockers.
+   */
+  parent: string | undefined;
   /** The comments the store holds for the issue. Only the drain-end report reads it: a failure is a
    * comment, so a zero here is an issue that can hold no failure record. */
   commentCount: number;
-  /** The edges the issue declares. Every query that asks for an issue gets them; only the domain
-   * preflight reads them. */
+  /** The edges the issue declares, and the `parent` the store keeps for one of them. Every query that
+   * asks for an issue gets them; only the domain preflight reads them. */
   dependencies: StoreDependency[];
 };
 
@@ -178,6 +185,7 @@ function toStoreIssue(raw: unknown, command: string): StoreIssue {
     labels: Array.isArray(issue.labels) ? issue.labels.filter((l): l is string => typeof l === "string") : [],
     handle: text(metadata.handle),
     slug: text(metadata.slug),
+    parent: text(issue.parent),
     commentCount: toCount(issue.comment_count),
     dependencies: toDependencies(issue.dependencies),
   };
