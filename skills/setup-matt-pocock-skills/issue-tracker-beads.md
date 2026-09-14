@@ -93,15 +93,22 @@ back with `bd show <id> --json` or `bd list --metadata-field handle=<handle> --a
 
 ## The frontier and the claim
 
-A drain asks the store what can start, once, and takes the whole answer:
+A drain asks the store what can start **once per `pick` cycle** and takes each cycle's answer whole; the
+run loops `pick` until a cycle comes back empty (`[]`):
 
 ```bash
 bd ready --json --limit 0      # --limit 0 is everything; the store's default cap is 100
 ```
 
-`bd ready` is the store's own answer: `open`, unblocked, not deferred, not pinned, not hooked. On top
-of that answer a drain applies the three rules the store cannot hold — and applies them itself, so its
-exclusion report can name the rule per issue:
+`bd ready` is the store's own answer — `open`, unblocked, not deferred, not pinned, not hooked — and the
+store re-derives it on every read. A `blocks` edge withholds its dependent only while a blocker is not
+`closed`, so a blocker closed inside the run releases the dependent into that run's next `pick` cycle,
+where the same run can claim it. Holding a dependent back for a later drain takes the brake — the gate
+label off the issue ("Labels: the gate and the brake") — because the edge withholds nothing once the
+blocker is closed.
+
+On top of that answer a drain applies the three rules the store cannot hold — and applies them itself,
+so its exclusion report can name the rule per issue:
 
 - **the decision type**: an issue of type `decision` (alias `adr`) is a question, never work, and never
   enters a drain;
