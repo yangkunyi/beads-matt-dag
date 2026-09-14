@@ -21,4 +21,8 @@ tool for a wayfinder map; this makes the pack refuse it instead of hoping.
 - [ ] the check still runs before any write and still fails with exit 1 and no stdout token
 - [ ] `relates-to` and every other edge type stay out of it, and the Comments say how the pack reads edge types
       (`bd list --all --json`'s shape) rather than assuming
-- [ ] the README's domain boundary names both edge types
+- [ ] the README's domain boundary names both edge types, **and so does the Target-facing contract**:
+      `skills/setup-matt-pocock-skills/issue-tracker-beads.md` ("Closure never crosses domains") still says
+      only a `blocks` edge is refused, so an operator could publish a `parent-child` edge the pack will
+      refuse — fix the sentence and refresh the install (`cp -a skills/<member> ~/.pi/agent/skills/`, then
+      `diff -rq` empty)

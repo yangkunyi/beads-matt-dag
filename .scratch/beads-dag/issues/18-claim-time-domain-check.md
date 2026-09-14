@@ -16,6 +16,10 @@ any write (that is what makes a refused run a no-op); the claim-time check catch
       fails loudly, names the relation, and claims **nothing** from that cycle
 - [ ] the already-recorded case still holds at open: an implementation issue the store released as the
       dependent of a closed decision issue is refused even though no edge remains on the frontier
+- [ ] the Target-facing contract says so too: `skills/setup-matt-pocock-skills/issue-tracker-beads.md`
+      ("Closure never crosses domains") claims the refusal happens at open, so it must say the check also runs
+      where the claim happens — a run can now fail after its open — and the install must be refreshed
+      (`cp -a skills/<member> ~/.pi/agent/skills/`, then `diff -rq` empty)
 - [ ] the cost is stated in the Comments — one extra store read per `pick` cycle, and why a cheaper place
       cannot close the window
 - [ ] a repro pins the **window** (store mutated between open and pick), not the code path, so the test fails
