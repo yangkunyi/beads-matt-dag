@@ -297,6 +297,46 @@ The store is not committed and neither are the artifacts; the bodies under
 `.scratch/<feature>/issues/` are. Nothing in a run's artifacts is ever copied into the store or into
 git as a record.
 
+## Experiments: the ticket, the run, and the record
+
+An experiment ticket is a plan for producing a fact, and the plan is what makes it runnable. Its body
+carries the **deciding metric and where it will be read from**, the **reference** the result will be read
+against, and the **pin** it is meant to run on (the data, the code commit). A hypothesis — why it should
+come out that way — and a budget are optional; a ticket missing the metric, the reference or the pin is not
+an experiment yet.
+
+The reference is a prediction with a threshold, a baseline value, or the explicit word *exploratory* — and
+it is written before anything runs, because it is what turns "did it work?" into a reading of the numbers
+instead of a story told afterwards. Freezing it is what the claim buys.
+
+**Who does what.** Writing the script, running it, collecting the numbers and writing the record may all
+run AFK. The operator appears twice: agreeing the plan, and — later, optionally — saying what the result
+means. The store's writes stay with the session (the comment, the close); git documents are the AFK leg's,
+exactly as in the inquiry domain.
+
+**The record** is one document per ticket at `.scratch/<effort>/results/<NN>-<slug>.md`, holding an
+attempts table — one row per run — and closed by these lines:
+
+- what was measured, and which source it was read from;
+- whether it met the frozen reference — or what was observed, when the ticket said *exploratory*;
+- what the run covered: one seed, one dataset, one config. This is the line that stops a reader
+  over-reading the result;
+- `reading: none yet` — a visible marker that nobody has interpreted the result.
+
+Every change appends a comment (a document holds the picture, comments hold the history), a thin
+target-side script registers the run's identity before it starts and collects afterwards, and **the ticket
+closes when the record holds all of that — no signature**: `closed` here means the result is recorded,
+which is bookkeeping, not a judgement. The operator's judgement is deliberately not a field of the record;
+it leaves the ticket as an idea or a work ticket, linked back with `discovered-from` (*Closure never crosses
+domains*, above) — and when he speaks later, the session comments it and the `reading:` line changes.
+
+**One act looks like an amendment and is not**: changing the deciding metric opens a *new* ticket — the old
+one closes with `wontfix`, a comment naming its successor and a `relates-to` link — because changing what
+counts as success changes the question, and the old numbers stay comparable to the question they were run
+for.
+
+**The budget is recorded and never enforced**: nothing refuses to start and nothing kills a run.
+
 ## Wayfinding operations
 
 Used by `/wayfinder`. The **map** and its exploration are git documents; the **child issues** are beads
