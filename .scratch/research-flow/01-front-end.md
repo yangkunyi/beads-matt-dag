@@ -100,6 +100,27 @@ is out of reach.
 The seam reads `http_proxy` / `https_proxy`, so the proxy belongs in the environment, not hard-coded in the
 tool.
 
+## Live path (2026-09-14)
+
+The tool now has real providers beside the mock: OpenAlex for discovery and for anything with a DOI or an
+OpenAlex id (its abstract arrives as an inverted index and is decoded), arxiv abstract pages through
+`FRONT_END_PROXY` / `https_proxy` / `http_proxy` / `all_proxy`, and a plain-URL reader for anything else.
+Verified live:
+
+- OpenAlex search puts the right paper first for a title query, and hands back an abstract for it;
+- `arxiv.org/abs/1706.03762` through `socks5h://127.0.0.1:23379` answers 200 in about 0.4s;
+- **the same paper's title + abstract from arxiv and from OpenAlex hash identically** (`b59de13b…`): two
+  providers over one work cross-check each other's bytes, which is what makes an anchor source-independent;
+- a work with no abstract yields a metadata-only receipt and the tool says outright that nothing in it is
+  quotable — a title is not a claim;
+- a DOI stays the citation key (`doi:10.1038/nature12373`), with the OpenAlex id as an alias.
+
+Caveat worth remembering: OpenAlex relevance on a natural-language query is poor — its hits are candidates
+to choose from, not an answer.
+
+The tool carries its own gate now: `./node_modules/.bin/tsc -p tsconfig.tools.json`, named in AGENTS.md
+beside the pack's two.
+
 ## Still open
 
 - The reading convention is not written into the tracker doc's Wayfinding section yet.
