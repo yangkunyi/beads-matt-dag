@@ -18,6 +18,12 @@ below — if a term can only be explained by a command, it belongs in a spec.
 - **body** — an issue's prose: the file at `.scratch/<feature>/issues/<NN>-<slug>.md`, frozen once
   published. It carries the handle and no status — identity belongs in a document, state does not
   (ADR-0005).
+- **front end** — the flow's half before work: literature, notes and ideas turned into decided
+  questions. Its issues are the `decision` type, and it produces decisions, not deliverables. The
+  design record's "research half" (§8) means this half.
+- **verification leg** — the flow's half that checks a result against something the flow cannot supply
+  itself: an instrument, a benchmark, an outside referee. The design record's "science half" (§7)
+  means this one. Not designed yet.
 
 ## Running
 
@@ -38,13 +44,23 @@ below — if a term can only be explained by a command, it belongs in a spec.
 - **status** — an issue's single lifecycle slot: `open`, `in_progress`, `closed`.
 - **blocked** — derived, never stored: a blocker is not closed. The store maintains it.
 - **ready** — derived: `open` and not blocked.
-- **closed** — the work is in Main. The only closure meaning this repo recognises (ADR-0004).
+- **closed** — in development, the work is in Main: the one meaning that domain gives the word, and
+  no other. Each domain has its own (see Domains above; ADR-0004).
 - **failed attempt** — an event, not a status: the git contract failed, the reason is a comment on the
   issue, and the issue is back to `open` — so `bd ready` is the whole retry channel. A later drain may
   start it again; the drain that failed it may not, because the issue is in that run's
   `attempted-ids.json`.
 - **merge before stamp** — a result is recorded only after it has happened, so a recorded "closed"
   never runs ahead of the merge it claims (ADR-0002).
+
+## Domains
+
+- **domain** — a family of issues whose closure means the same thing. Three: the front end
+  (`closed` = the question is answered), development (`closed` = the work is in Main), experiments
+  (`closed` = the result is recorded).
+- **crossing** — `relates-to` is the only link that joins two domains; a blocking relation never does
+  — neither `blocks` nor the `parent-child` hierarchy, at any depth (ADR-0004). A closure in one
+  domain must never release work in another.
 
 ## Labels
 
