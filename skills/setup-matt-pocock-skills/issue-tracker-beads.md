@@ -184,8 +184,12 @@ answer. The body is frozen; the conversation is the store's.
 Implementation issues and decision issues are two domains, and an edge between them would let a
 decision's closure release implementation work that was never built. So an implementation issue may
 only be blocked by another implementation issue; a decision issue is reached by changing an issue, not
-by an edge. The drain refuses to open while a `blocks` edge crosses the domains, and names it. Removing
-the edge is the operator's act, never the drain's:
+by an edge. The drain refuses while a `blocks` edge crosses the domains, and names it — at `open`, before
+anything is claimed or repaired, **and again at each claim** (`pick`), because a question can be answered
+while the drain is running and that close releases its dependent into the very next cycle. So a run can
+fail **after** its open: the cycle that reads the edge claims nothing and exits non-zero with no token,
+the run stops there, and what its earlier cycles merged stays merged. Removing the edge is the operator's
+act, never the drain's:
 
 ```bash
 bd dep remove <dependent> <blocker>

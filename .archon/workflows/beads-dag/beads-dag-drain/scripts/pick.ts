@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { addAttempted, readAttempted } from "./attempted.ts";
-import { DECISION_TYPE } from "./domains.ts";
+import { assertNoCrossDomainEdges, DECISION_TYPE } from "./domains.ts";
 import { runNode } from "./node-entry.ts";
 import { nodeLine } from "./node-outcomes.ts";
 import { claimIssues, preflightStore, readyIssues, type StoreIssue } from "./store.ts";
@@ -24,6 +24,12 @@ import { claimIssues, preflightStore, readyIssues, type StoreIssue } from "./sto
  * An issue whose attempt failed needs no branch of its own: it is `open` again, so the store offers it
  * like fresh work and the retry channel is the same query. The only thing this run adds is that it does
  * not offer it twice — the attempted set.
+ *
+ * The one thing pick refuses rather than excludes: the graph preflight `open` ran, run again on a read of
+ * its own before the claim. Open's reading is one moment and a cycle happens later — a question answered
+ * while the run is under way releases the implementation issue waiting on it, which is work §10.4 says
+ * must never be started — so the same check is made where the claim is, and a cycle that sees the edge
+ * claims nothing at all.
  */
 
 /** The only way into the frontier: an issue without this label is not this drain's work. */
@@ -101,6 +107,15 @@ if (import.meta.main) {
       const store = preflightStore(target, config);
       const attempted = readAttempted(artifactsDir);
       const { candidates, excluded } = composeFrontier(readyIssues(store, target), attempted);
+      // The graph preflight again, behind the frontier read and ahead of every claim this cycle makes. It
+      // is `open`'s own check — the same function, the same read of the whole store and the same message —
+      // and not a second opinion about what crossing domains means: `open`'s reading is one moment, and a
+      // decision answered while the run goes on releases the implementation issue waiting on it into this
+      // very cycle. Behind the frontier read is the one order that cannot be outrun: anything a closure
+      // released into this cycle is already in `candidates` when the check reads the graph that released
+      // it, so the cycle either refuses or claims work no decision released. A refused cycle claims
+      // nothing, writes no report and records nothing as attempted: the throw is the whole outcome.
+      assertNoCrossDomainEdges(store, target);
       const picked = candidates
         .slice(0, config.concurrency)
         .map((issue) => ({ id: issue.id, handle: handleOf(issue) }));

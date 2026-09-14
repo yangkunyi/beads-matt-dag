@@ -357,6 +357,103 @@ try {
     expectEqual("which the report does not need to explain: the store never offered it", ruleFor(readReport(artifacts), blocked.id), undefined);
   });
 
+  // The window between open and the claim, which is what the check cannot afford to miss: open's read is
+  // one moment and a drain's cycles go on for hours, and the store stays writable throughout — the
+  // wayfinder publishing an issue, linking it and answering a question are store writes like any other.
+  // So the whole shape arrives AFTER open passed, and open's preflight could not have seen any of it: a
+  // question and the implementation issue that waits on it are published, the edge is written, and the
+  // question is answered. Answering it is the close that releases the dependent, and the store's own
+  // ready answer offers it as work. The claim has to refuse the cycle, and the run with it, or a
+  // decision's closure would have started implementation work that was never built.
+  await withTarget(async (root, artifacts) => {
+    const opened = open(root, artifacts);
+    expectEqual("open exits clean on a store with no issues in it", opened.status, 0);
+    expectEqual("and speaks the protocol", opened.stdout, nodeLine(OPENED));
+
+    // The window itself: the question, the implementation issue, their relation, then the answer. Every
+    // one of them lands after open and before the cycle that would claim.
+    const decision = publishIssue(root, {
+      title: "a question that arrives mid-run",
+      type: "decision",
+      handle: "feat/51",
+      slug: "a-question-that-arrives-mid-run",
+    });
+    const impl = publishIssue(root, {
+      title: "published waiting on that question",
+      handle: "feat/50",
+      slug: "published-waiting-on-that-question",
+      labels: [GATE_LABEL],
+    });
+    bd(root, "dep", "add", impl.id, decision.id);
+    expectEqual(
+      "the store holds the implementation issue back while the question is open",
+      storeReadyAll(root).includes(impl.id),
+      false,
+    );
+    bd(root, "close", decision.id, "-r", "answered");
+    expectEqual("and offers it the moment the question is answered", storeReadyAll(root).includes(impl.id), true);
+
+    const picked = pick(root, artifacts);
+    expect("the claim refuses the cycle", picked.status !== 0, picked.stdout);
+    expectEqual("and prints no token", picked.stdout, "");
+    for (const token of [impl.id, impl.handle, decision.id, decision.handle]) {
+      expect(`the reason names ${token}`, picked.stderr.includes(token), picked.stderr);
+    }
+    expect("the reason is the preflight's own", picked.stderr.startsWith("closure would cross domains:"), picked.stderr);
+    expectEqual("nothing was claimed", storeIssue(root, impl.id).status, "open");
+    expectEqual("no cycle report was written", existsSync(join(artifacts, REPORT)), false);
+    expectEqual("and nothing was recorded as attempted", existsSync(join(artifacts, "attempted-ids.json")), false);
+
+    // The operator's fix is the check's own, and it is the edge and not something else that stopped the
+    // cycle: remove the relation and the same run directory claims the issue the answer released.
+    bd(root, "dep", "remove", impl.id, decision.id);
+    const after = pick(root, artifacts);
+    expectEqual("the cycle runs once the edge is gone", after.status, 0);
+    expectEqual("and claims the issue the answer released", JSON.parse(after.stdout), [impl.handle]);
+  });
+
+  // The check at the claim is the preflight itself, so it reads what the preflight reads — every issue,
+  // closed ones included — and not the ready set, and not only the edges of what a cycle would claim. A
+  // cross-domain edge is the graph's shape, and open refuses a run for one wherever it sits; the same
+  // shape appearing between open and a cycle refuses that cycle just the same, even when the cycle would
+  // otherwise have claimed work that had nothing to do with it.
+  await withTarget(async (root, artifacts) => {
+    const impl = publishIssue(root, {
+      title: "waiting on two blockers",
+      handle: "feat/60",
+      slug: "waiting-on-two-blockers",
+      labels: [GATE_LABEL],
+    });
+    const other = publishIssue(root, {
+      title: "the implementation blocker",
+      handle: "feat/61",
+      slug: "the-implementation-blocker",
+      labels: [GATE_LABEL],
+    });
+    const decision = publishIssue(root, {
+      title: "a question nobody has answered",
+      type: "decision",
+      handle: "feat/62",
+      slug: "a-question-nobody-has-answered",
+    });
+    bd(root, "dep", "add", impl.id, other.id);
+
+    const opened = open(root, artifacts);
+    expectEqual("open exits clean", opened.status, 0);
+    expectEqual("and the store offers the implementation blocker", storeReady(root), [other.id]);
+
+    // The crossing edge arrives after open. It releases nothing: the question is open, and the
+    // implementation issue waits on an implementation blocker as well, so the store offers neither of
+    // them. The graph is the wrong shape all the same.
+    bd(root, "dep", "add", impl.id, decision.id);
+
+    const picked = pick(root, artifacts);
+    expect("the claim refuses the cycle over an edge it was not going to claim through", picked.status !== 0, picked.stdout);
+    expectEqual("and prints no token", picked.stdout, "");
+    expectEqual("so the implementation blocker was not claimed either", storeIssue(root, other.id).status, "open");
+    expectEqual("and the dependent stayed open", storeIssue(root, impl.id).status, "open");
+  });
+
   console.log(JSON.stringify({ ok: true }));
 } catch (e) {
   console.log(JSON.stringify({ ok: false, error: e instanceof Error ? e.message : String(e) }));

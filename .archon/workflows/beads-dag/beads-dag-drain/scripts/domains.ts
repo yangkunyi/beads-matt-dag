@@ -6,7 +6,12 @@
  * implementation issue to a decision issue would let the answer to a question release implementation
  * work that was never built — which is exactly what ADR-0004 forbids. The store cannot police this:
  * `bd ready` treats a closed blocker as done whoever closed it and whatever its type. This module does,
- * in the opening node's graph preflight, before anything is claimed or repaired.
+ * in the graph preflight every node that can claim runs: `open`, before anything is claimed or repaired,
+ * and `pick`, at each cycle's own claim. The second is not a second opinion but the same check on a fresh
+ * read, and it exists because the run it guards outlives a reading: a question answered while the drain is
+ * under way — a store write like any other, made by whoever owns the decision issues — releases the
+ * implementation issue waiting on it into the very next cycle, and open read the graph before the edge
+ * existed.
  *
  * The rest of the boundary lives where the boundary is crossed:
  *
@@ -15,7 +20,8 @@
  *   - `reconcile` leaves every decision issue's status alone, because nothing in this flow ever claims
  *     one and its status belongs to whoever did.
  *
- * "decision" is spelled once here, so both readers and the preflight cannot drift apart.
+ * "decision" is spelled once here, so the frontier's exclusion, the repair and the preflight cannot drift
+ * apart.
  */
 import { allIssues, type Store, type StoreIssue } from "./store.ts";
 
@@ -44,9 +50,14 @@ function describe(issue: StoreIssue): string {
  * The dependent's own status does not narrow the check: an edge is the graph's shape, and a closed issue
  * can be reopened into a drain that would then work it.
  *
- * Throws before anything has been claimed, repaired or written.
+ * Throws before anything is claimed: in `open`, ahead of the recompute, the repair and every other write,
+ * so a refused run is a no-op; in `pick`, ahead of that cycle's claim, so a run that has already merged
+ * work still refuses the work an edge crossing the domains would release.
  */
 export function assertNoCrossDomainEdges(store: Store, target: string): void {
+  // The read is this function's own, and the whole store: the same population `open` reads, closed ones
+  // included. A caller cannot narrow it to what it holds — a ready set has no closed blocker in it, and
+  // that blocker is exactly the one whose closure released the dependent.
   const issues = allIssues(store, target);
   const byId = new Map(issues.map((issue) => [issue.id, issue]));
   const edges: string[] = [];
@@ -65,6 +76,7 @@ export function assertNoCrossDomainEdges(store: Store, target: string): void {
     `closure would cross domains: ${edges.join("; ")}; an implementation issue may only be blocked by ` +
       "another implementation issue (ADR-0004), because a decision's closure means its question is " +
       "answered, not that work is in Main. Remove the edge with the store's dependency command " +
-      "(`dep remove <dependent> <blocker>`) or restructure the dependency; nothing was claimed.",
+      "(`dep remove <dependent> <blocker>`) or restructure the dependency; the drain claims nothing " +
+      "while the edge stands.",
   );
 }
