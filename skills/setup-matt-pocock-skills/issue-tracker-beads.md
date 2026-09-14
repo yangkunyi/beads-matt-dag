@@ -293,13 +293,14 @@ Under the effort's own directory (`.scratch/<effort>/`):
 
 | Path | Holds |
 | --- | --- |
-| `sources/<slug>.md` | one **receipt** per source: line 1 the URL that was fetched, then the id, a title, any aliases, a sha256 of the text, and the text itself |
-| `notes/<slug>.md` | one **note** per question: the claims the reading supports, each citing a source, a locator and a quote |
+| `sources/<slug>.md` | one **receipt** per source: line 1 the URL that was fetched, then the id, a title, any aliases, how the text was extracted, a sha256 of the text, and the text itself (a page that sent the fetch elsewhere records both URLs) |
+| `notes/<slug>.md` | one **note** per question: the claims the reading supports, each citing a source, a locator and a quote; the file name is the reader's slug, chosen rather than derived |
 
 - **A quote must re-anchor.** A claim enters a note only when its quote is found again in the source that
 owns it — the same text, whitespace aside. With a live fetch behind it, re-anchoring fetches again and the
 hash is what moves. A claim whose quote cannot be found is refused, and the reader says so out loud rather
-than writing it down: a claim nobody can re-find is a claim nobody can check.
+than writing it down: a claim nobody can re-find is a claim nobody can check. Copy the quote out of the
+receipt — one typed from memory is exactly what this catches.
 - **A challenge is a reference, not a verdict.** A claim may name the claim it challenges; the note shows
 both — `⚠ challenged by c4` beside the challenged claim, `Challenges c1.` on the challenger — and decides
 nothing. Two readers disagreeing is information for the operator, who is the one who weighs it.
