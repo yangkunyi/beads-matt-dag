@@ -318,7 +318,14 @@ child, a command through a tool - while reads keep working.
 - `dsh` runs the harness as a child over JSON-RPC (`dsh-agent.ts`, `dsh-runtime.ts`). It carries the
   persona as the harness system prompt and the brief as the first message, folds the seven thinking
   levels onto dsh's four efforts, and enforces the wall clock by killing the child. Its session log
-  stays where the harness keeps it (`DSH_HOME`, its config root); the result reports that real path.
+  stays where the harness keeps it (`DSH_HOME`, its config root); once the harness is closed - it
+  finishes writing the turn's tail just after it reports the turn idle - the pack copies that file
+  into the run's artifacts as a **view**: `sessions/<key>/<role>.jsonl`, the shape Pi's session file
+  has, so a run's artifacts hold one session file per role whichever runner ran it. The result reports
+  the copy. Nothing keeps the two in sync and the harness's file is neither moved nor rewritten: an
+  artifact the run leaves behind, not a mirror of state (ADR-0005). A copy that cannot happen (the
+  harness wrote no session file, the artifacts are not writable) says so on stderr and reports the
+  harness's own path, because a turn whose work landed is not failed by its diagnostics.
 
 Either way the answer is read from the runner's own product and nothing else - never its terminal
 output, never the value a prompt call returns - and both report the session file on
@@ -386,6 +393,6 @@ The modules the two workflows share, all in the drain's `scripts/`:
 | `prompt.ts` | the personas themselves |
 | `agent.ts` | the agent seam: one turn in, one session's report out, and the two runners behind it |
 | `pi-session.ts` | the Pi runner: the SDK ladder, the session file, the answer reader, the bash spawn hook |
-| `dsh-agent.ts` | the dsh runner's policy: profile, gateway, effort fold, wall-clock kill |
+| `dsh-agent.ts` | the dsh runner's policy: profile, gateway, effort fold, wall-clock kill, and the session view it leaves under the run's artifacts |
 | `dsh-runtime.ts` | the dsh wire protocol, with no pack nouns |
 | `worker-env.ts` | the environment a worker runs under (the store's read-only mode) |

@@ -18,7 +18,7 @@
  * and the run merges it. That is the node-level half of the live acceptance; the live half is the
  * throwaway-lab run recorded in `.scratch/beads-dag/issues/06-real-runners.md`.
  */
-import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { executeIssue } from "../../beads-dag-execute/scripts/execute.ts";
 import { defaultAgent, packAnswer, RunnerUnavailable, type PackAgentOpts } from "../scripts/agent.ts";
@@ -59,6 +59,7 @@ const TOUCHED_ENV = [
   "STUB_SEEN",
   "STUB_HANG",
   "STUB_TURN_KIND",
+  "STUB_NO_SESSION",
 ];
 const savedEnv: Record<string, string | undefined> = {};
 for (const name of TOUCHED_ENV) savedEnv[name] = process.env[name];
@@ -78,11 +79,29 @@ async function expectUnavailable(name: string, run: () => Promise<unknown>, re: 
   if (!re.test(error.message)) throw new Error(`${name}: reason does not match ${re}: ${error.message}`);
 }
 
+/**
+ * Run a call whose stderr is the point, collecting what it writes there. The pack's runners say a
+ * degraded view on stderr rather than in the result (the channel open.ts's configuration line uses),
+ * so this test reads the channel itself.
+ */
+async function captureStderr<T>(run: () => Promise<T>): Promise<{ value: T; stderr: string }> {
+  const original = console.error;
+  const lines: string[] = [];
+  console.error = (...args: unknown[]) => {
+    lines.push(args.map((arg) => (typeof arg === "string" ? arg : String(arg))).join(" "));
+  };
+  try {
+    return { value: await run(), stderr: lines.join("\n") };
+  } finally {
+    console.error = original;
+  }
+}
+
 /** The stub dsh: the harness's newline-delimited JSON-RPC, one turn, no network. */
 function stubDshSource(): string {
   return [
     `#!${process.execPath}`,
-    'import { mkdirSync, writeFileSync } from "node:fs";',
+    'import { appendFileSync, mkdirSync, statSync, writeFileSync } from "node:fs";',
     "const seen = process.env.STUB_SEEN;",
     "const reply = (id, result) => process.stdout.write(JSON.stringify({ jsonrpc: \"2.0\", id, result }) + \"\\n\");",
     "const notify = (method, params) => process.stdout.write(JSON.stringify({ jsonrpc: \"2.0\", method, params }) + \"\\n\");",
@@ -120,8 +139,12 @@ function stubDshSource(): string {
     "    const sessionId = message.params.sessionId;",
     '    const slug = "--" + process.cwd().replace(/^\\/+|\\/+$/g, "").replace(/[^a-zA-Z0-9]+/g, "-") + "--";',
     '    const dir = [process.env.DSH_HOME, "sessions", slug, sessionId].join("/");',
-    "    mkdirSync(dir, { recursive: true });",
-    '    writeFileSync([dir, "session.v3.jsonl"].join("/"), JSON.stringify({ stub: true }) + "\\n");',
+    '    record.sessionFile = [dir, "session.v3.jsonl"].join("/");',
+    '    if (process.env.STUB_NO_SESSION !== "1") {',
+    "      mkdirSync(dir, { recursive: true });",
+    '      writeFileSync(record.sessionFile, JSON.stringify({ stub: true }) + "\\n");',
+    "    }",
+    "    save();",
     '    reply(message.id, { messageId: "message-1" });',
     '    notify("session.status", { sessionId, status: "running" });',
     '    if (process.env.STUB_HANG === "1") return;',
@@ -134,6 +157,12 @@ function stubDshSource(): string {
     "    return;",
     "  }",
     '  if (message.method === "shutdown") {',
+    // The real harness finishes writing the turn's tail after it reports the turn idle: this row
+    // stands in for those, so the pack has to copy after the harness is closed to get them.
+    '    if (record.sessionFile && process.env.STUB_NO_SESSION !== "1") {',
+    '      appendFileSync(record.sessionFile, JSON.stringify({ stub: "final" }) + "\\n");',
+    "      record.sessionMtimeMs = statSync(record.sessionFile).mtimeMs;",
+    "    }",
     "    save();",
     "    reply(message.id, {});",
     "    process.exit(0);",
@@ -185,6 +214,11 @@ try {
       expect("which is under the run's artifacts", sessionFile.startsWith(join(artifacts, "sessions")));
       expect("and really there", existsSync(sessionFile));
       expect("holding the turn's rows", readFileSync(sessionFile, "utf8").includes("the session's answer"));
+      expectEqual(
+        "and the Pi runner writes no second artifact beside it",
+        readdirSync(join(artifacts, "sessions", "feat", "01")),
+        ["implement.jsonl"],
+      );
       expectEqual("a clean turn has no lastError", result.lastError, undefined);
 
       const seen = JSON.parse(readFileSync(record, "utf8")) as Record<string, any>;
@@ -309,14 +343,23 @@ try {
         "and the thinking part never leaks into it",
         result.answer.kind === "text" && !result.answer.text.includes("THINKING-LEAK"),
       );
-      const slug = `--${work.replace(/^\/+|\/+$/g, "").replace(/[^a-zA-Z0-9]+/g, "-")}--`;
       const record = JSON.parse(readFileSync(seen, "utf8")) as Record<string, any>;
+      const harnessFile = record.sessionFile as string;
+      const viewFile = roleSessionFile(artifacts, "feat/01", "implement");
+      expectEqual("the reported session file is the view under the run's artifacts", result.sessionFile, viewFile);
+      expect("which is not where the harness keeps its own", viewFile !== harnessFile);
+      expect("the view is really there", existsSync(viewFile));
       expectEqual(
-        "the reported session file is the one the harness wrote",
-        result.sessionFile,
-        join(dshHome, "sessions", slug, record.prompt.sessionId, "session.v3.jsonl"),
+        "holding the harness's own bytes",
+        readFileSync(viewFile, "utf8"),
+        readFileSync(harnessFile, "utf8"),
       );
-      expect("which is really there", existsSync(result.sessionFile));
+      expect(
+        "including the rows the harness wrote after it reported the turn idle",
+        readFileSync(viewFile, "utf8").includes('{"stub":"final"}'),
+      );
+      expect("as a view, never a move: the harness's file is still where it wrote it", existsSync(harnessFile));
+      expectEqual("and was not rewritten", statSync(harnessFile).mtimeMs, record.sessionMtimeMs);
       expectEqual("a completed turn has no lastError", result.lastError, undefined);
       expectEqual("the harness boots the minimal profile", record.argv.join(" "), "--profile sdk-minimal");
       expectEqual("the persona is the system prompt", record.env.persona, "PERSONA");
@@ -325,6 +368,31 @@ try {
       expectEqual("the store's read-only mode reaches the harness's child", record.env.readonly, "1");
       expectEqual("the provider is the harness's default", record.initialize.provider, "deepseek-official");
       expectEqual("the model defaults", record.initialize.model, "deepseek-flash");
+
+      // A harness that left no session file: the turn's work landed, so it is still a turn - the
+      // missing view is a loud line on stderr and the result falls back to the harness's own path.
+      process.env.STUB_NO_SESSION = "1";
+      const unviewed = await captureStderr(() =>
+        dshAgent(agentOpts({ cwd: work, artifactsDir: artifacts, runner: "dsh", sessionKey: "feat/11" })),
+      );
+      delete process.env.STUB_NO_SESSION;
+      const second = JSON.parse(readFileSync(seen, "utf8")) as Record<string, any>;
+      const missingHarness = second.sessionFile as string;
+      const wantedView = roleSessionFile(artifacts, "feat/11", "implement");
+      expectEqual("a turn with no harness session file still answers", unviewed.value.answer, {
+        kind: "text",
+        text: "STUB-ANSWER",
+      });
+      expectEqual("and is not turned into a failed attempt", unviewed.value.lastError, undefined);
+      expect("no view is written", !existsSync(wantedView));
+      expect("the harness really did leave nothing there", !existsSync(missingHarness));
+      expectEqual("and the result reports the harness's own path", unviewed.value.sessionFile, missingHarness);
+      expect("while stderr says the view was not written", /dsh session view not written/.test(unviewed.stderr), unviewed.stderr);
+      expect(
+        "naming both paths",
+        unviewed.stderr.includes(missingHarness) && unviewed.stderr.includes(wantedView),
+        unviewed.stderr,
+      );
 
       // All seven of the pack's thinking levels fold onto dsh's four efforts.
       const efforts: [PackAgentOpts["thinkingLevel"], string][] = [

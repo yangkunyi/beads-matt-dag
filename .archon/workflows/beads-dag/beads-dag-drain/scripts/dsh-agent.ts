@@ -17,16 +17,21 @@
  * node; a node names its role and nothing else.
  *
  * The session log stays where the harness keeps it - under DSH_HOME, which is the harness's config
- * root (profiles live there), so this adapter does not redirect it under the run's artifacts the way
- * Pi's contract-pinned session file is. What lands under the artifacts here is nothing but what the
- * harness itself writes; the result reports the path the harness really wrote, which is what makes the
- * reported path a fact rather than a guess.
+ * root (profiles live there), so this adapter does not redirect it the way Pi's contract-pinned
+ * session file is redirected. What it does instead is copy, after the turn, the harness's own file
+ * into the run's artifacts as a **view**: `sessions/<key>/<role>.jsonl`, the shape Pi's session file
+ * has, so a run's artifacts hold one session file per role whichever runner ran it. The harness's
+ * file is neither moved nor rewritten and nothing keeps the two in sync - the copy is an artifact the
+ * run leaves behind, not a mirror of state (ADR-0005). The result reports the copy's path; a copy
+ * that cannot happen says so on stderr and reports the harness's own path instead, because a turn
+ * whose work already landed is not failed by its diagnostics.
  */
-import { existsSync, readFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { packAnswer, RunnerUnavailable, type PackAgentOpts, type PackAgentResult } from "./agent.ts";
 import { DshRuntime } from "./dsh-runtime.ts";
+import { roleSessionFile } from "./pi-session.ts";
 import type { ThinkingLevel } from "./config.ts";
 
 const PROFILE = "sdk-minimal";
@@ -80,6 +85,37 @@ function dshSessionFile(dshHome: string, cwd: string, sessionId: string): string
   return existsSync(file) ? file : existsSync(dir) ? dir : file;
 }
 
+/**
+ * The harness's session file, copied into the run's artifacts as a view.
+ *
+ * The destination is Pi's own session path (`roleSessionFile`), imported rather than derived a second
+ * time: one run's artifacts hold one session file per key per role, and which runner wrote it is the
+ * only difference. Nothing here moves the harness's file, and nothing keeps the view in sync with it:
+ * the copy is an artifact this turn leaves behind, and a harness that writes again afterwards is not
+ * seen here (ADR-0005).
+ *
+ * A copy that cannot happen is diagnostics, not the turn: the work the turn did has already landed,
+ * and a node reads the result's answer, not this path. So it is a line on stderr - the channel open.ts
+ * writes the configuration line on - and the harness's own path comes back, which is where the session
+ * log really is. The caller never sees an exception from here.
+ */
+function sessionView(opts: PackAgentOpts, harnessFile: string): string {
+  const viewFile = roleSessionFile(opts.artifactsDir, opts.sessionKey, opts.role);
+  try {
+    if (!existsSync(harnessFile)) throw new Error("the harness left no session file there");
+    mkdirSync(dirname(viewFile), { recursive: true });
+    copyFileSync(harnessFile, viewFile);
+    return viewFile;
+  } catch (e) {
+    const reason = e instanceof Error ? e.message : String(e);
+    console.error(
+      `beads-dag: dsh session view not written: ${reason}: ${harnessFile} -> ${viewFile}; ` +
+        "the result reports the harness's own path",
+    );
+    return harnessFile;
+  }
+}
+
 export async function dshAgent(opts: PackAgentOpts): Promise<PackAgentResult> {
   const persona = opts.persona;
   if (!persona) {
@@ -106,7 +142,8 @@ export async function dshAgent(opts: PackAgentOpts): Promise<PackAgentResult> {
   const wallMs = opts.wallMs;
   let aborted = false;
   let wall: ReturnType<typeof setTimeout> | undefined;
-  const sessionFile = (): string => dshSessionFile(dshHome, opts.cwd, rt.sessionId);
+  /** The turn's own report, held until the harness is closed and its log can be copied. */
+  let turn: Pick<PackAgentResult, "answer" | "lastError">;
   try {
     await Promise.race([
       rt.run(opts.prompt),
@@ -119,27 +156,32 @@ export async function dshAgent(opts: PackAgentOpts): Promise<PackAgentResult> {
       }),
     ]);
     const reason = rt.finishReason();
-    return {
-      sessionFile: sessionFile(),
+    turn = {
       answer: packAnswer(rt.lastMessage()),
       lastError: reason && reason !== "completed" ? `turn ended: ${reason}` : undefined,
     };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     if (aborted) {
-      return { sessionFile: sessionFile(), answer: packAnswer(rt.lastMessage()), lastError: "agent aborted after wall clock" };
+      turn = { answer: packAnswer(rt.lastMessage()), lastError: "agent aborted after wall clock" };
+    } else if (!rt.hasStarted()) {
+      // A failure before the handshake is not a turn: the harness never came up (no `dsh` on PATH, a
+      // profile that cannot boot, a child that exits early). The caller has to hear that as a runner
+      // that could not start, or it blames an issue for a runner nobody configured.
+      throw new RunnerUnavailable(`the dsh runner could not start: ${msg}`);
+    } else {
+      turn = { answer: packAnswer(rt.lastMessage()), lastError: msg };
     }
-    // A failure before the handshake is not a turn: the harness never came up (no `dsh` on PATH, a
-    // profile that cannot boot, a child that exits early). The caller has to hear that as a runner
-    // that could not start, or it blames an issue for a runner nobody configured.
-    if (!rt.hasStarted()) throw new RunnerUnavailable(`the dsh runner could not start: ${msg}`);
-    return {
-      sessionFile: sessionFile(),
-      answer: packAnswer(rt.lastMessage()),
-      lastError: msg,
-    };
   } finally {
     clearTimeout(wall);
     await rt.close();
   }
+  // The view is taken with the harness closed, because the harness finishes writing its log after it
+  // reports the turn idle: measured live, the turn's own `assistant/message` and `turn/end` rows land
+  // a few hundred ms later, and a copy taken at idle misses them. Nothing appends after close, so this
+  // is the complete turn - and still a view: the harness's file stays where it is, unsynced.
+  return {
+    sessionFile: sessionView(opts, dshSessionFile(dshHome, opts.cwd, rt.sessionId)),
+    ...turn,
+  };
 }
