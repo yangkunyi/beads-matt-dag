@@ -1,0 +1,69 @@
+[
+  {
+    "statement": "W&B's unit is the run: one unit of computation, treated as the atomic element of a project.",
+    "sourceId": "url:https://docs.wandb.ai/guides/runs",
+    "locator": "§What are runs? (first paragraph)",
+    "quote": "A run is a single unit of computation logged by W&B. You can think of a W&B Run as an atomic element of your whole project."
+  },
+  {
+    "statement": "A W&B run is addressed by id, name, configuration and state, and those are the fields the SDK hands back.",
+    "sourceId": "url:https://docs.wandb.ai/guides/runs",
+    "locator": "§What are runs? (paragraph after the init example)",
+    "quote": "wandb.init() returns a wandb.Run object that contains properties of the run, such as its ID, name, configuration, and state."
+  },
+  {
+    "statement": "W&B separates the metric series from the run's summary: final or aggregate values live somewhere else than the logged history.",
+    "sourceId": "url:https://docs.wandb.ai/guides/runs",
+    "locator": "§Run summary",
+    "quote": "Unlike metrics that change over time, summary values typically represent a final or aggregate result."
+  },
+  {
+    "statement": "The W&B object that carries a version is the artifact, and it is defined by its relation to the runs that consumed or produced it.",
+    "sourceId": "url:https://docs.wandb.ai/guides/artifacts",
+    "locator": "intro",
+    "quote": "Use W&B Artifacts to track and version data as the inputs and outputs of your W&B Runs"
+  },
+  {
+    "statement": "An artifact's type is a label the logger chooses, and it defaults to unspecified — no taxonomy is imposed by the vendor.",
+    "sourceId": "url:https://docs.wandb.ai/guides/artifacts",
+    "locator": "§Create an artifact",
+    "quote": "If you do not specify a type, it defaults to unspecified."
+  },
+  {
+    "statement": "MLflow's unit is also a run, and it means one execution of the training code.",
+    "sourceId": "url:https://mlflow.org/docs/latest/ml/tracking/",
+    "locator": "§Concepts → Runs",
+    "quote": "MLflow Tracking is organized around the concept of runs, which are executions of some piece of data science code, for example, a single python train.py execution."
+  },
+  {
+    "statement": "In MLflow one run holds both the metadata and the artifacts, so a result is reached through the run that made it.",
+    "sourceId": "url:https://mlflow.org/docs/latest/ml/tracking/",
+    "locator": "§Concepts → Runs",
+    "quote": "Each run records metadata (various information about your run such as metrics, parameters, start and end times) and artifacts (output files from the run such as model weights, images, etc)."
+  },
+  {
+    "statement": "The container above a run in MLflow is the experiment, and it holds runs and logged models together.",
+    "sourceId": "url:https://mlflow.org/docs/latest/ml/tracking/",
+    "locator": "§Concepts → Experiments",
+    "quote": "An experiment groups together runs and models for a specific task."
+  },
+  {
+    "statement": "MLflow 3 gave logged models an identity of their own: addressed by model id, no longer only through the run that produced them.",
+    "sourceId": "url:https://mlflow.org/docs/latest/ml/tracking/",
+    "locator": "§Model URIs in MLflow 3",
+    "quote": "MLflow 3 introduces a new model URI format that uses model IDs instead of run IDs, providing more direct model referencing",
+    "challenges": "c7"
+  },
+  {
+    "statement": "MLflow's artifact store is per-run file storage: an artifact there is a file, not an object with versions of its own.",
+    "sourceId": "url:https://mlflow.org/docs/latest/ml/tracking/",
+    "locator": "§Components → Artifact Store",
+    "quote": "Artifact store persists (typically large) artifacts for each run, such as model weights (e.g. a pickled scikit-learn model), images (e.g. PNGs), model and data files (e.g. Parquet file)."
+  },
+  {
+    "statement": "Versions in MLflow come from the model registry, which is where a model name acquires a version number.",
+    "sourceId": "url:https://mlflow.org/docs/latest/ml/tracking/",
+    "locator": "§Components → Artifact Store",
+    "quote": "you can also refer to the model through a model URI of format: models:/<model-name>/<model-version>"
+  }
+]
