@@ -312,3 +312,35 @@ behind a proxy.
 - **These documents land on Main like any other document**, so a drain running later reports them in its
 range section as commits the run did not make. That is the boundary working, not the drain being
 polluted.
+
+### Ideas
+
+An idea is a question too — "is this worth doing?" — so it is a `decision` issue, exactly like every other
+inquiry object. No new type and no store configuration: the type already means *content is a question, not
+work*, the drain excludes it structurally, and the preflight already refuses blocking chains that reach it.
+
+**Its comment thread is its development record.** Append a comment each time the idea moves: what was added,
+what was dropped, what was argued down, and on whose saying. Long material stays a git file linked from the
+comment — comments record the process, documents record the conclusions. `bd comment` stamps author and time
+itself and the CLI appends only (no edit, no delete), which is why the thread is worth keeping there.
+
+**Its state is read off the record, never typed in.**
+
+| State | The fact that makes it true |
+| --- | --- |
+| `bare` | a sentence and nothing else |
+| `argued` | a comment is discussing it |
+| `evidenced` | something is linked to it — a receipt, a note, an experiment result |
+| `proposed` | a written proposal: "if we did this it would look like…" |
+| `settled` | closed — graduated (with a link to the issue it became) or dropped (`wontfix`) |
+
+Every step names a checkable fact, which is what keeps the ladder from drifting: a state somebody has to
+remember to move is the only kind that falls behind. A session *may* stamp the matching `idea:<state>` label
+so the ladder is filterable (`bd list -l idea:evidenced`), but only in the same act as the comment that makes
+it true — one action, both jobs, and no second channel for the label and the record to disagree.
+
+**The AFK leg nominates; the session creates.** A `research` ticket's agent is read-only in the store, so it
+leaves "this looks like an idea" in its note and nothing else. The idea is created in a session with the
+operator present, and graduating it — into a question, an experiment issue or a development issue, linked
+back with `relates-to` — is the session's act on the operator's word. No provenance is recorded on any of
+it.

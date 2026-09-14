@@ -58,13 +58,33 @@ real question has gone through it (2026-09-14, `lab-zfl.1` in the Target's store
   wayfinder and `/research` are generic, and the delta belongs in the tracker doc. (2/Q5 → b)
 - **Retrieval: local-first, APIs discover only.** Notes in git are the record. OpenAlex is reachable;
   Semantic Scholar needs a key. (1/Q5)
-- **An idea is a tracked object, and its development is the point.** Not a note and not a line in a
-  document: what has to survive is *how* the idea changed — what was added, dropped or argued down, on
-  whose saying — because judging whether an idea is ripe means reading how it got there. An idea does not
-  close: it graduates into an issue, or it is dropped. No provenance field is recorded on it — 6:4 is not
-  counted, above. Chosen over "ideas are material, like notes, and are not tracked" (2026-09-14, asked
-  while charting the experiments map → b). **Owed before this can be built:** its states, where it lives, what links it to
-  the question or experiment it came from and to whatever it became, and who writes it.
+- **An idea is a tracked object, and its development is the point.** What has to survive is *how* the
+  idea changed — what was added, dropped or argued down, on whose saying — because judging whether an idea
+  is ripe means reading how it got there. Chosen over "ideas are material, like notes, and are not
+  tracked". (2026-09-14, asked while charting the experiments map → b; the four decisions below settle its
+  shape.)
+- **Its home is the store, under the existing `decision` type.** Not a new type: `decision` already means
+  "content is a question, not work", the drain excludes it structurally, and the cross-domain preflight
+  already refuses chains that reach it — so an idea costs no new type, no store configuration and no change
+  to the pack, where a custom `idea` type would have to be taught to `domains.ts` (the hazard ADR-0004
+  exists to prevent). Not a document-only life either: a state that lives only in a file drifts and cannot
+  be queried. The question an idea asks is "is this worth doing?" (4/Q1 → a)
+- **Its development is its comment thread.** `bd comment` stamps author and time, and the CLI appends only
+  — there is no edit and no delete — so the thread cannot be quietly rewritten. Long material stays a git
+  file linked from a comment: comments record the process, documents record the conclusions, and a
+  document's git history is a version snapshot, never the means of keeping the process. (4/Q2 → a)
+- **Its states are derived, not maintained.** Five: `bare` (a sentence and nothing else), `argued` (someone
+  is discussing it), `evidenced` (something is linked to it — a receipt, a note, an experiment result),
+  `proposed` ("if we did this it would look like…" is written down), `settled` (closed: graduated, with a
+  link to the issue it became, or dropped with `wontfix`). Every step must name a checkable fact — a state
+  somebody has to remember to move is the only thing that drifts. The state is read off the record
+  (`bd comments --json`, the `relates-to` edges, the close reason), and the session stamps the matching
+  `idea:<state>` label **in the same act** as the comment that makes it true, so the two cannot disagree.
+  (4/Q3 → c)
+- **The session creates it and graduates it; the operator decides.** The AFK leg is read-only in the store,
+  so it can only nominate an idea in its note. An idea is created in a session with the operator present,
+  and graduating it — into a question, an experiment or a development issue, linked back with `relates-to`
+  — is the session's act on the operator's word. No provenance field: 6:4 is not counted. (4/Q4 → a)
 
 ## Mock (2026-09-14)
 
@@ -135,8 +155,9 @@ beside the pack's two.
 - **No effort has been taken through this end to end.** One question now has (2026-09-14: DVC's holdings,
   read from dvc.org through `tools/inquiry/`, 24 receipts and a note of 50 anchored claims, recorded as a
   comment on `lab-zfl.1` and closed). What is still missing is the long path: a map worked to a spec.
-- **The idea object is decided in principle and owed in shape.** Its states, home, links and author, as
-  recorded above; nothing in the tooling knows about ideas yet.
+- **The idea object is settled and owes its tool.** The ladder is readable by hand today — a comment, a
+  `relates-to` edge, a linked file, a close reason — and a small script would read it off the record and
+  stamp the label; nothing in `tools/inquiry/` knows about ideas yet.
 - **The tool has no home in a Target.** Decided: a Target that wants it copies `tools/inquiry/` in; no
   package, and the tracker doc now says so. Worth revisiting the day the copying hurts.
 - **One retrieval source is unwired**: Semantic Scholar, whose citation graph OpenAlex only half serves
