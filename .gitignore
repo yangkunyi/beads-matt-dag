@@ -1,1 +1,5 @@
 node_modules/
+
+# The front end's tooling writes demo corpora; the real one is a document like any other.
+.scratch/research-flow/mock-corpus/
+.scratch/research-flow/live-corpus/

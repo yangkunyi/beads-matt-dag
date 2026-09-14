@@ -1,0 +1,111 @@
+# The front end — grilling record
+
+**Date:** 2026-09-14 · **Status:** decisions taken in a grilling over [`00-synthesis.md`](00-synthesis.md) §8.
+Three rounds; the frontier is empty. What is left is to build the two artifacts named in round 2's Q5, and
+one loose thread (arxiv).
+
+## Decided
+
+- **Scope: the front end.** §8's "research half" is the *front end*: literature search and summarisation,
+  and capturing and organising ideas. It feeds both the development half and the DL half. §7's "science
+  half" is a different thing and is the **verification leg**; `research` stays the name of a wayfinder
+  ticket type and of the `/research` skill, never of the half. (1/Q1 → b)
+- **Decoupling: one store, by type and label.** Front-end questions are `decision`-typed beads in the
+  Target's own store, carrying `wayfinder:<type>` labels — the mapping already written in
+  `skills/setup-matt-pocock-skills/issue-tracker-beads.md`. No second workflow, no second store: the drain
+  already excludes the decision type and refuses cross-domain blocking (ADR-0004). (1/Q2 → a)
+- **Unit: a question.** A front-end work item is a question whose resolution is a decision, not a slice of
+  work; it is done when the operator accepts the answer. A source note is material, not a work item. (1/Q3 → a)
+- **A survey ticket is allowed.** A `research` ticket may be broad ("what does direction X look like"), and
+  its answer may be the questions it surfaced — graduated into the map's fog or into new tickets. The flow
+  never demands more sharpness than the operator has; that is what the fog section is for. (2/Q1 → b)
+- **6:4 is not counted.** No provenance fields, no counters, no quotas: the operator judges in the
+  discussion. The mechanism that already expresses this is wayfinder's HITL/AFK split — a HITL ticket
+  resolves only through a live exchange, and an agent that answers its own grilling questions has broken
+  the rule. (1/Q4)
+- **The corpus: receipts and notes in git.** One receipt per source (`sources/<id>.md`, line 1 = the
+  fetched URL — the convention `raw/sources/` already ran with), a notes file per ticket, and one
+  machine-checkable rule: a quote must re-anchor against the re-fetched source or it does not enter the
+  record. No PDFs in git in v1 (URL + sha256 + locator); DVC when a corpus must actually freeze. (2/Q2 → a)
+- **An answer's home and author: the repo's existing convention wins.** The answer is a store comment
+  (`bd comment`) plus a pointer in the map's Decisions-so-far; a long cited reading is a git file linked
+  from the ticket, never pasted in. The wayfinder session writes the record and closes the ticket — it
+  keeps write access, unlike a drain's workers; the operator is the decision-maker, not the typist. (2/Q3)
+- **Three domains, one store.** The front end (closed = the question is answered), development (closed =
+  in Main), experiments (closed = the result is recorded). Nothing blocks across domains; `relates-to`
+  is the only crossing link, and the operator creates the tickets in the other domains. (2/Q4 → a)
+- **The graph boundary is written now, the ADR waits.** `docs/CONTEXT.md` carries `front end`,
+  `verification leg` and `domain`; the tracker doc's *Closure never crosses domains* speaks of domains
+  rather than of two of them, and says that adding one is two acts (the type exists, and the drain is
+  taught to refuse chains reaching it). ADR-0004 is amended when the experiment domain's closure is
+  specified, not before. (3/Q1 → b; written 2026-09-14)
+- **The code boundary: the front end never enters the drain pack.** No front-end automation in the pack
+  today; if one is ever wanted it is a separate pack folder importing `store.ts`, `naming.ts`,
+  `domains.ts` and `worker-env.ts` — never a node in `beads-dag-drain`, whose every node is a claim, a
+  worktree and a merge. Recorded in the pack README's module table. (3/Q2 → b; written 2026-09-14)
+- **The corpus lands on Main.** Receipts and notes are documents, committed like `.scratch/<feature>/issues/`
+  — not a throwaway `research/<name>` branch (wayfinder's wording), not store-only. Consequence, and a
+  wanted one: a hand-written doc commit appears in the next drain's range section as a commit the run did
+  not make. (3/Q3 → a)
+- **The AFK leg is read-only.** A `/research` subagent reads the store and writes git, but cannot comment,
+  close or create issues: closing is the completion judgement, and it belongs to the side holding the
+  global view. `BD_READONLY=1` locks the store, not git. (3/Q4 → a)
+- **What gets built: documents plus one thin retrieval script.** Extend the Wayfinding section of the
+  tracker doc with the reading convention, and add a script that queries OpenAlex / Semantic Scholar,
+  fetches, and lands receipts — the one part where building it again would be worse. No new skill:
+  wayfinder and `/research` are generic, and the delta belongs in the tracker doc. (2/Q5 → b)
+- **Retrieval: local-first, APIs discover only.** Notes in git are the record. OpenAlex is reachable;
+  Semantic Scholar needs a key. (1/Q5)
+
+## Mock (2026-09-14)
+
+`tools/front-end/` — the seed of the retrieval tool, with the provider mocked: `retrieval.ts` (the seam —
+`search` + `fetchSource` — and the mock set), `corpus.ts` (the receipt, the anchor check, the note),
+`run.ts` (the driver). It runs as the AFK leg runs:
+
+    BD_READONLY=1 bun tools/front-end/run.ts [corpus-dir]
+
+Three rules are code now rather than prose: the **receipt** (`sources/<slug>.md`, line 1 the URL, the id
+and a sha256 inside); the **anchored claim** (`notes/<slug>.md`, every claim citing a source, a locator and
+a quote — and a quote that does not re-anchor refused rather than written); and the **challenge** (a claim
+naming the claim it challenges, so the note shows the pair side by side and decides nothing). The mock set
+carries one claim nobody wrote, to show the refusal, and one anchored claim that challenges another, to
+show the pair.
+
+Decided with it (round 4): challenges are in the format (Q1); the tool lives at `tools/front-end/`, a
+tracked top-level directory holding nothing of the pack (Q2).
+
+What it raised, still true:
+
+- a URL-shaped id makes a long, lossy file name (`url-https-example-lab.github.io-notes-ablation-budget.md`);
+  the id inside the receipt is canonical, so this is cosmetic until a corpus is browsed by name;
+- anchoring against the receipt is weaker than re-anchoring against the live source — the same function,
+  with a real fetch behind it once a provider exists;
+- whitespace normalisation is the whole comparison today (fine for prose, wrong for code or tables).
+
+## Retrieval, as measured
+
+- **OpenAlex answers directly (200) and needs no key.** Abstracts come back as an inverted index and have
+to be decoded; on a natural-language query its relevance is mediocre (a probe for agent-loop budgets came
+back with "Field Experiments" and a soil-microbiology paper), so a query should be a title, a DOI or
+filtered.
+- **arxiv answers through the BoostNet proxy on `127.0.0.1:23379`** — the `clash` shell — over `http://` or
+`socks5h://`. `arxiv.org/abs/<id>` returns 200 and the abstract comes down readable;
+`export.arxiv.org/api` returns 429 even with a User-Agent (so discovery is OpenAlex's job, not the API's).
+With that shell closed, arxiv is unreachable — direct, and on every other port probed.
+- **`huggingface.co/papers/<id>` answers 200** for a real arxiv id: the OA copy for a work whose arxiv page
+is out of reach.
+- **Semantic Scholar** answers 429 unauthenticated; it needs a key.
+
+The seam reads `http_proxy` / `https_proxy`, so the proxy belongs in the environment, not hard-coded in the
+tool.
+
+## Still open
+
+- The reading convention is not written into the tracker doc's Wayfinding section yet.
+- wayfinder's *Chart the map* step still says the spun-up subagent resolves a research ticket; with the
+  AFK leg read-only the session is the one that records, and the wording needs fixing.
+- `tools/front-end/` is uncommitted.
+- The real provider is not written: discovery is OpenAlex, full text and metadata are the arxiv abs page
+  through the proxy, and the mock stays as the offline path.
+

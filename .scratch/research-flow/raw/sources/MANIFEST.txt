@@ -1,0 +1,95 @@
+OK   repo-spec-kit                                  200 28095B https://raw.githubusercontent.com/github/spec-kit/main/README.md
+OK   repo-openspec                                  200 11645B https://raw.githubusercontent.com/Fission-AI/OpenSpec/main/README.md
+OK   repo-beads                                     200 11181B https://raw.githubusercontent.com/steveyegge/beads/main/README.md
+OK   repo-bmad-method                               200 6934B https://raw.githubusercontent.com/bmad-code-org/BMAD-METHOD/main/README.md
+OK   repo-ccpm                                      200 15105B https://raw.githubusercontent.com/automazeio/ccpm/main/README.md
+FAIL repo-superclaude                               404 14B https://raw.githubusercontent.com/SuperClaude-Org/SuperClaude_Framework/main/README.md
+OK   repo-superclaude                               200 19701B https://raw.githubusercontent.com/SuperClaude-Org/SuperClaude_Framework/master/README.md
+OK   repo-claude-flow                               200 30640B https://raw.githubusercontent.com/ruvnet/claude-flow/main/README.md
+OK   repo-archon                                    200 20568B https://raw.githubusercontent.com/coleam00/Archon/main/README.md
+OK   repo-openhands                                 200 10256B https://raw.githubusercontent.com/All-Hands-AI/OpenHands/main/README.md
+OK   repo-swe-agent                                 200 8285B https://raw.githubusercontent.com/SWE-agent/SWE-agent/main/README.md
+OK   repo-aide                                      200 8656B https://raw.githubusercontent.com/WecoAI/aideml/main/README.md
+OK   repo-ai-scientist                              200 19903B https://raw.githubusercontent.com/SakanaAI/AI-Scientist/main/README.md
+OK   repo-ai-scientist-v2                           200 13718B https://raw.githubusercontent.com/SakanaAI/AI-Scientist-v2/main/README.md
+OK   repo-agent-laboratory                          200 10263B https://raw.githubusercontent.com/SamuelSchmidgall/AgentLaboratory/main/README.md
+OK   repo-mle-bench                                 200 21112B https://raw.githubusercontent.com/openai/mle-bench/main/README.md
+OK   repo-frontier-evals                            200 2452B https://raw.githubusercontent.com/openai/frontier-evals/main/README.md
+OK   repo-paper-qa                                  200 60592B https://raw.githubusercontent.com/Future-House/paper-qa/main/README.md
+OK   repo-robin                                     200 9398B https://raw.githubusercontent.com/Future-House/robin/main/README.md
+OK   repo-aviary                                    200 20440B https://raw.githubusercontent.com/Future-House/aviary/main/README.md
+OK   repo-agent-os                                  200 1790B https://raw.githubusercontent.com/buildermethods/agent-os/main/README.md
+OK   repo-openai-agents                             200 8591B https://raw.githubusercontent.com/openai/openai-agents-python/main/README.md
+OK   repo-autogen                                   200 20915B https://raw.githubusercontent.com/microsoft/autogen/main/README.md
+OK   docs-kiro                                      200 249622B https://kiro.dev/docs/specs/
+OK   docs-kiro-root                                 200 262535B https://kiro.dev/
+OK   docs-mlflow-mcp                                200 71322B https://mlflow.org/docs/latest/genai/mcp/
+FAIL docs-mlflow-tracking                           200 340B https://mlflow.org/docs/latest/tracking.html
+OK   docs-wandb-mcp                                 200 616474B https://docs.wandb.ai/platform/mcp-server
+OK   docs-wandb-artifacts                           200 406806B https://docs.wandb.ai/guides/artifacts
+FAIL docs-dvc                                       200000 14667B https://dvc.org/doc
+OK   docs-hydra                                     200 42675B https://hydra.cc/docs/intro/
+OK   docs-slurm                                     200 10141B https://slurm.schedmd.com/documentation.html
+FAIL docs-skypilot                                  301000 0B https://docs.skypilot.co/en/latest/docs/index.html
+FAIL docs-github-issues                             000000 0B https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/adding-sub-issues
+OK   docs-openreview                                200 937786B https://openreview.net/
+OK   hn-spec-driven-development                     200 13582B https://hn.algolia.com/api/v1/search?query=spec%20driven%20development&tags=story&hitsPerPage=8
+OK   hn-claude-code-subagents                       200 11952B https://hn.algolia.com/api/v1/search?query=claude%20code%20subagents&tags=story&hitsPerPage=8
+OK   hn-ai-scientist-agent                          200 9983B https://hn.algolia.com/api/v1/search?query=ai%20scientist%20agent&tags=story&hitsPerPage=8
+OK   hn-llm-agent-research-experiments              200 39076B https://hn.algolia.com/api/v1/search?query=llm%20agent%20research%20experiments&tags=story&hitsPerPage=8
+OK   hn-issue-tracker-coding-agent                  200 39311B https://hn.algolia.com/api/v1/search?query=issue%20tracker%20coding%20agent&tags=story&hitsPerPage=8
+OK   hn-beads-issue-tracker                         200 42618B https://hn.algolia.com/api/v1/search?query=beads%20issue%20tracker&tags=story&hitsPerPage=8
+FAIL paper-ai-scientist-v1                          429 174B https://api.semanticscholar.org/graph/v1/paper/search?query=&limit=3&fields=title,year,abstract,externalIds,url,citationCount,openAccessPdf,venue
+FAIL paper-ai-scientist-v2                          429 174B https://api.semanticscholar.org/graph/v1/paper/search?query=&limit=3&fields=title,year,abstract,externalIds,url,citationCount,openAccessPdf,venue
+FAIL paper-aide                                     429 174B https://api.semanticscholar.org/graph/v1/paper/search?query=&limit=3&fields=title,year,abstract,externalIds,url,citationCount,openAccessPdf,venue
+FAIL paper-mle-bench                                429 174B https://api.semanticscholar.org/graph/v1/paper/search?query=&limit=3&fields=title,year,abstract,externalIds,url,citationCount,openAccessPdf,venue
+FAIL paper-re-bench                                 429 174B https://api.semanticscholar.org/graph/v1/paper/search?query=&limit=3&fields=title,year,abstract,externalIds,url,citationCount,openAccessPdf,venue
+FAIL paper-paperbench                               400 48B https://api.semanticscholar.org/graph/v1/paper/search?query=&limit=3&fields=title,year,abstract,externalIds,url,citationCount,openAccessPdf,venue
+FAIL paper-agent-laboratory                         429 174B https://api.semanticscholar.org/graph/v1/paper/search?query=&limit=3&fields=title,year,abstract,externalIds,url,citationCount,openAccessPdf,venue
+FAIL paper-co-scientist                             429 174B https://api.semanticscholar.org/graph/v1/paper/search?query=&limit=3&fields=title,year,abstract,externalIds,url,citationCount,openAccessPdf,venue
+FAIL paper-scicode                                  429 174B https://api.semanticscholar.org/graph/v1/paper/search?query=&limit=3&fields=title,year,abstract,externalIds,url,citationCount,openAccessPdf,venue
+FAIL paper-ai-scientist-v1          429 174BB The AI Scientist: Towards Fully Automated Open-Ended Scientific Discovery
+FAIL paper-ai-scientist-v2          429 174BB The AI Scientist-v2: Workshop-Level Automated Scientific Discovery via Agentic Tree Search
+FAIL paper-mlgym                                    429 174B https://api.semanticscholar.org/graph/v1/paper/search?query=&limit=3&fields=title,year,abstract,externalIds,url,citationCount,openAccessPdf,venue
+FAIL paper-aide                     429 174BB AIDE: AI-Driven Exploration in the Space of Code
+FAIL paper-mle-bench                429 174BB MLE-bench: Evaluating Machine Learning Agents on Machine Learning Engineering
+FAIL paper-re-bench                 429 174BB RE-Bench: Evaluating frontier AI R&D capabilities of language model agents against human experts
+FAIL paper-paperbench               429 174BB PaperBench: Evaluating AI's Ability to Replicate AI Research
+FAIL paper-core-bench                               429 174B https://api.semanticscholar.org/graph/v1/paper/search?query=&limit=3&fields=title,year,abstract,externalIds,url,citationCount,openAccessPdf,venue
+OK   paper-agent-laboratory         200 9447B Agent Laboratory: Using LLM Agents as Research Assistants
+FAIL paper-scienceagentbench                        429 174B https://api.semanticscholar.org/graph/v1/paper/search?query=&limit=3&fields=title,year,abstract,externalIds,url,citationCount,openAccessPdf,venue
+FAIL paper-co-scientist             429 174BB Towards an AI co-scientist
+FAIL paper-scicode                  429 174BB SciCode: A Research Coding Benchmark Curated by Scientists
+FAIL paper-mlgym                    429 174BB MLGym: A New Framework and Benchmark for Advancing AI Research Agents
+FAIL paper-core-bench               429 174BB CORE-Bench: Fostering the Reproducibility of Computational Research through an Agentic Framework
+FAIL paper-coscientist                              429 174B https://api.semanticscholar.org/graph/v1/paper/search?query=&limit=3&fields=title,year,abstract,externalIds,url,citationCount,openAccessPdf,venue
+FAIL paper-scienceagentbench        429 174BB ScienceAgentBench: Toward Rigorous Assessment of Language Agents for Data-Driven Scientific Discovery
+FAIL paper-coscientist              429 174BB Autonomous chemical research with large language models
+FAIL paper-chemcrow                 429 174BB ChemCrow: Augmenting large-language models with chemistry tools
+FAIL paper-virtual-lab              429 174BB The Virtual Lab: AI Agents Design New SARS-CoV-2 Nanobodies with Experimental Validation
+FAIL paper-chemcrow                                 429 174B https://api.semanticscholar.org/graph/v1/paper/search?query=&limit=3&fields=title,year,abstract,externalIds,url,citationCount,openAccessPdf,venue
+OK   paper-funsearch                200 9195B Mathematical discoveries from program search with large language models
+FAIL paper-virtual-lab                              429 174B https://api.semanticscholar.org/graph/v1/paper/search?query=&limit=3&fields=title,year,abstract,externalIds,url,citationCount,openAccessPdf,venue
+FAIL paper-alphaevolve              429 174BB AlphaEvolve: A coding agent for scientific and algorithmic discovery
+FAIL paper-a-lab                    429 174BB An autonomous laboratory for the accelerated synthesis of novel materials
+FAIL paper-kosmos                   429 174BB Kosmos: an AI scientist for autonomous discovery
+FAIL paper-robin                    429 174BB A multi-agent system for autonomous scientific discovery
+FAIL paper-paperqa2                 429 174BB Language agents achieve superhuman synthesis of scientific knowledge
+FAIL paper-funsearch                                429 174B https://api.semanticscholar.org/graph/v1/paper/search?query=&limit=3&fields=title,year,abstract,externalIds,url,citationCount,openAccessPdf,venue
+FAIL paper-self-driving-lab         429 174BB Self-driving laboratory autonomous experimentation review
+FAIL paper-repro-ml                 429 174BB Reproducibility in machine learning empirical study survey
+FAIL paper-hallucination-cite       429 174BB Fabricated references hallucinations in scientific writing large language models
+FAIL paper-research-ideas           429 174BB Can large language models generate novel research ideas human study
+FAIL paper-ai-peer-review           429 174BB Large language models as peer reviewers evaluation study
+FAIL paper-alphaevolve                              429 174B https://api.semanticscholar.org/graph/v1/paper/search?query=&limit=3&fields=title,year,abstract,externalIds,url,citationCount,openAccessPdf,venue
+FAIL paper-ai-science-crit          429 174BB Illusions of understanding in AI-driven research
+FAIL paper-agentic-science          429 174BB Agentic science autonomous research agents survey verification gap
+FAIL paper-a-lab                                    429 174B https://api.semanticscholar.org/graph/v1/paper/search?query=&limit=3&fields=title,year,abstract,externalIds,url,citationCount,openAccessPdf,venue
+FAIL paper-kosmos                                   400 48B https://api.semanticscholar.org/graph/v1/paper/search?query=&limit=3&fields=title,year,abstract,externalIds,url,citationCount,openAccessPdf,venue
+FAIL paper-robin                                    429 174B https://api.semanticscholar.org/graph/v1/paper/search?query=&limit=3&fields=title,year,abstract,externalIds,url,citationCount,openAccessPdf,venue
+FAIL paper-paperqa2                                 429 174B https://api.semanticscholar.org/graph/v1/paper/search?query=&limit=3&fields=title,year,abstract,externalIds,url,citationCount,openAccessPdf,venue
+FAIL paper-self-driving-lab                         429 174B https://api.semanticscholar.org/graph/v1/paper/search?query=&limit=3&fields=title,year,abstract,externalIds,url,citationCount,openAccessPdf,venue
+FAIL paper-repro-ml                                 429 174B https://api.semanticscholar.org/graph/v1/paper/search?query=&limit=3&fields=title,year,abstract,externalIds,url,citationCount,openAccessPdf,venue
+FAIL paper-hallucination-cite                       429 174B https://api.semanticscholar.org/graph/v1/paper/search?query=&limit=3&fields=title,year,abstract,externalIds,url,citationCount,openAccessPdf,venue
+FAIL paper-research-ideas                           429 174B https://api.semanticscholar.org/graph/v1/paper/search?query=&limit=3&fields=title,year,abstract,externalIds,url,citationCount,openAccessPdf,venue
+FAIL paper-ai-peer-review                           429 174B https://api.semanticscholar.org/graph/v1/paper/search?query=&limit=3&fields=title,year,abstract,externalIds,url,citationCount,openAccessPdf,venue
