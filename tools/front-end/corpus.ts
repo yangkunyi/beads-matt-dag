@@ -41,7 +41,7 @@ export function writeReceipt(corpusDir: string, src: Source, fetchedAt = new Dat
 		[
 			`SOURCE-URL: ${src.url}`,
 			`FETCHED: ${fetchedAt.toISOString()}`,
-			`HTTP: 200`,
+			`HTTP: ${src.http}`,
 			`SOURCE-ID: ${src.id}`,
 			`TITLE: ${src.title}`,
 			...(src.aliases.length ? [`ALIASES: ${src.aliases.join(" ")}`] : []),

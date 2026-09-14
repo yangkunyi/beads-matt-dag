@@ -21,7 +21,7 @@
  *     *alias* on the source, never the thing fetched.
  */
 
-export type SourceKind = "doi" | "openalex" | "url";
+export type SourceKind = "doi" | "openalex" | "arxiv" | "url";
 
 export type Source = {
 	/** The citable key — what a claim cites, and what the receipt is named after. */
@@ -31,6 +31,8 @@ export type Source = {
 	/** What was actually fetched. */
 	url: string;
 	kind: SourceKind;
+	/** The status the fetch really saw: a receipt states it, and nothing here pretends it was a 200. */
+	http: number;
 	title: string;
 	/** The fetched text, verbatim: a quote is anchored against this and nothing else. */
 	text: string;
@@ -47,6 +49,7 @@ const MOCK: Source[] = [
 		aliases: [],
 		url: "https://example-publisher.org/oa/onwards-2024.pdf",
 		kind: "doi",
+		http: 200,
 		title: "Budget, not model: what makes an agent-run experiment loop converge",
 		text: [
 			"Abstract. We compare fixed short-budget loops against single long jobs on a shared task set.",
@@ -59,6 +62,7 @@ const MOCK: Source[] = [
 		aliases: ["arxiv:2410.01234"],
 		url: "https://huggingface.co/papers/2410.01234",
 		kind: "openalex",
+		http: 200,
 		title: "Repair at open: recovering work a killed run left behind",
 		text: [
 			"We describe a recovery pass that runs before any new work is claimed: a run reads its own",
@@ -72,6 +76,7 @@ const MOCK: Source[] = [
 		aliases: [],
 		url: "https://example-lab.github.io/notes/ablation-budget",
 		kind: "url",
+		http: 200,
 		title: "Lab notes: a budget ablation that did not replicate",
 		text: [
 			"We could not reproduce the 71%/43% split on our hardware; our budget sweep is dominated by",
