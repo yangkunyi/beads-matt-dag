@@ -54,6 +54,21 @@ when `pick` finds nothing eligible. A blocker's closure inside the run releases 
 same run — `pick` asks the store again on every cycle — so holding a dependent for a later drain takes
 the brake, not the edge.
 
+The loop's cadence is the work rather than a clock: the first `pick` runs once `open` is done, and each next
+one runs when the previous batch has finished (every issue in it merged and recorded) — seconds after the
+last of them, with a batch as long as its slowest issue. `pick` itself is about two seconds.
+
+So publishing while a drain runs is a move, not a race to avoid. A bead published — and, for an amendment,
+a body committed to Main — before the next cycle's read is in that cycle's frontier, and the same run claims
+it, fresh ticket or released dependent alike. Only the tail is out of reach: the loop ends on the first
+`pick` that comes back empty, so what is published after that read (while `review` and `summary` run) waits
+for the next drain. Publishing early is free; publishing at the end costs a run.
+
+Nothing waits for work, though: the pack has no daemon and no mode that blocks on an empty frontier, and a
+second drain against this Target is refused by the run lock until the first one ends. "Add work as the
+drain goes" therefore means keeping the frontier non-empty ahead of that last read; past it, the next drain
+is a second `archon workflow run beads-dag-drain --detach`.
+
 The Target's config is optional at `.scratch/beads-dag.yaml`:
 
 | key | sets |
