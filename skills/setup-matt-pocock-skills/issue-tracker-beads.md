@@ -285,7 +285,9 @@ A `research` ticket is the AFK leg: an agent reads, and what it leaves behind is
 store write. It runs with the store in its read-only mode (`BD_READONLY=1`, the mode a drain's worker runs
 under), so it cannot comment, close or create: the session that holds the map is the one that records the
 answer. The tooling that fetches and writes the documents is a target-side script — not part of the pack,
-and `bd` is not involved in it.
+and `bd` is not involved in it. It is not installed either: it lives in the repo this flow is designed in,
+`tools/front-end/`, and `bun` and `curl` are all it needs — a Target that wants it copies the directory in.
+No package, on purpose: copying is the whole distribution story until copying hurts.
 
 Under the effort's own directory (`.scratch/<effort>/`):
 

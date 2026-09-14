@@ -123,10 +123,11 @@ beside the pack's two.
 
 ## Still open
 
-- The reading convention is not written into the tracker doc's Wayfinding section yet.
-- wayfinder's *Chart the map* step still says the spun-up subagent resolves a research ticket; with the
-  AFK leg read-only the session is the one that records, and the wording needs fixing.
-- `tools/front-end/` is uncommitted.
-- The real provider is not written: discovery is OpenAlex, full text and metadata are the arxiv abs page
-  through the proxy, and the mock stays as the offline path.
+- **Nobody has taken a real question through this yet.** The mock proved the format and the live path
+  proved fetching; the reading itself — a question, its sources, a note with claims that survive
+  re-anchoring — has not been done for real.
+- **The tool has no home in a Target.** Decided: a Target that wants it copies `tools/front-end/` in; no
+  package, and the tracker doc now says so. Worth revisiting the day the copying hurts.
+- **One retrieval source is unwired**: Semantic Scholar, whose citation graph OpenAlex only half serves
+  (it wants a free key). The seam takes it without changing a caller.
 
