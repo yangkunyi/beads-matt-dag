@@ -198,6 +198,8 @@ and read state — status, labels, comments — from the store:
   hides only `closed` — claimed work is not a triage queue either. `/triage` discovers its buckets
   with these; the drain's frontier is not one of them — `pick` asks for the unfiltered `bd ready` and
   applies the gate rule itself ("The frontier and the claim").
+- **Blocked**: `bd blocked --json` — the issues a blocker is holding back, each naming the blockers it
+  waits on (`blocked_by`). It takes no `--limit`, so the ready row's `--limit 0` does not carry over.
 - **Comments**: `bd comment <id> "<text>"` writes one; `bd comments <id> --json` reads them back.
 - **Transitions**: `bd history <id>` is the store's record of every status change. Git carries the
   merge commits and nothing else about state; there is no copy of the transitions in git, so the store's
