@@ -22,6 +22,10 @@ below — if a term can only be explained by a command, it belongs in a spec.
   questions. Its issues are the `decision` type, and it produces decisions, not deliverables. The
   design record's "research half" (§8) means this half. Called the front end until 2026-09-14, when the
   name turned out to read as a UI.
+- **idea** — a proposition under development, tracked so that its *development* is kept and not just its
+  current state: judging whether an idea is ripe means reading how it got there. It carries its origin
+  (operator or agent) and never closes — it graduates into an issue, or it is dropped. Its states, home
+  and links are not settled yet.
 - **verification leg** — the flow's half that checks a result against something the flow cannot supply
   itself: an instrument, a benchmark, an outside referee. The design record's "science half" (§7)
   means this one. Not designed yet.

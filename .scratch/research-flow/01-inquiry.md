@@ -1,7 +1,8 @@
 # Inquiry — grilling record
 
-**Date:** 2026-09-14 · **Status:** the decisions below are settled and the tool behind them exists; what
-has not happened is a real effort taken through it.
+**Date:** 2026-09-14 · **Status:** the decisions below are settled and the tool behind them exists; a first
+real question has gone through it (2026-09-14, `lab-zfl.1` in the Target's store — 24 receipts, one note of
+50 anchored claims), and what has not happened is an effort taken end to end.
 **Name:** this half was called the *front end* while these rounds ran, and was renamed to *inquiry* on
 2026-09-14: a front end reads as a UI, and this half has nothing to do with one.
 
@@ -57,6 +58,13 @@ has not happened is a real effort taken through it.
   wayfinder and `/research` are generic, and the delta belongs in the tracker doc. (2/Q5 → b)
 - **Retrieval: local-first, APIs discover only.** Notes in git are the record. OpenAlex is reachable;
   Semantic Scholar needs a key. (1/Q5)
+- **An idea is a tracked object, and its development is the point.** Not a note and not a line in a
+  document: what has to survive is *how* the idea changed — what was added, dropped or argued down, on
+  whose saying — because judging whether an idea is ripe means reading how it got there. An idea carries
+  its origin (operator or agent) and does not close: it graduates into an issue, or it is dropped. Chosen
+  over "ideas are material, like notes, and are not tracked" (2026-09-14, asked while charting the
+  experiments map → b). **Owed before this can be built:** its states, where it lives, what links it to
+  the question or experiment it came from and to whatever it became, and who writes it.
 
 ## Mock (2026-09-14)
 
@@ -124,9 +132,11 @@ beside the pack's two.
 
 ## Still open
 
-- **Nobody has taken a real question through this yet.** The mock proved the format and the live path
-  proved fetching; the reading itself — a question, its sources, a note with claims that survive
-  re-anchoring — has not been done for real.
+- **No effort has been taken through this end to end.** One question now has (2026-09-14: DVC's holdings,
+  read from dvc.org through `tools/inquiry/`, 24 receipts and a note of 50 anchored claims, recorded as a
+  comment on `lab-zfl.1` and closed). What is still missing is the long path: a map worked to a spec.
+- **The idea object is decided in principle and owed in shape.** Its states, home, links and author, as
+  recorded above; nothing in the tooling knows about ideas yet.
 - **The tool has no home in a Target.** Decided: a Target that wants it copies `tools/inquiry/` in; no
   package, and the tracker doc now says so. Worth revisiting the day the copying hurts.
 - **One retrieval source is unwired**: Semantic Scholar, whose citation graph OpenAlex only half serves
