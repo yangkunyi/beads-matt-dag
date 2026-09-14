@@ -28,3 +28,6 @@ The pack is copied to `~/.archon/workflows/beads-dag`. Its two local gates run f
 live in it, never in the pack: the repro suite
 (`bun .archon/workflows/beads-dag/beads-dag-drain/tests/run-all.ts`) and the typecheck
 (`./node_modules/.bin/tsc -p tsconfig.pack.json`).
+
+The front end's tooling under `tools/` is not the pack and nothing else checks it, so it carries its own
+one-line gate: `./node_modules/.bin/tsc -p tsconfig.tools.json`.
