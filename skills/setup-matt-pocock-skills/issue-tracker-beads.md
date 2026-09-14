@@ -270,8 +270,9 @@ of type `decision`.
   implementation issue. A decision issue never enters a drain.
 - **Blocking**: the same `blocks` edges (`bd dep add`); an issue is unblocked when every issue blocking
   it is closed.
-- **Frontier**: the `decision`-typed issues in the store's ready answer, minus the claimed ones; first
-  in map order wins.
+- **Frontier**: the `decision`-typed issues in the store's ready answer, minus the claimed ones and minus
+  the map itself — the map carries `wayfinder:map` and is a container, not a ticket, so a query that only
+  filters the type hands it back. The first by handle (`01` before `02`) is the one to take.
 - **Claim**: `bd update <id> -s in_progress`, and record the driving dev with the store's assignee
   field (`bd update <id> --assignee <dev>`) — for a decision issue that assignee is the claim a
   concurrent session reads.
