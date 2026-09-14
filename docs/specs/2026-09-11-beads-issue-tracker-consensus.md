@@ -872,7 +872,21 @@ shows the status and not the body, §6).
    the next run's line instead of disappearing behind the ref. `15` has a run report the configuration it used — **done 2026-09-12** (`109ccc4`): one stderr line, `beads-dag: config: <key>=<value> (<source>)`, written after the store preflight and typed over the pack's own key list so a key added later cannot be left out of it; stderr because a node's stdout is its token channel. Every key has a usable
    default, so a Target whose config file is absent is not a mystery. A fifth defect is in the same feature
    for a different reason — the suite's off-PATH premise removed only the one directory the resolver
-   happened to pick, so a second `bd` on `PATH` silently broke it: `.scratch/beads-dag/issues/16`.
+   happened to pick, so a second `bd` on `PATH` silently broke it: `.scratch/beads-dag/issues/16` — **done
+   2026-09-13** (`a6b2e16`): the premise holds by construction now (every `PATH` entry under which an
+executable store resolves is dropped, and the repro shows it rather than asserting it). The four
+findings that same acceptance recorded **only** are fixed as well (2026-09-14, same feature):
+`.scratch/beads-dag/issues/17` — **done** (`18d8741`): a dsh turn's harness session is copied into the
+run's artifacts as a view, after the runtime is closed (measured: the harness writes the turn's ending
+after it reports idle), and a copy that cannot happen is one stderr line, never a turn failed by its own
+diagnostics. `18` — **done** (`8494806`): the domain check runs again at every claim, the same predicate
+and the same message as `open`'s, so a question answered inside a run cannot release implementation work
+into that run. `19` — **done** (`e8ab9da`): the check walks the blocking ancestry rather than one `blocks`
+edge (`parent-child` turns out to be both an edge type and a field the store derives; a two-deep
+implementation chain stays legal). `20` — **done** (`c98a405`): one drain at a time per Target, a run lock
+beside the Main lock in the Target's git directory, refused rather than waited on, stolen by a dead
+holder's pid; a run records the lock it holds in its artifacts. The four are what §10.6's acceptance
+called noticed-but-uncovered, and the operator-visible parts of them are in the drain skill.
 2. **Write the skill set** (§10.7) — after step 1's acceptance, sourced in this repo, installed by
    copy. Tracked as `.scratch/beads-skills/issues/01`–`06`: the contract, the operator skill, the publish
    side, the rest of the edits, the install, and the set's own acceptance. **01–05 are done
@@ -895,5 +909,10 @@ shows the status and not the body, §6).
    `.scratch/beads-skills/issues/06-the-set-accepts-itself.md`: two sentences were fixed in the set (the
    setup skill's init-before-step-4 rule, the drain's release-in-the-same-run rule) and two contract gaps
    became `.scratch/beads-skills/issues/08` (the blocked read is not named, and a flag was guessed from its
-   neighbour) and `09` (the frontier is read per pick, not per run).
+   neighbour) and `09` (the frontier is read per pick, not per run). **Both are done 2026-09-14**: `4c9b110`
+   puts the blocked read in the contract with the clause that keeps the ready row's `--limit 0` from
+   carrying over, and `df4421d` states the frontier read is per `pick` cycle and names what holding a
+   dependent back actually takes (the brake). Two contract rows the pack work had left stale were corrected
+   with them (`c3b581d`): `review-base` is the recorded position rather than Main's tip (stale since `13`),
+   and `pick-exclusions.json` holds the run's last cycle.
 4. Retire §9's unverified items as they are resolved.
