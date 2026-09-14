@@ -209,6 +209,45 @@ to a Target is two acts, not one: its type exists in the store, **and** the drai
 chains that reach it. Until it is, an issue of the new type blocks like any other — which means the new
 type must not enter a blocking chain from either side.
 
+**A link may cross; a gate never does.** What joins two domains carries information, and the flow names
+exactly two kinds for it, both non-blocking:
+
+- `bd dep relate <a> <b>` — `relates-to`, a bidirectional see-also, for anything looser than a handoff;
+- `bd dep add <derived> <source> --type discovered-from` — the handoff: a work ticket created because a
+  result justified it points back at the experiment, and `bd dep list <experiment> --direction=up` then
+  answers what came out of it.
+
+One edge per pair: bd refuses a second relation of a different type between the same two issues, so a
+handoff is `discovered-from` and a see-also is `relates-to`, never both.
+
+Do not reach for the store's other named kinds. On bd 1.2.2, `validates`, `caused-by`, `tracks`,
+`supersedes` and `until` all render in `bd show` as **DEPENDS ON** / **BLOCKS** while holding nothing
+back — `bd ready` releases the dependent with the edge standing. A gate that displays as a gate and does
+not gate is worse than no edge at all, so the flow uses none of them. Only `blocks` gates; `parent-child`
+does not gate by itself, but a child waits on what its parent waits on (also measured), which is why the
+drain walks both.
+
+**Inside a domain, blocking is normal.** One experiment waiting on another — a pilot before a full sweep
+— is the same closure meaning on both ends, and it is the mechanism a result spawning the next run uses.
+Across the boundary, sequence it by hand: the result is read, and the ticket it justifies is created on
+the other side afterwards.
+
+**A dependency running backwards is recorded, not gated.** An experiment that needed code says so in its
+record's version pointers — the commit it ran against, the lock's hash, the artifact pointers — never
+with a `blocks` edge pointing at a work ticket. Nothing in the store blocks an experiment on work: the ban
+is absolute in both directions. The reverse case is worth stating because it looks harmless (code in Main
+releasing a run) and it is still one domain's closure releasing another domain's issue.
+
+**Both ends carry the handoff.** The experiment's record gains a line under its verdict naming what it fed
+(`fed: <handle>`, or nothing yet), and the work ticket's body names the experiment it came from, so
+neither reader has to leave the ticket they are on. A handoff found later is a change like any other: a
+comment for the history, and the document updated to the current picture.
+
+**Who creates the ticket on the other side.** The operator decides, and the session types it in the same
+act, on the operator's word — the rule an idea graduates under (see *Ideas*). The judgement is the
+operator's; the keystrokes belong to whoever holds the session. An AFK leg running read-only may not
+create one, only nominate it.
+
 ## When a skill says "fetch the relevant ticket"
 
 The user normally passes the handle (`auth/02`) or the bead's id; read the body from its derived path,

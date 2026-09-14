@@ -64,9 +64,11 @@ below — if a term can only be explained by a command, it belongs in a spec.
 - **domain** — a family of issues whose closure means the same thing. Three: inquiry
   (`closed` = the question is answered), development (`closed` = the work is in Main), experiments
   (`closed` = the result is recorded).
-- **crossing** — `relates-to` is the only link that joins two domains; a blocking relation never does
-  — neither `blocks` nor the `parent-child` hierarchy, at any depth (ADR-0004). A closure in one
-  domain must never release work in another.
+- **crossing** — two non-blocking links join two domains, and no other kind does: `relates-to` for a
+  loose see-also, and `discovered-from` for the handoff a result makes (a work ticket created because an
+  experiment's result justified it). A blocking relation never crosses — neither `blocks` nor the
+  `parent-child` hierarchy, at any depth (ADR-0004) — in either direction. A closure in one domain must
+  never release work in another.
 
 ## Labels
 

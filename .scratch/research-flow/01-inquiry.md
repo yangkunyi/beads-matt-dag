@@ -34,8 +34,11 @@ real question has gone through it (2026-09-14, `lab-zfl.1` in the Target's store
   from the ticket, never pasted in. The wayfinder session writes the record and closes the ticket — it
   keeps write access, unlike a drain's workers; the operator is the decision-maker, not the typist. (2/Q3)
 - **Three domains, one store.** The inquiry domain (closed = the question is answered), development (closed =
-  in Main), experiments (closed = the result is recorded). Nothing blocks across domains; `relates-to`
-  is the only crossing link, and the operator creates the tickets in the other domains. (2/Q4 → a)
+  in Main), experiments (closed = the result is recorded). Nothing blocks across domains, in either
+  direction, and opening a ticket in another domain is the operator's decision — the session types it on his
+  word. (2/Q4 → a, amended 2026-09-14: this line said "the operator creates the tickets in the other
+  domains" until the experiment map settled who types them, and said `relates-to` was the only crossing link
+  until the vocabulary became two kinds — a see-also, and the `discovered-from` handoff.)
 - **The graph boundary is written now, the ADR waits.** `docs/CONTEXT.md` carries `inquiry`,
   `verification leg` and `domain`; the tracker doc's *Closure never crosses domains* speaks of domains
   rather than of two of them, and says that adding one is two acts (the type exists, and the drain is
