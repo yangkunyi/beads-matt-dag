@@ -368,6 +368,24 @@ export function recordedFailures(store: Store, target: string, id: string): Reco
 }
 
 /**
+ * Write one comment on an issue. The store stamps author and time itself, and appends only - a comment is
+ * an event, and the writing flow never edits or deletes one. `recordFailedAttempt` is built on this, and
+ * the inquiry executor's repair uses it for the release it records.
+ */
+export function commentIssue(store: Store, target: string, id: string, text: string): void {
+  runStore(store, target, ["comment", id, text]);
+}
+
+/**
+ * Put an issue back to `open`: the status every released claim returns to, failed or landed. It is the
+ * plain status write `recordFailedAttempt` ends with, named so a caller that is not recording a failure
+ * does not have to spell it again.
+ */
+export function reopenIssue(store: Store, target: string, id: string): void {
+  runStore(store, target, ["update", id, "-s", "open"]);
+}
+
+/**
  * Record a failed attempt: the reason as a comment, then the issue back to `open`. Nothing is closed.
  *
  * This is the whole of the pack's failure policy (§10.3). A failure is an event, not a status: the
@@ -385,6 +403,6 @@ export function recordedFailures(store: Store, target: string, id: string): Reco
  */
 export function recordFailedAttempt(store: Store, target: string, id: string, reason: string): void {
   const attempt = 1 + recordedFailures(store, target, id).length;
-  runStore(store, target, ["comment", id, `attempt ${attempt} failed: ${reason}`]);
-  runStore(store, target, ["update", id, "-s", "open"]);
+  commentIssue(store, target, id, `attempt ${attempt} failed: ${reason}`);
+  reopenIssue(store, target, id);
 }

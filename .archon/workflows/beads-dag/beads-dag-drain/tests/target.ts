@@ -7,6 +7,7 @@ import { delimiter, dirname, join } from "node:path";
 
 const drainDir = join(import.meta.dir, "..");
 const executeDir = join(import.meta.dir, "../../beads-dag-execute");
+const inquiryDir = join(import.meta.dir, "../../beads-dag-inquiry");
 
 /** The pack root, the folder both workflow folders live in. */
 export const packDir = join(import.meta.dir, "../..");
@@ -25,6 +26,12 @@ export const execute = {
   dir: executeDir,
   yaml: join(executeDir, "beads-dag-execute.yaml"),
   script: (name: string): string => join(executeDir, "scripts", `${name}.ts`),
+};
+
+export const inquiry = {
+  dir: inquiryDir,
+  yaml: join(inquiryDir, "beads-dag-inquiry.yaml"),
+  script: (name: string): string => join(inquiryDir, "scripts", `${name}.ts`),
 };
 
 /** The drain's config, relative to the Target: what the tests write a store override into. */
@@ -137,6 +144,16 @@ export function bd(root: string, ...args: string[]): string {
 /** Initialise a real store in a Target, the way the design decides: embedded, no agents file, no hooks. */
 export function initStore(root: string, prefix = "target"): void {
   bd(root, "init", "--prefix", prefix, "--non-interactive", "--skip-agents", "--skip-hooks");
+}
+
+/**
+ * The two Target-side premises a reading run opens on: the reading tools, and an effort area. The fixture
+ * makes both as directories, which is exactly what the opening node tests - the tools are a copy the
+ * Target makes and the pack ships neither, so their contents are not this suite's business.
+ */
+export function initReadingTarget(root: string): void {
+  mkdirSync(join(root, "tools", "inquiry"), { recursive: true });
+  mkdirSync(join(root, ".scratch"), { recursive: true });
 }
 
 /**

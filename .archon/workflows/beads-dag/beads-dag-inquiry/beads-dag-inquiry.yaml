@@ -1,0 +1,39 @@
+name: beads-dag-inquiry
+description: |
+  Read questions on this Target: ask the store which questions are on the reading frontier, claim them in
+  one transaction, read each one, land its note and receipts as documents on Main, and leave a draft answer
+  on the ticket. The ticket stays open: the last word - the final answer and the close - is a session's,
+  on the operator's word. Install this pack folder as ~/.archon/workflows/beads-dag; a symlink to a
+  checkout is the intended install. The Target does not commit .archon/.
+
+  NOT SAFE TO RUN UNATTENDED YET. This folder is open and the frontier only: pick claims its batch and
+  nothing reads it, because the reading turn and the run's report arrive with beads-dag/24 and
+  beads-dag/25. A run today would leave its batch claimed for the next open to repair, so wait for those
+  tickets before running this workflow for real.
+worktree:
+  enabled: false
+inputs:
+  config:
+    default: .scratch/beads-dag.yaml
+    description: Path to YAML with model, thinkingLevel, concurrency, runner
+nodes:
+  - id: open
+    script: open
+    runtime: bun
+    always_run: true
+    with:
+      config: $INPUTS.config
+  - id: reading
+    depends_on: [open]
+    loop_group:
+      max_iterations: 500
+      until_bash: test $pick.output = "[]"
+      nodes:
+        # The loop's second node - the reading turn, fanned out over the pick, one turn per handle - arrives
+        # with beads-dag/24. Until then this loop claims its batch and ends, which is why the description
+        # above refuses to call the workflow ready.
+        - id: pick
+          script: pick
+          runtime: bun
+          with:
+            config: $INPUTS.config

@@ -12,7 +12,7 @@
  */
 import { readFileSync } from "node:fs";
 import { EMPTY_PICK, FAILED, NOTHING_TO_REPORT, OPENED, nodeLine } from "../scripts/node-outcomes.ts";
-import { GATE_LABEL, drain, execute, expect, expectEqual, fakePiSdk, publishIssue, runScript, withTarget } from "./target.ts";
+import { GATE_LABEL, drain, execute, expect, expectEqual, fakePiSdk, inquiry, publishIssue, runScript, withTarget } from "./target.ts";
 
 try {
   // The byte contract itself.
@@ -25,6 +25,12 @@ try {
   const literal = /until_bash:\s*test\s+\$\w+\.output\s*=\s*"([^"]*)"/.exec(yaml)?.[1];
   expect("the drain loop compares the pick token", literal !== undefined, yaml.slice(0, 200));
   expectEqual("the loop's literal is EMPTY_PICK", literal, EMPTY_PICK);
+
+  // The reading loop ends on the same token, so the same one-token contract holds for the second executor.
+  const inquiryYaml = readFileSync(inquiry.yaml, "utf8");
+  const inquiryLiteral = /until_bash:\s*test\s+\$\w+\.output\s*=\s*"([^"]*)"/.exec(inquiryYaml)?.[1];
+  expect("the reading loop compares the pick token", inquiryLiteral !== undefined, inquiryYaml.slice(0, 200));
+  expectEqual("the reading loop's literal is EMPTY_PICK", inquiryLiteral, EMPTY_PICK);
 
   await withTarget(async (root, artifacts) => {
     // A work outcome: the token alone on stdout, and exit 0.
