@@ -1,12 +1,14 @@
-// Typecheck gate for the inquiry domain's tooling. Dev-only, and it lives here rather than beside the tool for
-// the same reason the pack's gate does: what a runner loads must carry nothing the runtime cannot use.
+// Typecheck gate for the Target-side tooling: the inquiry domain's tools and the experiment script. Dev-only,
+// and it lives here rather than beside the tools for the same reason the pack's gate does: what a Target
+// copies in must carry nothing the runtime cannot use.
 //
 // Run from the repository root:
 //   bun x tsc -p tsconfig.tools.json
 //
-// This tool is not the pack — nothing imports the pack's modules, and no runner installs it. It is gated
-// because nothing else would notice it rotting: the mock path runs offline and the live path spends real
-// requests, so a stale caller can sit there for a long time unnoticed.
+// Neither directory is the pack — nothing imports the pack's modules, and no runner installs them. They are
+// gated because nothing else would notice them rotting: the inquiry mock path runs offline and the live path
+// spends real requests, and the experiment verbs are pinned in the pack's suite against a stub rather than
+// the real DVC, so a stale caller can sit there for a long time unnoticed.
 //
 // `types: ["node"]` is spelled out for the same reason as in tsconfig.pack.json: a `node:` specifier does
 // not resolve without the node declarations in the program.
