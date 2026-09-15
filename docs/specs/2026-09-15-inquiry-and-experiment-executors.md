@@ -363,6 +363,13 @@ Two measured details the verbs are built on, because both are easy to get wrong:
   `{data: {...}}` or `{error: {...}}` — a metric that is an output rather than a committed file reads as an
   error on `main` and as a value on the experiment. `collect` finds its run by name in that tree, and
   reports the error case as empty rather than guessing.
+- **a queued run sees only tracked bytes, and says nothing when they are missing.** Measured: a stage
+  reading a gitignored `data/` wrote `{"found": 0}` in a queued run and `{"found": 1}` when the queueing
+  command passed `-C data` — both reported `Success`, so a missing ignored dependency is a **silently wrong
+  number**, not a failure. So `register` takes the ticket's declared ignored data paths as `--copy <path>`
+  (repeatable) and passes them on as `-C`, and the record's data pin should normally name a DVC-tracked path
+  so that the run can be reproduced from the cache at all. A run whose input was absent is not a run, even
+  when DVC calls it Success.
 - **the queue is the parallel path.** A second plain `dvc exp run` in the same repository is refused by
   `.dvc/tmp/rwlock`; queueing is what makes several runs at once possible, and `--temp` is what keeps them
   out of the operator's working tree (a plain run applies its results to the workspace, which a sweep of

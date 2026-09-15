@@ -65,6 +65,12 @@ DVC owns **what went in and what the bytes are**:
   plain git;
 - metrics as key/values in declared structured files, with no meaning DVC ascribes to them.
 
+One measured trap belongs to this seat: a queued run works in a temporary workspace and gets **only tracked
+bytes** — an ignored dataset directory is absent unless the run passes `-C <path>`, and the stage then reads
+nothing while DVC still reports `Success`. The data pin therefore names a DVC-tracked path (or the ignored
+path the run copies in), and a number produced without its input is not a result
+(`2026-09-15-inquiry-and-experiment-executors.md` owns the verb that passes it).
+
 The flow owns what DVC cannot hold: **which ticket, which attempt, which reference, and the reading**.
 DVC's own documentation defines no work-item concept at all — no ticket, no status, no owner, no dispatch —
 which is why the record is a git document that *points at* DVC rather than a file inside it.
