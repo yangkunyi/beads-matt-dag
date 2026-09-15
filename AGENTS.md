@@ -30,7 +30,9 @@ Single-context: one `docs/CONTEXT.md` plus `docs/adr/`. See `docs/agents/domain.
 The pack is copied to `~/.archon/workflows/beads-dag`. Its two local gates run from this repository and
 live in it, never in the pack: the repro suite
 (`bun .archon/workflows/beads-dag/beads-dag-drain/tests/run-all.ts`) and the typecheck
-(`./node_modules/.bin/tsc -p tsconfig.pack.json`).
+(`./node_modules/.bin/tsc -p tsconfig.pack.json`). The suite is one process per repro, eight at a time
+(~2.5 min; `REPRO_JOBS` and `REPRO_TIMEOUT_MS` tune it) — while you iterate, run the single repro you are
+changing, since each file is seconds on its own, and leave the whole suite as the gate before you finish.
 
 The Target-side tooling under `tools/` — the inquiry corpus tools and the experiment script — is not the pack
 and nothing else checks it, so it carries its own one-line gate: `./node_modules/.bin/tsc -p tsconfig.tools.json`.

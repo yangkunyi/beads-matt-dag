@@ -510,6 +510,16 @@ premise the pack resolves the binary by - so one `run-all` on that PATH is the w
 no second mode in which it is run with the binary hidden. `BEADS_BIN` is the override for an operator who
 keeps the binary somewhere else.
 
+**One process per repro, several at a time.** `run-all.ts` spawns every `*-repro.ts` as its own process -
+the isolation is the contract, since each repro builds its own temp Target with its own store - and runs
+`REPRO_JOBS` of them at once (default 8), each file under its own clock (`REPRO_TIMEOUT_MS`, default
+10 min) so a repro that hangs fails the gate instead of holding it open. That shape is what makes the
+gate affordable rather than expensive: almost all of its cost is process startup - a real `bd init` is
+about 3 s of Dolt startup and every store command about half a second of it - and startup parallelises,
+so 31 repros take about 2.5 minutes where running them one after another took 19. While you are working
+on one behaviour, run that one file (`bun .archon/workflows/beads-dag/beads-dag-drain/tests/<name>-repro.ts`):
+seconds, not minutes. The whole suite is the gate you leave behind, not the loop you think in.
+
 The repro suite drives a real store, never a fake one: it resolves the store binary from `BEADS_BIN`,
 then PATH, then `npm prefix -g` plus `/bin/bd`, and fails loudly when it cannot find one — no test skips.
 Install it with `npm i -g @beads/bd@1.2.2`, or point `BEADS_BIN` at one. "There is no store binary" is a
