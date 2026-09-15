@@ -480,9 +480,17 @@ receipt — one typed from memory is exactly what this catches.
 both — `⚠ challenged by c4` beside the challenged claim, `Challenges c1.` on the challenger — and decides
 nothing. Two readers disagreeing is information for the operator, who is the one who weighs it.
 - **An id is not a URL.** It is the stable key a claim cites — a DOI, an OpenAlex id, an arxiv id — and the
-receipt carries it whole even where the file name cannot (a DOI's slashes, an arxiv id's colon). An arxiv
-id is an *alias* on a source whose copy was fetched from somewhere else, because arxiv itself answers only
-behind a proxy.
+  receipt carries it whole even where the file name cannot (a DOI's slashes, an arxiv id's colon). An arxiv
+  id is an *alias* on a source whose copy was fetched from somewhere else, because arxiv answers only
+  through a proxy (next bullet).
+- **Two sources answer differently, and the network is part of the reading.** OpenAlex is queried directly
+  and needs no key. **arxiv answers only through the operator's own proxy**, handed to the tool as
+  `INQUIRY_PROXY` (it also reads `https_proxy`, `http_proxy`, `all_proxy`), and the value that works on this
+  machine is `socks5h://127.0.0.1:23379` — `socks5h` worth naming rather than `http`, which measured ~0.4s
+  against ~8.6s for the same fetch. With no proxy set, the arxiv path refuses with its own sentence instead
+  of waiting out a timeout, and `export.arxiv.org`'s API is not the way around it: it answers 429 even with
+  a User-Agent. Since that proxy is the operator's own Clash client, **it answers only while that runs** —
+  which is where an unattended reading dies: loudly, at this step, with the note half written.
 - **These documents land on Main like any other document**, so a drain running later reports them in its
 range section as commits the run did not make. That is the boundary working, not the drain being
 polluted.
