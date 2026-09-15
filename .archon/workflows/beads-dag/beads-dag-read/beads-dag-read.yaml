@@ -1,0 +1,30 @@
+name: beads-dag-read
+description: |
+  One question, read: the reading turn, its receipts and note committed to Main, and the draft answer left
+  on the ticket. Not a public entry: the issue handle is required, and beads-dag-inquiry composes this
+  block, one instance per handle its pick prints. It is a block rather than a plain script node in that
+  loop because only an include or a workflow node can be fanned out over a runtime list, and the reading
+  is one instance per question - the same shape beads-dag-execute has in the drain.
+# Composed fan-out only runs its instances side by side when the block declares it does not mutate the
+# checkout: a reading writes documents under `.scratch/` and lands them through one path-scoped commit
+# under the Main lock (doc-commit.ts), so concurrent instances cannot interleave a Main write, and two
+# readers sharing one effort's corpus write the same bytes a race apart (the spec's named residual).
+# Declaring true here would serialise every batch, which is not what config.concurrency asks for.
+mutates_checkout: false
+inputs:
+  issue:
+    required: true
+    description: Question handle (<feature>/<NN>, as carried on the issue)
+  config:
+    default: .scratch/beads-dag.yaml
+    description: Path to YAML with model, thinkingLevel, concurrency, runner
+nodes:
+  - id: read
+    script: read
+    runtime: bun
+    # One reading turn: READ_WALL_MS (1 h) in roles.ts, with the runner's own kill after it, plus the
+    # note check and the document commit. The contract test computes the same margin.
+    timeout: 3800000
+    with:
+      issue: $INPUTS.issue
+      config: $INPUTS.config

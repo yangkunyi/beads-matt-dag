@@ -24,6 +24,8 @@ export type IssueIdentity = {
 export type IssueNames = {
   /** `<feature>/<NN>`, the handle the names derive from. */
   handle: string;
+  /** The one path segment every name ends with: the issue's own slug, validated here. */
+  slug: string;
   /** The branch the issue's work is committed on, and what the settlement merges into Main. */
   branch: string;
   /** The worktree's directory, relative to the Target. */
@@ -77,6 +79,7 @@ export function issueNames(issue: IssueIdentity): IssueNames {
   const slug = requireSlug(issue);
   return {
     handle,
+    slug,
     branch: `beads/${feature}/${number}-${slug}`,
     worktreeRel: join("worktrees", `${feature}-${number}-${slug}`),
     bodyRel: join(".scratch", feature, "issues", `${number}-${slug}.md`),

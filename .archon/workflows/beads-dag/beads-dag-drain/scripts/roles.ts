@@ -7,12 +7,12 @@
  * disagree with the role it runs. The workflow's own timeout is the other half of that agreement: it
  * has to outlast the wall clock declared here or the runner kills a turn the agent is still on.
  *
- * `role` here is an agent role (implement, conflict, and the two drain-end readers, review and
+ * `role` here is an agent role (implement, conflict, read, and the two drain-end readers, review and
  * summary). It is not a triage label: different axis, different word.
  */
 import type { PackAgentOpts } from "./agent.ts";
 import type { PackConfig } from "./config.ts";
-import { conflictPersona, implementPersona, reviewPersona, reviewTask, summaryPersona, summaryTask } from "./prompt.ts";
+import { conflictPersona, implementPersona, readPersona, readTask, reviewPersona, reviewTask, summaryPersona, summaryTask } from "./prompt.ts";
 import { workerEnv } from "./worker-env.ts";
 
 /**
@@ -30,14 +30,28 @@ export const AGENT_WALL_MS = 2 * 60 * 60 * 1000;
 export const REVIEW_WALL_MS = 30 * 60 * 1000;
 
 /**
+ * How long one reading may run. A reading is one turn - the reader fetches, writes the note and answers
+ * with the draft - and it is its own constant because a reading turn is neither an implementation turn
+ * (two hours of code and gates) nor a drain-end reader's review. The inquiry loop's node timeout is read
+ * against it.
+ */
+export const READ_WALL_MS = 60 * 60 * 1000;
+
+/**
  * What each role is called with: the role's own arguments and nothing else. The handle keys the issue
- * roles' sessions; the body's path is the issue roles' whole brief. A reader's arguments are what its
- * brief is built from - the range, its commit menu, and, for the summary, the review to merge.
+ * roles' sessions; the body's path is the issue roles' whole brief. The reading role's arguments add the
+ * two paths its brief carries, and the drain-end readers' arguments are what their brief is built from -
+ * the range, its commit menu, and, for the summary, the review to merge.
  */
 export type RoleShape = {
   implement: { handle: string; bodyPath: string };
   /** The same issue, the same brief: a conflict is the implementer's work meeting a Main that moved. */
   conflict: { handle: string; bodyPath: string };
+  /**
+   * One question's reading. The body's path is the issue roles' whole brief; the reading's own two
+   * paths are what this role's arguments add - the corpus it writes and the note the node commits.
+   */
+  read: { handle: string; bodyPath: string; corpusRel: string; noteRel: string };
   /** One axis of the drain-end review, over the range this run merged. */
   review: { axisIndex: number; base: string; axis: string; head: string; log: string };
   /** The one report over the review, for the human who reads the run afterwards. */
@@ -76,6 +90,14 @@ export const ROLES: { [K in AgentRole]: RoleSpec<RoleShape[K]> } = {
     persona: () => conflictPersona(),
     prompt: (args) => args.bodyPath,
     wallMs: AGENT_WALL_MS,
+  },
+  read: {
+    // One question, one session: the handle keys it, so a resumed attempt on the same question continues
+    // the reading it started, and two questions never share a conversation.
+    sessionKey: (args) => args.handle,
+    persona: () => readPersona(),
+    prompt: (args) => readTask(args.bodyPath, args.corpusRel, args.noteRel),
+    wallMs: READ_WALL_MS,
   },
   review: {
     // One session per axis and per run's artifacts: a fresh run's review does not resume a previous

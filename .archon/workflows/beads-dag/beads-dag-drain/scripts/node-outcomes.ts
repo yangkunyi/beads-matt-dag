@@ -13,6 +13,13 @@ export const EMPTY_PICK = "[]";
 /** An issue's outcome: its work is in Main, so the drain may close it. */
 export const MERGED = "merged";
 
+/**
+ * A reading's outcome: its note landed, its draft answer is on the question, and the question stays
+ * `open` - the last word is a session's. The reading executor's counterpart of the drain's `merged`, and
+ * like it a result rather than an error: the run goes on to the next question in the batch.
+ */
+export const LANDED = "landed";
+
 /** Its work is not in Main. The reason is on stderr, and the drain goes on. */
 export const FAILED = "failed";
 
