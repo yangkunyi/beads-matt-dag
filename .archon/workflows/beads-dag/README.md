@@ -488,13 +488,14 @@ and, for the drain, its `tests/`. `backup.ts` sits beside the YAML rather than i
 an operator command, not a node. A module may be imported across the two folders; a node body may not,
 because the folder whose YAML declares a node is where that node's script resolves.
 
-The modules the two workflows share, all in the drain's `scripts/`:
+The modules the pack's workflows share, all in the drain's `scripts/`:
 
 | Module | Owns |
 |---|---|
 | `store.ts` | every store command: the binary, its arguments, its working directory |
 | `naming.ts` | the one derivation of an issue's branch, worktree and body path |
 | `git.ts` | git plumbing: the two calls the readers and writers share |
+| `doc-commit.ts` | the documents a run lands: one path-scoped commit per ticket, under the Main lock |
 | `worktree.ts` | the issue's worktree: create, resume, bring Main in, and the standing-merge state |
 | `lock.ts` | the Main-write lock: one writer at a time on the Target's branch |
 | `run-lock.ts` | the run lock: one drain at a time per Target, the refusal a second one gets |
@@ -516,11 +517,15 @@ The modules the two workflows share, all in the drain's `scripts/`:
 | `dsh-runtime.ts` | the dsh wire protocol, with no pack nouns |
 | `worker-env.ts` | the environment a worker runs under (the store's read-only mode) |
 
-The table splits along one line: a module whose whole reason to exist is that a run **writes Main** — or
-reports on one that did — is the drain's alone (`lock.ts`, `run-lock.ts`, `main-writes.ts`, `settle.ts`,
-`verify.ts`, `worktree.ts`, `reconcile.ts`, `review-position.ts`, `run-record.ts`, `failures.ts`,
-`report-artifacts.ts`, `report-node.ts`). What a run shares with the rest of the flow is only what
-touches the store's graph and git documents: `store.ts`, `naming.ts` (the body path — the branch and
-worktree names are a run's own), `domains.ts`, and `worker-env.ts`, whose read-only mode is the inquiry
-domain's AFK leg too. A future inquiry workflow is a separate pack folder that imports those, never a node
-in this one: a node here is a claim, a worktree and a merge, and inquiry has none of the three.
+The table splits along one line: a module whose reason to exist is that a run **merges an issue's work**
+into Main — or reports on one that did — is the drain's alone (`main-writes.ts`, `settle.ts`, `verify.ts`,
+`worktree.ts`, `reconcile.ts`, `review-position.ts`, `run-record.ts`, `failures.ts`,
+`report-artifacts.ts`, `report-node.ts`). That is the closed rule, not the looser "writes Main": the two
+document-writing executors this pack is growing commit their own files to the same branch and neither may
+merge an issue, so what separates the drain's modules is the merge and nothing else. What a run shares
+with the rest of the flow is everything else: `store.ts`, `naming.ts` (the body path — the branch and
+worktree names are a run's own), `domains.ts`, `doc-commit.ts`, the path-scoped commit every run that
+lands documents uses, `worker-env.ts`, whose read-only mode is the inquiry domain's AFK leg too, and the
+two locks (`lock.ts`, `run-lock.ts`), which any run that writes Main takes whatever it writes. A future
+inquiry workflow is a separate pack folder that imports those, never a node in this one: a node here is a
+claim, a worktree and a merge, and inquiry has none of the three.
