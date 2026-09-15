@@ -166,7 +166,7 @@ type in a Target (`bd config set types.custom experiment`) is the one act a Targ
 - **No run store is chosen.** W&B and MLflow both fit the socket; the record stays neutral by leaving it
   empty and naming sources per field.
 - **The experiment half's code has no home yet.** `.2` settled that there *is* a thin script (registration
-  before, collection after, copied in); where it lives, and whether that half ever has an entry point of
-  its own, is the map's one remaining open question.
+  before, collection after, copied in); which directory it sits in is implementation rather than this design,
+  so the map ruled it out of scope (2026-09-15) — it is settled the day the first experiment is really run.
 - **The drain gains nothing to do with this domain.** The development half's report stays the development
   half's.
