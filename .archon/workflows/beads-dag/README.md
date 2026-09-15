@@ -24,10 +24,12 @@ archon workflow run beads-dag-drain --detach
 ```
 
 The Target does not commit `.archon/`. Its config is optional and lives at `.scratch/beads-dag.yaml`; the
-keys are `model`, `thinkingLevel`, `concurrency`, `runner` and `store`, and the defaults are in
-`beads-dag-drain/scripts/config.ts`. The opening node prints the effective configuration on stderr — one
-line naming each value and whether the Target's file or the built-in default supplied it, the store
-binary's resolution on PATH included — so a run says what it runs even when the Target has no file.
+keys are `model`, `thinkingLevel`, `concurrency`, `runner`, `store`, `verify` and `verifyTimeoutMs`, and
+the defaults are in `beads-dag-drain/scripts/config.ts`. The opening node prints the effective
+configuration on stderr — one line naming each value and whether the Target's file or the built-in
+default supplied it, the store binary's resolution on PATH included — so a run says what it runs even
+when the Target has no file. `verify` is the pre-merge gate (`The pre-merge gate`, below): a shell
+command, empty by default, run in the issue's worktree on the tree that would be merged.
 
 ## The store
 
@@ -167,6 +169,63 @@ A merge that is clean starts no conflict turn at all, and an execution runs at m
 turn cannot resolve the merge, the standing merge is rolled back, the reason goes on the issue as a
 comment, and the worktree, its branch and its commits stay for the report; the next drain retries it.
 
+## The pre-merge gate
+
+Nothing checked the work before it landed. The settlement merges the branch into Main and `closed`
+therefore implies "a merge commit exists" — not that anything ran. The drain-end review reads the merged
+range **after** the fact: it is a reader, not a gate, and its findings cannot unmerge anything. So the
+executor runs one command on the tree that would be merged, immediately before each settle:
+
+```
+turn (implement)  ->  checkpoint-if-dirty  ->  verify  ->  settle()          (merge, then record)
+                     +- red ----------------------------->  didNotLand("verify failed: <tail>")
+   ...if that settle's integration conflicts:
+conflict turn  ->  checkpoint-if-dirty  ->  verify  ->  settle()  (again)
+```
+
+The resume path's `bringMainIn` — the one before the implementer — starts no gate: there is no work of
+this attempt in the tree yet, and the gate's second home is the checkpoint instead (below).
+
+**One command, the Target's own.** `verify` in the Target's config is a shell command string, run as
+`sh -c <command>` with cwd set to the issue's worktree. Empty — the default — means the Target has not
+configured one: no process, no record, no behavior change, the same convention Gas Town uses for its rig
+test command. The command is read from the config file and **never from the issue body**: what runs
+before a merge is the Target's decision, not something a worker can write.
+
+**Red is an ordinary failed attempt.** Nothing merges, so nothing closes: the reason becomes a comment —
+`attempt N failed: verify failed: <tail>` — and the issue goes back to `open`, exactly as any other failed
+attempt. The worktree and branch are kept because they hold the attempt, and the full gate output is in
+`ARTIFACTS_DIR/verify-1.log` (the gate after the implementer's turn) or `verify-2.log` (the gate after the
+conflict turn), while only the bounded tail reaches the comment. Green means the settlement proceeds
+unchanged, and it writes no store field and no status: a green gate is implied by the merge that follows
+it (ADR-0005). The gate is not an agent and not a role — no session, no prompt, no model; it is
+deterministic and sits beside the settlement's git work.
+
+**The gated tree is the tree that merges.** The merge carries the branch's commits, never the bytes
+sitting in the working tree, so a dirty worktree is committed first as one
+`wip(beads-dag): <handle> checkpoint <call site>` commit on the issue's branch — excluding the pack's own
+runtime paths (`.beads/`, `worktrees/`). Nothing is discarded, and the gate's subject and the merge's
+subject become the same tree. The same primitive has a second call site on the resume path, immediately
+after the worktree is ensured and before the first `bringMainIn`: git refuses a merge over uncommitted
+changes to files the merge touches, and that refusal is not a conflicted merge — `MERGE_HEAD` is never
+written, so the executor would take the plain failure branch. A turn killed mid-edit, whose worktree is
+still dirty when a later drain finds it, plus a Main that moved over one of those files, would therefore
+lock the issue out permanently, every later attempt failing before an agent runs. The checkpoint removes
+that latch, and the killed turn's half-work becomes visible on the branch and in the review range.
+
+**Timeout.** `verifyTimeoutMs` (default 15 min, `DEFAULT_VERIFY_TIMEOUT_MS`) bounds one gate run; on
+expiry the whole process group is killed and the attempt fails with `verify failed: timed out after
+<ms>ms: …` rather than hanging the node. The gate is not a role, so the role sum the workflow-contract
+test checks cannot see it: the execute node's own timeout has to outlast `implement + conflict + 2 ×
+verifyTimeoutMs`, and the contract test adds the two gate runs to the role wall clocks for that reason.
+
+**One residual race, stated and not hidden.** The settlement re-integrates Main inside the Main lock, so
+with `concurrency > 1` Main can move between the gate and the merge, and a clean re-merge then produces a
+tree the gate did not test. That window is accepted deliberately: gating inside the lock would serialize
+every merge for the gate's whole duration and undo the reason concurrency exists. The conflict turn's gate
+is the mitigation — a divergence that conflicts is re-tested after resolution — and a post-merge check on
+Main is not part of this flow.
+
 ## The settlement: merge, then record
 
 An issue's turn ends in one of two settlements, and there is only one order in which either can happen.
@@ -302,7 +361,7 @@ is reviewed, the pack's own commits and all. So a drain that merged nothing says
 in the same repository reports exactly what the first drain's review left unviewed (its base is the
 recorded position). A reader that wrote a report prints `reported`. The three artifacts live in the
 run's `ARTIFACTS_DIR`, beside `pick-exclusions.json`, `attempted-ids.json`, `run-lock.json`,
-`main-commits.json` and `repairs.json`.
+`main-commits.json`, `repairs.json` and the gate's own `verify-<n>.log`.
 
 - **the range section** (at the end of summary.md, above the failures block). The summary node writes it,
   from the run's own record and from git: the range both readers covered, then - when Main gained commits
@@ -349,7 +408,8 @@ cannot move the frontier.
 under, its persona, the brief its prompt is, and how long it may run. A node names its role and hands it
 the role's own arguments - nothing else about the role is spelled at a call site. The workflow's `timeout`
 is the other half of that agreement and the same test checks it: it must outlast the wall clock of every
-role the node's script names (two turns in one node means the sum).
+role the node's script names (two turns in one node means the sum), and a node whose script runs the
+pre-merge gate buys two gate runs on top of that (`verifyTimeoutMs` each).
 
 | Role | Turn | Wall clock |
 |---|---|---|
@@ -441,6 +501,7 @@ The modules the pack's workflows share, all in the drain's `scripts/`:
 | `run-lock.ts` | the run lock: one drain at a time per Target, the refusal a second one gets |
 | `main-writes.ts` | every git write to Main: the merge, the ignore line, the removal after a merge |
 | `settle.ts` | the one order: merge then record, or record the failure and reopen |
+| `verify.ts` | the pre-merge gate: one Target command on the would-be-merged tree, with its clock |
 | `reconcile.ts` | the repair of a killed run's leftovers: closed from git, or reopened with a reason |
 | `domains.ts` | the domain boundary: the non-work types, and the cross-domain graph preflight |
 | `failures.ts` | the drain-end failures block: the store's own failure records, and how they read |
@@ -457,7 +518,7 @@ The modules the pack's workflows share, all in the drain's `scripts/`:
 | `worker-env.ts` | the environment a worker runs under (the store's read-only mode) |
 
 The table splits along one line: a module whose reason to exist is that a run **merges an issue's work**
-into Main — or reports on one that did — is the drain's alone (`main-writes.ts`, `settle.ts`,
+into Main — or reports on one that did — is the drain's alone (`main-writes.ts`, `settle.ts`, `verify.ts`,
 `worktree.ts`, `reconcile.ts`, `review-position.ts`, `run-record.ts`, `failures.ts`,
 `report-artifacts.ts`, `report-node.ts`). That is the closed rule, not the looser "writes Main": the two
 document-writing executors this pack is growing commit their own files to the same branch and neither may
