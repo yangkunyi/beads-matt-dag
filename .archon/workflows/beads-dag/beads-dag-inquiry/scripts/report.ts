@@ -2,8 +2,9 @@
  * The reading executor's last node: the run's report, and the release of its run lock.
  *
  * This is the one document a human reads first (the spec's "The two reports"), and it is written by the
- * node and never by a model: every number and every name in it is a store answer or a git answer, so a
- * batch run is one file to read instead of an archaeology exercise in the store. It is never consulted as
+ * node and never by a model: every number and every name in it is a store answer, a git answer, or the
+ * run's own record of something a store and a git cannot answer - so a batch run is one file to read
+ * instead of an archaeology exercise in the store. It is never consulted as
  * state (ADR-0005), and nothing in the pack reads it back. The bookkeeping it could have kept - a
  * `readings.json` caching what landed, a file listing what awaits the operator - is deliberately absent:
  * the store already holds both facts, and the report is a reading of it.
@@ -21,9 +22,16 @@
  *      (`bd list -t decision -s open -l answer:draft`), read from the store at report time, so it covers
  *      a reading an earlier run landed and a question whose leg label is gone.
  *
+ * And one thing the spec's own module rule asks for, which belongs to none of the four: the paths the run
+ * wrote that the flow does not name - a reading's working files, left uncommitted on purpose and named
+ * here rather than committed (`UNNAMED_PATHS_FILE`, inquiry.ts). It comes last, so the four sections keep
+ * the spec's order, and it says `none this run` like every other section rather than being left out.
+ *
  * The one fact the store cannot answer is *which questions this run touched*: `attempted-ids.json` is the
  * run's own memory (the same file `pick` composes its frontier from), and the failures block names a
- * question an opening repair reopened from the repair's own record (`repairs.json`).
+ * question an opening repair reopened from the repair's own record (`repairs.json`). The unnamed paths are
+ * the same kind of fact - the working tree of the moment the reading ran is the only place they existed -
+ * and they are the run's own record too (`unnamed-paths.jsonl`).
  *
  * Being the run's last node, this is also where the run lock is given back by a run that ends normally,
  * exactly as the drain's `summary` gives it back. A run killed before here leaves the file behind, and
@@ -46,7 +54,7 @@ import {
   type StoreIssue,
 } from "../../beads-dag-drain/scripts/store.ts";
 import { compareHandles, handleOrId, readingFrontier } from "./frontier.ts";
-import { DRAFT_LABEL, landedDraft } from "./inquiry.ts";
+import { DRAFT_LABEL, landedDraft, readUnnamedPaths, type UnnamedPaths } from "./inquiry.ts";
 import { readReadingRepairs, type ReadingRepair } from "./leftovers.ts";
 
 /** The run's report, relative to ARTIFACTS_DIR. The one document a reading run leaves to be read. */
@@ -80,6 +88,8 @@ type ReportFacts = {
   frontier: string[];
   /** The handles carrying a draft answer the operator has not answered yet. */
   awaiting: string[];
+  /** The paths this run wrote that the flow does not name, per ticket, as the reading node recorded them. */
+  unnamed: UnnamedPaths[];
 };
 
 /** What a report says where a section has nothing in it. */
@@ -163,10 +173,16 @@ function landedLine(reading: LandedReading): string {
   return `- ${reading.handle} [${reading.id}] — ${where}; label ${DRAFT_LABEL}`;
 }
 
+/** One ticket's unnamed paths: what the reading wrote, and the one thing the flow did not do with it. */
+function unnamedLine(entry: UnnamedPaths): string {
+  return `- ${entry.handle} — ${entry.paths.join(", ")} (not committed)`;
+}
+
 /**
  * The report, as the artifact carries it. The headline is the whole run in one line; the four sections are
- * the spec's own list, in its own order, and an empty section says so rather than being left out - a run
- * that did nothing has to be readable as a run that did nothing.
+ * the spec's own list, in its own order, and the fifth - the paths the run wrote that the flow does not
+ * name - follows them. An empty section says so rather than being left out, so a run that did nothing is
+ * readable as a run that did nothing.
  */
 function reportBody(facts: ReportFacts): string {
   const headline =
@@ -186,6 +202,10 @@ function reportBody(facts: ReportFacts): string {
     section(
       "Draft answers awaiting the operator",
       facts.awaiting.length === 0 ? NONE : facts.awaiting.map(handleLine).join("\n"),
+    ),
+    section(
+      "Left uncommitted",
+      facts.unnamed.length === 0 ? NONE_THIS_RUN : facts.unnamed.map(unnamedLine).join("\n"),
     ),
   ].join("\n");
 }
@@ -224,6 +244,9 @@ export function reportInquiryRun(target: string, opts: InquiryReportOpts): strin
     failed: failedAttempts(store, target, issues, attempted, repairs),
     frontier,
     awaiting,
+    // The run's own record, ordered like every other list of questions the report names. The store cannot
+    // answer this one: what a reading left half-written existed in a working tree, once.
+    unnamed: readUnnamedPaths(opts.artifactsDir).sort((a, b) => compareHandles(a.handle, b.handle)),
   });
   mkdirSync(opts.artifactsDir, { recursive: true });
   writeFileSync(join(opts.artifactsDir, REPORT_MD_REL), body.endsWith("\n") ? body : `${body}\n`);

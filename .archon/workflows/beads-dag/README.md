@@ -20,8 +20,14 @@ because the tracked working tree is what runs. Archon discovers the pack through
 Then, from the Target:
 
 ```
-archon workflow run beads-dag-drain --detach
+archon workflow run beads-dag-drain --detach      # drain implementation issues
+archon workflow run beads-dag-inquiry --detach    # read the questions on the reading frontier
 ```
+
+A drain merges an issue's work into Main and closes it. A reading run merges nothing: it commits each
+question's note and receipts to Main as one path-scoped commit, leaves the reader's own words on the ticket
+as a draft answer, and never closes a question - the last word is a session's, on the operator's word
+(`The reading run's report`, below).
 
 The Target does not commit `.archon/`. Its config is optional and lives at `.scratch/beads-dag.yaml`; the
 keys are `model`, `thinkingLevel`, `concurrency`, `runner`, `store`, `verify`, `verifyTimeoutMs` and
@@ -466,7 +472,12 @@ written by the node and never by a model. `beads-dag-inquiry`'s last node writes
 - **Draft answers awaiting the operator** — the handles of the open `decision` issues carrying
   `answer:draft`, read from the store when the report is written. Nothing keeps that list: it is the
   query the tracker contract names, and an earlier run's reading appears in it whether or not this run
-  ever saw the question.
+  ever saw the question;
+- **Left uncommitted** — the paths the run wrote under the effort that the flow does not name, one line
+  per ticket: a reading's working files (the claims file `note.ts` is handed, a scratch note), left out of
+  the commit on purpose and named here instead of being committed or silently dropped. The store cannot
+  answer this one — the working tree the reading ran in is gone by report time — so the read node records
+  it as it goes (`unnamed-paths.jsonl`, one appended line per ticket, the last line per ticket winning).
 
 The report is run-scoped like `pick-exclusions.json` and `attempted-ids.json`, and never consulted as
 state (ADR-0005): nothing in the pack reads a `report.md` back. It is also the run's last node, so it is
@@ -486,6 +497,7 @@ that is not a role buys that too - two gate runs of `verifyTimeoutMs` each, and 
 |---|---|---|
 | `implement` | one issue, in its worktree, from the body's path | 2 h |
 | `conflict` | the merge of Main standing in that worktree, from the same body's path | 2 h |
+| `read` | one question, in the Target, from the body's path and under the reading rules the tracker contract states | 1 h |
 | `review` | one axis of the drain-end review, over the range this run merged | 30 min |
 | `summary` | one report over the review, for the human who reads the run afterwards | 30 min |
 

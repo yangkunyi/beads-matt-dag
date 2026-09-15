@@ -101,14 +101,17 @@ function statusEntries(out: string): StatusEntry[] {
 }
 
 /**
- * The files under one named path that hold something to commit: untracked (`??`), or different from the
- * index in the worktree (the second status column). A path whose only change is already staged is
- * deliberately not one of them - this module commits the run's own bytes, and what another session put in
- * the index is not the run's.
+ * The files under one path the working tree still holds uncommitted: untracked (`??`), or different from
+ * the index in the worktree (the second status column). A path whose only change is already staged is
+ * deliberately not one of them - a run commits its own bytes, and what another session put in the index
+ * is not the run's.
  *
  * `-uall` expands an untracked directory into its files, so what comes back is files a commit can name.
+ * Exported because two callers need the same reading of the same tree: the commit asks it of the paths it
+ * was handed, and the reading node asks it of the effort before and after its turn, to name what the run
+ * wrote that the flow does not commit.
  */
-function writtenUnder(target: string, path: string): string[] {
+export function uncommittedUnder(target: string, path: string): string[] {
   const r = git(target, ["status", "--porcelain", "-z", "--untracked-files=all", "--", path]);
   if (!r.ok) throw new Error(`git status failed in ${target} for ${path}: ${r.out}`);
   return statusEntries(r.out)
@@ -146,7 +149,7 @@ export async function commitDocuments(target: string, request: DocCommitRequest)
     const unchanged: string[] = [];
     const seen = new Set<string>();
     for (const path of named) {
-      const written = writtenUnder(target, path);
+      const written = uncommittedUnder(target, path);
       if (written.length === 0) {
         refuseIfIgnored(target, path);
         unchanged.push(path);

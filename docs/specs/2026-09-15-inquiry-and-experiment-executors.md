@@ -138,11 +138,16 @@ way it can be: **that ticket is not opened** until its input exists (operator, 2
   beads-dag-drain/        the drain (unchanged, except the shared modules below)
   beads-dag-execute/      one issue, start to finish (unchanged)
   beads-dag-inquiry/      NEW: open, the pick/read loop, report
+  beads-dag-read/         NEW: one question, read and landed - the per-ticket block the loop fans out
   beads-dag-experiment/   NEW: open, the pick/run loop, report
 ```
 
-Both new folders follow the pack's existing shape: their own YAML, their own `scripts/` (one module per
-node), and no `tests/` of their own — the pack's one suite lives in `beads-dag-drain/tests/` and its
+A per-ticket unit is a folder of its own because Archon fans out only an include or a workflow node, and a
+folder holds exactly one YAML: `beads-dag-inquiry` composes `beads-dag-read` once per handle its `pick`
+prints, exactly as the drain composes `beads-dag-execute` once per issue.
+
+Each new folder follows the pack's existing shape: its own YAML, its own `scripts/` (one module per
+node), and no `tests/` of its own — the pack's one suite lives in `beads-dag-drain/tests/` and its
 repros cover all four workflows.
 
 **Shared modules stay where they are** (the drain's `scripts/`, the pack's library): `store.ts`,
@@ -161,8 +166,10 @@ branch, under the Main lock (`lock.ts`), named per path:
   staged work is never swept in — the accident that already happened once in this repository;
 - one commit per ticket, subject `read: <handle> <slug>` (inquiry) or `record: <handle> <slug>`
   (experiment);
-- a path the run did not write is not committed, and a path the run wrote that the flow does not name is
-  left uncommitted and named in the run's report.
+- a path the run did not write is not committed, and a path the run wrote under the effort that the flow
+  does not name — a reading's claims file, a working note — is left uncommitted and named in the run's
+  report. The effort is the scope because a working tree is the only place that fact ever existed: the
+  read node reads it before its turn and at every exit, and records the difference for the report.
 
 **The run lock is shared.** All three executors take the same Target-level run lock at `open` and refuse
 when another holds it: one run at a time per Target, whatever kind of run it is. Two runs is one run too
@@ -174,7 +181,7 @@ many here because both of them write Main.
 | --- | --- | --- |
 | `open` | `open.ts` | opens the store, takes the run lock, prints the configuration line, refuses when `tools/inquiry/` or `<effort>/` is missing, repairs leftovers |
 | `pick` | `pick.ts` | the frontier, one JSON array of handles (the same token the drain's `pick` prints) |
-| `read` | `read.ts` | one ticket: the reading turn, the documents, the draft answer, the label |
+| `read` | `beads-dag-read` (a composed block; its own `scripts/read.ts`) | one ticket: the reading turn, the documents, the draft answer, the label |
 | `report` | `report.ts` | the run's report and the artifacts |
 
 The loop is the drain's: `pick` until it answers `[]`, `read` fanned out over `pick`'s items, truncated to
@@ -382,7 +389,9 @@ Each run writes one artifact a human reads first (`report.md`), from the run's o
 - the tickets it worked, each with what landed and where (note path, record path, commit, label);
 - the tickets it attempted and failed, with the reason and the attempt number the store holds;
 - the frontier it left behind — the handles still eligible, so a run that did nothing says so;
-- for a reading, the one line that matters at 9am: *draft answers awaiting the operator*, as handles.
+- for a reading, the one line that matters at 9am: *draft answers awaiting the operator*, as handles;
+- the paths the run wrote that the flow does not name, which the module above leaves uncommitted. Last, so
+  the four above keep the order this list gives them, and `none this run` like every other section.
 
 The report is written by the node, never by a model, and it is never consulted as state (ADR-0005).
 
