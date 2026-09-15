@@ -9,3 +9,5 @@ node_modules/
 *.db
 .beads-credential-key
 .beads/proxieddb/
+/worktrees/
+/.beads/interactions.jsonl
