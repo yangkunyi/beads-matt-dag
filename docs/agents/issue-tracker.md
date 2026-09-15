@@ -21,11 +21,12 @@ something different by *closed*:
 **The operator decides what to open; the session types it.** Which skill does a piece of work is
 `/ask-matt`'s question — this table only decides *where a thing belongs*.
 
-A session opens by looking at two things:
+A session opens by looking at three things:
 
 ```bash
 bd ready                                          # what can start now — a `wayfinder:map` bead is a container, not a ticket
 bd list -t experiment -s closed -l reading:none   # results nobody has read yet
+bd list -t decision -s open -l answer:draft       # questions whose reading landed and await my word
 ```
 
 Nothing blocks across domains, in either direction: a question waiting on an experiment is not *blocked*
@@ -438,7 +439,10 @@ of type `decision`.
   concurrent session reads.
 - **Resolve**: `bd comment <id> "<answer>"`, then `bd close <id>`, then a context pointer (gist + link)
   in the map's Decisions-so-far. A decision issue's `closed` means its question is answered, which is
-  legitimate only because the two domains never share an edge.
+  legitimate only because the two domains never share an edge. When the reading leg was run as a workflow,
+  the answer being written is the session's act on the operator's word: the comment he appends or corrects
+  the executor's `draft` with is the final answer, and the `answer:draft` label comes off in the same act
+  as the close — one action, both jobs, so the label and the record cannot disagree.
 
 **A question needs no source to exist, and no source to be answered.** It can come out of the operator's
 head, a discussion, or a reading, and the answer may come from a discussion (*grilling*), from a rough
@@ -471,6 +475,15 @@ Under the effort's own directory (`.scratch/<effort>/`):
   reading that turns into "and so we should keep X" has drifted into a decision nobody asked it to make —
   the answer it owes is what is true out there, quotable, and what a tool does *not* hold is as much an
   answer as what it does.
+- **The executor drafts the answer; the operator owns it.** When the reading leg runs as a workflow
+  (`beads-dag-inquiry`), the executor leaves the reader's own last words on the ticket as a comment whose
+  first line is marked `draft` and names the note's path and the commit that carries it, and stamps the
+  `answer:draft` label in the same act as the status going back to `open`. That draft is the reader's,
+  not the answer: the operator appends or corrects it on the ticket, and the session writes the final
+  answer and closes (`bd comment`, then `bd close`, with the label coming off in the same act). The
+  executor never closes the ticket — a question's `closed` means the answer is written, which is a
+  session's act on the operator's word — so the label is what marks the reading as landed and awaiting
+  him, and the query above is the whole list.
 - **A quote must re-anchor.** A claim enters a note only when its quote is found again in the source that
 owns it — the same text, whitespace aside. With a live fetch behind it, re-anchoring fetches again and the
 hash is what moves. A claim whose quote cannot be found is refused, and the reader says so out loud rather

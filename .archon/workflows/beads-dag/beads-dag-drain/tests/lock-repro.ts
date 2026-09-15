@@ -42,6 +42,7 @@ import {
 /** The issue's names, spelled here the way the naming rule spells them - the fixture's own reading. */
 const NAMES = {
   handle: "feat/01",
+  slug: "the-locked-issue",
   branch: "beads/feat/01-the-locked-issue",
   worktreeRel: join("worktrees", "feat-01-the-locked-issue"),
   bodyRel: join(".scratch", "feat", "issues", "01-the-locked-issue.md"),

@@ -481,12 +481,22 @@ per release rather than per change, and never against a Target someone is draini
 beads-dag-drain/     the drain: open, the loop (pick, execute), then the two readers, and backup.ts,
                      the operator's one-command store backup
 beads-dag-execute/   one issue, start to finish. Not a public entry: its issue input is required.
+beads-dag-inquiry/   the reading executor: open, the loop (pick, read), and, with beads-dag/25, report
+beads-dag-read/      one question, read and landed as a draft answer. Not a public entry: its issue
+                     input is required, and beads-dag-inquiry composes it, one instance per handle.
 ```
 
 A workflow folder holds its YAML, its `scripts/` (each entry script is a node that folder's YAML declares),
 and, for the drain, its `tests/`. `backup.ts` sits beside the YAML rather than in `scripts/` because it is
-an operator command, not a node. A module may be imported across the two folders; a node body may not,
-because the folder whose YAML declares a node is where that node's script resolves.
+an operator command, not a node. A module may be imported across the folders; a node body may not, because
+the folder whose YAML declares a node is where that node's script resolves.
+
+The two per-ticket folders (`beads-dag-execute`, `beads-dag-read`) exist for one reason: **only an
+include or a workflow node can be fanned out over a runtime list**. The drain runs one instance of
+`beads-dag-execute` per issue its pick prints and the reading executor one instance of `beads-dag-read`
+per question; a plain script node in those loops would have to be handed a list, not an item, and could
+not run the batch at the run's `concurrency`. So the per-ticket unit is a composed block whose handle
+input is required, and each of its own nodes is a script that folder declares.
 
 The modules the pack's workflows share, all in the drain's `scripts/`:
 

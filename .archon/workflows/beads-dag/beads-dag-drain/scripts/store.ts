@@ -386,6 +386,19 @@ export function reopenIssue(store: Store, target: string, id: string): void {
 }
 
 /**
+ * Release a claim and stamp one label **in the same store command** - one transaction, one act.
+ *
+ * The inquiry executor's landing is this write and only this one: the reading is done, so the question
+ * goes back to `open`, and the draft label that says a draft answer is on it arrives at the same moment.
+ * The same rule an idea's state label follows (the label must state a fact that is true when it is
+ * written), and the reason the two are one call: a status write and a label write that could disagree is
+ * exactly the state this avoids.
+ */
+export function openIssueWithLabel(store: Store, target: string, id: string, label: string): void {
+  runStore(store, target, ["update", id, "-s", "open", "--add-label", label]);
+}
+
+/**
  * Record a failed attempt: the reason as a comment, then the issue back to `open`. Nothing is closed.
  *
  * This is the whole of the pack's failure policy (§10.3). A failure is an event, not a status: the

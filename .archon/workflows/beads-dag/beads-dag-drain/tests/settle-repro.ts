@@ -266,6 +266,7 @@ try {
         withMainLock(root, () =>
           removeMergedWorktree(root, {
             handle: "feat/05",
+            slug: "an-unmerged-attempt",
             branch,
             worktreeRel,
             bodyRel: join(".scratch", "feat", "issues", "05-an-unmerged-attempt.md"),

@@ -14,6 +14,7 @@
  */
 import { existsSync, statSync } from "node:fs";
 import { join } from "node:path";
+import type { IssueNames } from "../../beads-dag-drain/scripts/naming.ts";
 
 /**
  * The leg label that gates this executor's frontier, the role `ready-for-agent` plays for the drain: a
@@ -46,8 +47,9 @@ export const READING_TOOLS_REL = join("tools", "inquiry");
  *
  * This is the run-level effort directory, and it is the root on purpose: a run's questions may be
  * published under any effort, so `<effort>` is not one name the opening node could test - the corpus
- * directory a reading turn writes into is derived per ticket from the handle's feature (#24), where the
- * naming rule already lives. What open can and does test is that the Target has an effort area at all.
+ * directory a reading turn writes into is derived per ticket from the handle's feature (`readingPaths`
+ * below), where the naming rule already lives. What open can and does test is that the Target has an
+ * effort area at all.
  */
 export const EFFORT_ROOT_REL = ".scratch";
 
@@ -59,6 +61,49 @@ function isDirectory(path: string): boolean {
   } catch {
     return false;
   }
+}
+
+/** The paths one question's reading owns: the corpus it writes into, and the note the run commits. */
+export type ReadingPaths = {
+  /** The handle's feature: the effort directory the corpus lives under. */
+  feature: string;
+  /** `.scratch/<feature>` — the corpus directory handed to the reader. */
+  corpusRel: string;
+  /** `.scratch/<feature>/sources` — the receipts, one per source the reading fetched. */
+  sourcesRel: string;
+  /** `.scratch/<feature>/notes/<slug>.md` — the note, whose file name is the ticket's slug. */
+  noteRel: string;
+};
+
+/**
+ * Derive the reading's paths from the issue's own names, and nothing else: the effort is the handle's
+ * feature (`beads-dag/24` reads into `.scratch/beads-dag/`), the corpus is that effort's directory, and
+ * the note's file name is the ticket's slug.
+ *
+ * The names are the validated ones (`issueNames`, naming.ts): a handle or a slug that cannot name a file
+ * has already been refused there, so a question whose metadata cannot say where its note belongs fails
+ * before a turn is spent, instead of writing a corpus nobody can find again. Discovery is out of the
+ * question - the note's path is computed, exactly as the body's is.
+ */
+export function readingPaths(names: IssueNames): ReadingPaths {
+  const feature = names.handle.split("/")[0]!;
+  const corpusRel = join(EFFORT_ROOT_REL, feature);
+  return {
+    feature,
+    corpusRel,
+    sourcesRel: join(corpusRel, "sources"),
+    noteRel: join(corpusRel, "notes", `${names.slug}.md`),
+  };
+}
+
+/**
+ * The first line of a landed reading's comment: the marker that says this is a draft, the note's path,
+ * and the commit that carries it. The reading's own words follow it, and a session's final answer is
+ * appended under them - so the first line is what a reader (or a query) sees first, and it names the two
+ * things the landing produced: the note and the commit.
+ */
+export function draftLine(noteRel: string, commit: string): string {
+  return `draft: ${noteRel} (commit ${commit})`;
 }
 
 /**

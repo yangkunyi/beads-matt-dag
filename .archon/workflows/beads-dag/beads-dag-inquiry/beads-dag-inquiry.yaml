@@ -2,14 +2,12 @@ name: beads-dag-inquiry
 description: |
   Read questions on this Target: ask the store which questions are on the reading frontier, claim them in
   one transaction, read each one, land its note and receipts as documents on Main, and leave a draft answer
-  on the ticket. The ticket stays open: the last word - the final answer and the close - is a session's,
-  on the operator's word. Install this pack folder as ~/.archon/workflows/beads-dag; a symlink to a
-  checkout is the intended install. The Target does not commit .archon/.
+  on the ticket. The ticket stays open: the last word - the final answer and the close - is a session's, on
+  the operator's word. Install this pack folder as ~/.archon/workflows/beads-dag; a symlink to a checkout
+  is the intended install. The Target does not commit .archon/.
 
-  NOT SAFE TO RUN UNATTENDED YET. This folder is open and the frontier only: pick claims its batch and
-  nothing reads it, because the reading turn and the run's report arrive with beads-dag/24 and
-  beads-dag/25. A run today would leave its batch claimed for the next open to repair, so wait for those
-  tickets before running this workflow for real.
+  A run reads and lands; the run's own report arrives with beads-dag/25, so until then a batch run says
+  what it did only in its logs.
 worktree:
   enabled: false
 inputs:
@@ -29,11 +27,22 @@ nodes:
       max_iterations: 500
       until_bash: test $pick.output = "[]"
       nodes:
-        # The loop's second node - the reading turn, fanned out over the pick, one turn per handle - arrives
-        # with beads-dag/24. Until then this loop claims its batch and ends, which is why the description
-        # above refuses to call the workflow ready.
         - id: pick
           script: pick
           runtime: bun
           with:
             config: $INPUTS.config
+        - id: read
+          include: beads-dag-read
+          depends_on: [pick]
+          with:
+            config: $INPUTS.config
+          fan_out:
+            # The throttle is config.concurrency: pick prints at most that many handles, so this launches
+            # the batch the pool can take, not every question on the frontier. One instance per handle.
+            items: "$pick.output"
+            as: issue
+            # all_success, for the same reason the drain's fan-out is: a reading's own outcome is exit 0
+            # (landed and failed are both results), so an instance only fails when a node THREW - a runner
+            # that cannot start, or a pack bug - and that must fail the run loudly.
+            join: all_success

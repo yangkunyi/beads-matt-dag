@@ -8,6 +8,7 @@ import { delimiter, dirname, join } from "node:path";
 const drainDir = join(import.meta.dir, "..");
 const executeDir = join(import.meta.dir, "../../beads-dag-execute");
 const inquiryDir = join(import.meta.dir, "../../beads-dag-inquiry");
+const readDir = join(import.meta.dir, "../../beads-dag-read");
 
 /** The pack root, the folder both workflow folders live in. */
 export const packDir = join(import.meta.dir, "../..");
@@ -32,6 +33,18 @@ export const inquiry = {
   dir: inquiryDir,
   yaml: join(inquiryDir, "beads-dag-inquiry.yaml"),
   script: (name: string): string => join(inquiryDir, "scripts", `${name}.ts`),
+};
+
+/**
+ * The per-ticket reading block `beads-dag-inquiry` composes, one instance per handle its pick prints. It
+ * is a folder of its own for the same reason `beads-dag-execute` is: only an include or a workflow node
+ * can be fanned out over a runtime list, so the per-question node is a composed block, not a script node
+ * in the loop.
+ */
+export const readBlock = {
+  dir: readDir,
+  yaml: join(readDir, "beads-dag-read.yaml"),
+  script: (name: string): string => join(readDir, "scripts", `${name}.ts`),
 };
 
 /** The drain's config, relative to the Target: what the tests write a store override into. */
@@ -187,6 +200,22 @@ export function publishedBodyPath(root: string, handle: string, slug: string): s
   const [feature, number] = handle.split("/");
   if (!feature || !number) throw new Error(`publishedBodyPath: not a <feature>/<NN> handle: ${handle}`);
   return join(root, ".scratch", feature, "issues", `${number}-${slug}.md`);
+}
+
+/**
+ * The effort directory a question's reading writes into, spelled here for the same reason as the body's
+ * path: the rule is the handle's feature, and a test that asked the pack could not catch the pack naming
+ * the wrong effort.
+ */
+export function readingCorpusRel(handle: string): string {
+  const [feature] = handle.split("/");
+  if (!feature) throw new Error(`readingCorpusRel: not a <feature>/<NN> handle: ${handle}`);
+  return join(".scratch", feature);
+}
+
+/** The note a question's reading owns: the effort's `notes/<slug>.md`, the ticket's own slug. */
+export function readingNoteRel(handle: string, slug: string): string {
+  return join(readingCorpusRel(handle), "notes", `${slug}.md`);
 }
 
 /**
@@ -402,10 +431,13 @@ export function commitFile(cwd: string, file: string, content: string, message: 
  * Modes: `answer` writes an assistant row; `none` writes nothing; `hang` never ends until the wall
  * clock aborts it; `throw` rejects; `commit` also commits HELLO.md in the session's cwd, so a node can
  * be driven to a real merge without a model; `commit-cwd` commits a file named after that cwd instead,
- * so a second issue in the same repository has its own content to land. `FAKE_PI_RECORD` names a file
- * the fake leaves the turn's options in, for a test that wants to read them back.
+ * so a second issue in the same repository has its own content to land; `read` writes a receipt and the
+ * note at the paths the brief carries and answers a draft, so a reading can be driven end to end; and
+ * `read-silent` writes nothing and answers nothing, the turn that read and said nothing.
+ * `FAKE_PI_RECORD` names a file the fake leaves the turn's options in, for a test that wants to read them
+ * back.
  */
-export type FakePiMode = "answer" | "none" | "hang" | "throw" | "commit" | "commit-cwd";
+export type FakePiMode = "answer" | "none" | "hang" | "throw" | "commit" | "commit-cwd" | "read" | "read-silent";
 
 export function fakePiSdk(root: string, mode: FakePiMode): string {
   const dir = join(root, `fake-pi-${mode}`);
@@ -426,8 +458,9 @@ export function fakePiSdk(root: string, mode: FakePiMode): string {
 function fakePiSource(mode: string): string {
   // String concatenation, not a template literal: a `${` inside this source would interpolate here.
   return [
-    'import { appendFileSync, writeFileSync } from "node:fs";',
+    'import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";',
     'import { execFileSync } from "node:child_process";',
+    'import { dirname } from "node:path";',
     `const MODE = ${JSON.stringify(mode)};`,
     "const RECORD = process.env.FAKE_PI_RECORD;",
     'const ANSWER = "the session\'s answer";',
@@ -478,7 +511,20 @@ function fakePiSource(mode: string): string {
     '        execFileSync("git", ["-C", cwd, "add", cwdFile]);',
     '        execFileSync("git", ["-C", cwd, "commit", "-m", "hello from the fake session"]);',
     "      }",
-    '      if (MODE !== "none") {',
+    '      if (MODE === "read") {',
+    "        const note = /^Note: (\\S+)$/m.exec(text)?.[1];",
+    "        const corpus = /^Corpus: (\\S+)$/m.exec(text)?.[1];",
+    "        if (note === undefined || corpus === undefined) {",
+    "          throw new Error(\"the fake reader's brief carries no Note/Corpus path\");",
+    "        }",
+    '        const receipt = cwd + "/" + corpus + "/sources/fake-receipt.md";',
+    "        mkdirSync(dirname(receipt), { recursive: true });",
+    '        writeFileSync(receipt, "SOURCE-URL: https://example.invalid/fake\\nthe fake source says one thing\\n");',
+    '        const notePath = cwd + "/" + note;',
+    "        mkdirSync(dirname(notePath), { recursive: true });",
+    '        writeFileSync(notePath, "# a fake note\\n\\n## Claims\\n\\n- **c1** the fake source says one thing\\n");',
+    "      }",
+    '      if (MODE !== "none" && MODE !== "read-silent") {',,
     '        appendFileSync(file, JSON.stringify({ type: "message", message: { role: "assistant", content: [',
     '          { type: "thinking", text: "THINKING-LEAK" },',
     '          { type: "text", text: ANSWER },',
