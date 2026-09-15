@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "flow",
+  "project_id": "1ca216de-4bb1-4af5-9b95-4ea2a9273ac2"
+}

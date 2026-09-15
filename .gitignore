@@ -3,3 +3,9 @@ node_modules/
 # The inquiry tooling writes demo corpora; the real one is a document like any other.
 .scratch/research-flow/mock-corpus/
 .scratch/research-flow/live-corpus/
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key
+.beads/proxieddb/
