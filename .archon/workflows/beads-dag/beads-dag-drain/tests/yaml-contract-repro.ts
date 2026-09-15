@@ -18,7 +18,7 @@
  */
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { DEFAULT_CONFIG_REL } from "../scripts/config.ts";
+import { DEFAULT_CONFIG_REL, DEFAULT_VERIFY_TIMEOUT_MS } from "../scripts/config.ts";
 import { ROLES } from "../scripts/roles.ts";
 import { drain, execute, expect, expectEqual } from "./target.ts";
 
@@ -235,17 +235,26 @@ try {
 
     // The node's timeout is the runner's side of the role's wall clock: a node names the roles it runs,
     // the role table says how long each may run, and the node's own budget has to cover all of them
-    // (ticket 08 runs two turns in one node, so the sum, not the maximum).
+    // (ticket 08 runs two turns in one node, so the sum, not the maximum). The pre-merge gate is not a
+    // role, so the role sum cannot see it: a node whose script calls `runVerify` buys two gate runs -
+    // one after the implementer's turn and one after the conflict turn - and the budget has to cover
+    // those too, or a later timeout edit could silently make the node shorter than its own work.
     for (const node of nodes) {
       if (!node.script) continue;
-      const roles = [...(scripts.get(node.script)?.source ?? "").matchAll(/role:\s*"([a-z]+)"/g)].map((m) => m[1]!);
+      const source = scripts.get(node.script)?.source ?? "";
+      const roles = [...source.matchAll(/role:\s*"([a-z]+)"/g)].map((m) => m[1]!);
       for (const role of roles) {
         expect(`${file}: ${node.id} names a declared role`, role in ROLES, role);
       }
-      if (roles.length === 0) continue;
-      const needed = roles.reduce((ms, role) => ms + ROLES[role as keyof typeof ROLES].wallMs, 0);
+      const gates = /runVerify\s*\(/.test(source) ? 2 : 0;
+      if (roles.length === 0 && gates === 0) continue;
+      const needed =
+        roles.reduce((ms, role) => ms + ROLES[role as keyof typeof ROLES].wallMs, 0) +
+        gates * DEFAULT_VERIFY_TIMEOUT_MS;
       expect(
-        `${file}: ${node.id} outlasts the wall clocks of ${roles.join("+")} (${needed}ms)`,
+        `${file}: ${node.id} outlasts the wall clocks of ${roles.join("+")}${
+          gates > 0 ? ` plus ${gates} gate runs` : ""
+        } (${needed}ms)`,
         node.timeout !== undefined && node.timeout > needed,
         `${node.timeout}ms`,
       );

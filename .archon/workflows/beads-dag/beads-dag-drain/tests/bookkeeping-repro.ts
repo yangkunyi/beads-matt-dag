@@ -27,7 +27,7 @@ import { join } from "node:path";
 import { executeIssue } from "../../beads-dag-execute/scripts/execute.ts";
 import type { AgentRunner } from "../scripts/agent.ts";
 import { addAttempted } from "../scripts/attempted.ts";
-import type { PackConfig } from "../scripts/config.ts";
+import { DEFAULT_VERIFY_TIMEOUT_MS, type PackConfig } from "../scripts/config.ts";
 import { FAILURES_HEADING } from "../scripts/failures.ts";
 import { withMainLock } from "../scripts/lock.ts";
 import { ensureWorktreesIgnored, IGNORE_COMMIT_SUBJECT, mergeSubject } from "../scripts/main-writes.ts";
@@ -93,6 +93,8 @@ const CONFIG: PackConfig = {
   concurrency: 4,
   runner: "pi",
   store: storeBinary(),
+  verify: "",
+  verifyTimeoutMs: DEFAULT_VERIFY_TIMEOUT_MS,
 };
 
 /** Open one run the way the runner would, and return the base it recorded. */

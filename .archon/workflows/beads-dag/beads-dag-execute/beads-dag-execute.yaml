@@ -19,10 +19,11 @@ nodes:
   - id: execute
     script: execute
     runtime: bun
-    # Long enough for both turns: the implementer, then the conflict agent if the merge conflicted.
-    # The role table's wall clock is 2 h per turn, and one node runs both, so 15 000 000 ms outlasts
-    # 2 x 2 h with the same 10-minute margin the single-turn form had.
-    timeout: 15000000
+    # Long enough for both turns and both gates. The role table's wall clock is 2 h per turn and one node
+    # runs both (2 x 7 200 000), and each settle is preceded by the Target's gate for up to
+    # DEFAULT_VERIFY_TIMEOUT_MS (2 x 900 000), so the node's own budget is 16 200 000 ms; with the same
+    # 10-minute margin the single-turn form had, 16 800 000. The contract test computes the same sum.
+    timeout: 16800000
     with:
       issue: $INPUTS.issue
       config: $INPUTS.config
