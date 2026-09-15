@@ -1,0 +1,7 @@
+# The pack's knobs for this Target (drain/scripts/config.ts).
+#
+# concurrency: 1 because the account behind the default runner model allows three concurrent requests
+# and a fan-out of four workers hit that ceiling on the first drain (2026-09-15): every turn died with
+# 429 "concurrent_request_limit_exceeded" and no ticket got a commit. One worker at a time is slower and
+# correct; raise it (and the account's allowance) together, never one alone.
+concurrency: 1
