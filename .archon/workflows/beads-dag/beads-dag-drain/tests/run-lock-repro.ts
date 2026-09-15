@@ -79,7 +79,7 @@ try {
     writeFileSync(runLock, `${process.pid}\n`);
     const anonymous = runScript(drain.script("open"), root, { ARTIFACTS_DIR: refusedRun });
     expectEqual("a pid-only holder is refused too", anonymous.status, 1);
-    expect("and the message names the pid", anonymous.stderr.includes(`another drain is running (pid ${process.pid}`), anonymous.stderr);
+    expect("and the message names the pid", anonymous.stderr.includes(`another run is running (pid ${process.pid}`), anonymous.stderr);
   });
 
   // A dead holder's lock is stolen, one line says so, and the run proceeds.

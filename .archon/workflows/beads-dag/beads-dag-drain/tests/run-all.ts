@@ -7,9 +7,9 @@
  *
  * What changed is the scheduling, because the gate's cost was almost entirely startup. A repro pays a
  * real `bd init` - about 3 s of Dolt startup - and every store command pays about half a second of it,
- * so a suite of 31 repros that spends 19 minutes serially is 19 minutes of processes starting, not of
+ * so a suite that spends 19 minutes serially is 19 minutes of processes starting, not of
  * logic. Startup parallelises (measured: eight init-plus-four-commands jobs ran in 5.7 s wall where
- * serial was 41 s), so the same 31 repros take a couple of minutes at REPRO_JOBS, and the gate stops
+ * serial was 41 s), so the same suite takes a couple of minutes at REPRO_JOBS, and the gate stops
  * being the expensive part of a ticket.
  *
  * A repro that outlives its clock is killed and counted as a failure rather than holding the gate open

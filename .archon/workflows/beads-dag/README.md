@@ -59,14 +59,18 @@ below), before anything is claimed or repaired — and `pick` makes that same ch
 bun ~/.archon/workflows/beads-dag/beads-dag-drain/backup.ts
 ```
 
-## One drain at a time
+## One run at a time
 
-`lock.ts` serialises the writes that move Main; it does nothing about two runs, and two drains against
+`lock.ts` serialises the writes that move Main; it does nothing about two runs, and two runs against
 one Target are not a slower version of one: the second run's opening repair reads the first run's live
-claim as a leftover, and its `pick` can offer an issue the first is implementing right now. So `open`
-takes a Target-level **run lock** before it does anything, and a second drain **refuses** — exit 1, one
-line naming the holder, nothing claimed, nothing written — rather than waiting a run's length for a
-read that would be a run old when it woke.
+claim as a leftover, and its `pick` can offer an issue the first is implementing right now. A reading
+run has the same shape — it repairs a killed reading's claim and picks the reading frontier — and it
+commits its documents to the same branch. So `open` takes a Target-level **run lock** before it does
+anything, and a second run **refuses** — exit 1, one line naming the holder, nothing claimed, nothing
+written — rather than waiting a run's length for a read that would be a run old when it woke. It is one
+lock and one rule for every executor: a drain started while a reading run holds it is refused, and a
+reading run started while a drain holds it is refused the same way, because "one run at a time" is
+about the Target and not about which domain asked.
 
 The lock is its own file, `beads-dag-run.lock` beside the Main lock `beads-dag.lock` in the Target's git
 directory. It must not be the Main lock's file: a run lock is held by the workflow runner process for
@@ -79,9 +83,10 @@ The lock names the run — the basename of the run's artifacts directory, Archon
 workflow runner every node of the run shares. A pid that is gone is a killed run's leftover and is
 stolen exactly as `lock.ts` steals one, with one line saying so; a live one refuses, and the refusal on
 stderr names the holder's run id and pid, so `archon workflow status` finds the run to wait for — or to
-kill. `summary`, the run's last node, releases the lock, and `open` releases it when its own work fails
-before the loop; but no node after `open` is guaranteed to run, so a run killed or failed on the way
-leaves the file behind, which is exactly what the dead-pid steal is for. The run also records the lock it
+kill. The run's last node releases the lock — `summary` for a drain, `report` for a reading run — and
+`open` releases it when its own work fails before the loop; but no node after `open` is guaranteed to
+run, so a run killed or failed on the way leaves the file behind, which is exactly what the dead-pid
+steal is for. The run also records the lock it
 took in its artifacts (`run-lock.json`, one line, saying what it stole when it stole one), so a refusal
 can be checked against the holder's own record.
 
@@ -290,7 +295,7 @@ the report.
 **The lock guards git, not the store** (ADR-0002). Every function that writes Main (`main-writes.ts`)
 refuses to run unless the caller holds the Main-write lock; the store write that records an outcome is
 deliberately outside it, under the store's own transaction. The lock is one file in the Target's git
-directory (`beads-dag.lock`; the run lock is a second file beside it, `One drain at a time` above): a
+directory (`beads-dag.lock`; the run lock is a second file beside it, `One run at a time` above): a
 second process waits for it, a call made while this process holds it
 joins the same transaction, and a lock left behind by a killed run (its pid gone) is stolen rather than
 waited for. `main-writes.ts` also writes the `.gitignore` rules that keep the checkout clean - `/worktrees/`
@@ -445,6 +450,28 @@ Both readers share one wall clock (`REVIEW_WALL_MS`, 30 min) and the same read-o
 worker: the environment the role call carries puts the store in its own read-only mode, so a reader
 cannot move the frontier.
 
+## The reading run's report
+
+A drain leaves two readers' prose; a reading run leaves one document a human reads first, and it is
+written by the node and never by a model. `beads-dag-inquiry`'s last node writes `report.md` in the run's
+`ARTIFACTS_DIR`, from the store and from the run's own record, in the order the question is asked:
+
+- **Read and landed** — the questions this run read, each with the note's path, the commit that carries
+  it (both read out of the draft comment the reading wrote) and the label the landing stamped;
+- **Failed attempts** — the questions this run left failing, in the drain's own failures block: the
+  store's `attempt N failed:` comments, with the ordinal and the count it holds;
+- **Frontier left behind** — the handles still eligible, recomputed with `pick`'s own rules
+  (`frontier.ts`, shared by both nodes) over an empty attempted set, so the report describes what the
+  next run would find and a run that did nothing says so;
+- **Draft answers awaiting the operator** — the handles of the open `decision` issues carrying
+  `answer:draft`, read from the store when the report is written. Nothing keeps that list: it is the
+  query the tracker contract names, and an earlier run's reading appears in it whether or not this run
+  ever saw the question.
+
+The report is run-scoped like `pick-exclusions.json` and `attempted-ids.json`, and never consulted as
+state (ADR-0005): nothing in the pack reads a `report.md` back. It is also the run's last node, so it is
+where a reading run gives its run lock back (`One run at a time`, above).
+
 ## The agent roles
 
 `roles.ts` is the single declaration of each agent role: the arguments it takes, the session key it runs
@@ -516,7 +543,7 @@ the isolation is the contract, since each repro builds its own temp Target with 
 10 min) so a repro that hangs fails the gate instead of holding it open. That shape is what makes the
 gate affordable rather than expensive: almost all of its cost is process startup - a real `bd init` is
 about 3 s of Dolt startup and every store command about half a second of it - and startup parallelises,
-so 31 repros take about 2.5 minutes where running them one after another took 19. While you are working
+so the suite takes about 2.5 minutes where running it one after another took 19. While you are working
 on one behaviour, run that one file (`bun .archon/workflows/beads-dag/beads-dag-drain/tests/<name>-repro.ts`):
 seconds, not minutes. The whole suite is the gate you leave behind, not the loop you think in.
 
@@ -535,7 +562,7 @@ per release rather than per change, and never against a Target someone is draini
 beads-dag-drain/     the drain: open, the loop (pick, execute), then the two readers, and backup.ts,
                      the operator's one-command store backup
 beads-dag-execute/   one issue, start to finish. Not a public entry: its issue input is required.
-beads-dag-inquiry/   the reading executor: open, the loop (pick, read), and, with beads-dag/25, report
+beads-dag-inquiry/   the reading executor: open, the loop (pick, read), then report
 beads-dag-read/      one question, read and landed as a draft answer. Not a public entry: its issue
                      input is required, and beads-dag-inquiry composes it, one instance per handle.
 ```
@@ -562,14 +589,14 @@ The modules the pack's workflows share, all in the drain's `scripts/`:
 | `doc-commit.ts` | the documents a run lands: one path-scoped commit per ticket, under the Main lock |
 | `worktree.ts` | the issue's worktree: create, resume, bring Main in, and the standing-merge state |
 | `lock.ts` | the Main-write lock: one writer at a time on the Target's branch |
-| `run-lock.ts` | the run lock: one drain at a time per Target, the refusal a second one gets |
+| `run-lock.ts` | the run lock: one run at a time per Target, the refusal a second one gets |
 | `main-writes.ts` | every git write to Main: the merge, the ignore line, the removal after a merge |
 | `settle.ts` | the one order: merge then record, or record the failure and reopen |
 | `verify.ts` | the pre-merge gate: one Target command on the would-be-merged tree, with its clock |
 | `postmerge.ts` | the post-merge act: one Target command in the Target itself, after a merge has landed |
 | `reconcile.ts` | the repair of a killed run's leftovers: closed from git, or reopened with a reason |
 | `domains.ts` | the domain boundary: the non-work types, and the cross-domain graph preflight |
-| `failures.ts` | the drain-end failures block: the store's own failure records, and how they read |
+| `failures.ts` | the failures block: the store's own failure records, and how they read |
 | `report-artifacts.ts` | the drain-end artifacts: the range's base, review.md/summary.md, the skip protocol |
 | `report-node.ts` | the skeleton both drain-end readers ride: the base, the run's range, the agents, the artifact, and the recognition of a range the pack wrote itself |
 | `review-position.ts` | the recorded position: the Target's local ref, how a run opens on it, how a review advances it |
@@ -584,13 +611,14 @@ The modules the pack's workflows share, all in the drain's `scripts/`:
 
 The table splits along one line: a module whose reason to exist is that a run **merges an issue's work**
 into Main — or reports on one that did — is the drain's alone (`main-writes.ts`, `settle.ts`, `verify.ts`,
-`worktree.ts`, `reconcile.ts`, `review-position.ts`, `run-record.ts`, `failures.ts`,
+`worktree.ts`, `reconcile.ts`, `review-position.ts`, `run-record.ts`,
 `report-artifacts.ts`, `report-node.ts`). That is the closed rule, not the looser "writes Main": the two
 document-writing executors this pack is growing commit their own files to the same branch and neither may
 merge an issue, so what separates the drain's modules is the merge and nothing else. What a run shares
 with the rest of the flow is everything else: `store.ts`, `naming.ts` (the body path — the branch and
 worktree names are a run's own), `domains.ts`, `doc-commit.ts`, the path-scoped commit every run that
-lands documents uses, `worker-env.ts`, whose read-only mode is the inquiry domain's AFK leg too, and the
-two locks (`lock.ts`, `run-lock.ts`), which any run that writes Main takes whatever it writes. A future
-inquiry workflow is a separate pack folder that imports those, never a node in this one: a node here is a
-claim, a worktree and a merge, and inquiry has none of the three.
+lands documents uses, `failures.ts`, whose failure records are a store reading either report can make,
+`worker-env.ts`, whose read-only mode is the inquiry domain's AFK leg too, and the
+two locks (`lock.ts`, `run-lock.ts`), which any run that writes Main takes whatever it writes. The
+reading executor is a separate pack folder that imports those, never a node in this one: a node here is a
+claim, a worktree and a merge, and reading has none of the three.
