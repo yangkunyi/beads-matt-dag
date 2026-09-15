@@ -31,3 +31,7 @@ live in it, never in the pack: the repro suite
 
 The inquiry domain's tooling under `tools/` is not the pack and nothing else checks it, so it carries its own
 one-line gate: `./node_modules/.bin/tsc -p tsconfig.tools.json`.
+
+The machine's two copies of this checkout — the skill set in `~/.agents/skills/` and the pack link in
+`~/.archon/workflows/` — are checked, and refreshed, by one command run from here:
+`bun tools/flow.ts check` (add `install` to fix what it reports).
