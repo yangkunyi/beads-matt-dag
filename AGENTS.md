@@ -3,16 +3,19 @@
 Lab repo for building and validating the beads-based issue-tracker flow for the matt-pocock
 engineering skills. Design record: `docs/specs/2026-09-11-beads-issue-tracker-consensus.md`.
 
-> This repo's own tracker is the local-markdown convention below, not beads. The flow itself is
-designed (`docs/specs/…`, `docs/adr/`) and is being built ticket by ticket in
-`.scratch/beads-dag/issues/`; so far that means the pack at `.archon/workflows/beads-dag/`, whose README
-installs it, documents it and names its gates.
+> This repo is both the design lab and a Target. The flow is designed here (`docs/specs/…`, `docs/adr/`,
+the tracker contract) **and worked here**: since 2026-09-15 its own beads store holds the tickets, and
+the drain built in `.archon/workflows/beads-dag/` runs against this repository. Work opened before that
+date lives as markdown under `.scratch/beads-dag/issues/` and stays where it is — history, not a second
+tracker.
 
 ## Agent skills
 
 ### Issue tracker
 
-Issues and specs live as markdown files under `.scratch/<feature>/`. See `docs/agents/issue-tracker.md`.
+Issues live in this repo's own beads store, driven with `bd`; the prose stays as markdown under
+`.scratch/<feature>/issues/` and the store holds identity, status, edges, labels and comments. See
+`docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
