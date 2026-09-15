@@ -32,8 +32,8 @@ live in it, never in the pack: the repro suite
 (`bun .archon/workflows/beads-dag/beads-dag-drain/tests/run-all.ts`) and the typecheck
 (`./node_modules/.bin/tsc -p tsconfig.pack.json`).
 
-The inquiry domain's tooling under `tools/` is not the pack and nothing else checks it, so it carries its own
-one-line gate: `./node_modules/.bin/tsc -p tsconfig.tools.json`.
+The Target-side tooling under `tools/` — the inquiry corpus tools and the experiment script — is not the pack
+and nothing else checks it, so it carries its own one-line gate: `./node_modules/.bin/tsc -p tsconfig.tools.json`.
 
 The machine's two copies of this checkout — the skill set in `~/.agents/skills/` and the pack link in
 `~/.archon/workflows/` — are checked, and refreshed, by one command run from here:
