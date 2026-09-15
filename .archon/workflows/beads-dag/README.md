@@ -565,6 +565,16 @@ Install it with `npm i -g @beads/bd@1.2.2`, or point `BEADS_BIN` at one. "There 
 repro *inside* that one run, not an argument for a second: `store-open-repro.ts` runs the opening node
 against a PATH that cannot resolve a binary and reads the reason it fails with.
 
+**A fixture never speaks the runner's protocol.** `INPUTS_ISSUE`, `INPUTS_CONFIG` and `ARTIFACTS_DIR`
+are Archon's conversation with one node, and a worker's turn has them set to its own run — so a repro
+that inherits or spreads them drives a real node against the live run instead of its own Target. `runScript`
+and the fixture's `envWithout`/`envWithoutStore` helpers drop all three for that reason, and a caller
+naming its own `ARTIFACTS_DIR` must not spread an ambient environment over it. This is not hypothetical:
+the worker of ticket beads-dag/29 ran this suite inside its turn and three repros each overwrote that
+run's `review-base` and `run-lock.json` with a throwaway Target's, so the run's review-base named a commit
+no repository had and its review reported nothing at all. `worker-readonly-repro.ts` pins the rule by
+setting an ambient `ARTIFACTS_DIR` that has to stay empty.
+
 The third gate is the acceptance: a real `archon workflow run` against a throwaway Target. It runs once
 per release rather than per change, and never against a Target someone is draining.
 

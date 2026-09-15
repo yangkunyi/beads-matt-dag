@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Repro: a worker cannot write issue state.
+ * Repro: a worker cannot write issue state - and a fixture never speaks the runner's protocol.
  *
  * The environment the drain hands a worker carries the store's own read-only mode, so the mechanism is
  * the store's, not a prompt's: the worker runs a real write attempt and the store refuses it. The
@@ -9,23 +9,39 @@
  * happens to be unwritable.
  *
  * Reads are not blocked: a worker that cannot read its own issue's state is not the contract either.
+ *
+ * The second half is the other thing a worker's environment must not carry into a fixture. A worker's
+ * turn has `ARTIFACTS_DIR` set to its own run, so a repro that spreads an env helper *after* naming its
+ * own artifacts directory would drive a real node against the live run: measured 2026-09-15, the worker
+ * of ticket beads-dag/29 ran this suite inside its turn and `store-open-repro`, `config-repro` and
+ * `store-backup-repro` each overwrote that run's `review-base` and `run-lock.json` with a throwaway
+ * Target's, leaving the run's review-base naming a commit no repository had - its review then reported
+ * nothing at all. So the ambient `ARTIFACTS_DIR` is set here to a directory that must stay empty, and the
+ * same call shape that did the damage is the one that proves it fixed.
  */
 import { spawnSync } from "node:child_process";
+import { existsSync, readdirSync, rmSync } from "node:fs";
+import { join } from "node:path";
 import { executeIssue } from "../../beads-dag-execute/scripts/execute.ts";
 import type { PackAgentOpts, PackAgentResult } from "../scripts/agent.ts";
-import { FAILED } from "../scripts/node-outcomes.ts";
+import { FAILED, OPENED, nodeLine } from "../scripts/node-outcomes.ts";
 import { READONLY_ENV } from "../scripts/worker-env.ts";
 import {
   GATE_LABEL,
   bd,
+  drain,
+  envWithoutStore,
   expect,
   expectEqual,
+  mkTemp,
   publishIssue,
+  runScript,
   storeBinary,
   storeComments,
   storeIssue,
   withTarget,
   writeStoreConfig,
+  writeTargetConfig,
 } from "./target.ts";
 
 type Attempt = { status: number | null; output: string };
@@ -89,6 +105,30 @@ try {
     const accepted = attempt(process.env, root, ["comment", issue.id, "written without the worker's environment"]);
     expectEqual("the same write is accepted outside the worker's environment", accepted.status, 0);
     expectEqual("and lands", storeIssue(root, issue.id).comment_count, 1);
+  });
+
+  // The other half: the protocol the runner speaks to a node never comes from this process either, in a
+  // helper's spread any more than in `runScript`'s inheritance.
+  await withTarget(async (root, artifacts) => {
+    // The store the node finds, without the binary on PATH - the shape that carries `envWithoutStore`.
+    writeTargetConfig(root, `store: ${storeBinary()}\n`);
+    const ambient = mkTemp("ambient-artifacts-");
+    const saved = process.env.ARTIFACTS_DIR;
+    process.env.ARTIFACTS_DIR = ambient;
+    try {
+      // The call shape that did the damage: the fixture's own directory named first, the helper's
+      // spread after it.
+      const opened = runScript(drain.script("open"), root, { ARTIFACTS_DIR: artifacts, ...envWithoutStore() });
+      expectEqual("the opening node runs", opened.stdout, nodeLine(OPENED));
+      expectEqual("and exits clean", opened.status, 0);
+      expect("its review-base is the fixture's", existsSync(join(artifacts, "review-base")), opened.stderr);
+      expect("and its run lock too", existsSync(join(artifacts, "run-lock.json")), opened.stderr);
+      expectEqual("the ambient directory the suite inherited stays empty", readdirSync(ambient).join(","), "");
+    } finally {
+      if (saved === undefined) delete process.env.ARTIFACTS_DIR;
+      else process.env.ARTIFACTS_DIR = saved;
+      rmSync(ambient, { recursive: true, force: true });
+    }
   });
 
   console.log(JSON.stringify({ ok: true }));

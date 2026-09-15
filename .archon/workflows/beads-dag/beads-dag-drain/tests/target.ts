@@ -560,9 +560,15 @@ function fakePiSource(mode: string): string {
   ].join("\n");
 }
 
+/**
+ * The runner's conversation with one node: the three variables Archon sets for a node and nothing else.
+ * A fixture never inherits them, in any shape.
+ */
+const PROTOCOL_ENV = ["INPUTS_ISSUE", "INPUTS_CONFIG", "ARTIFACTS_DIR"];
+
 export function envWithout(...names: string[]): NodeJS.ProcessEnv {
   const env = { ...process.env };
-  for (const name of names) delete env[name];
+  for (const name of [...PROTOCOL_ENV, ...names]) delete env[name];
   return env;
 }
 
@@ -570,12 +576,16 @@ export function envWithout(...names: string[]): NodeJS.ProcessEnv {
  * The environment as a Target that cannot find the store: every PATH entry under which an executable
  * `bd` resolves is out, not only the one `storeBinary()` happened to pick. A second install earlier or
  * later on PATH would otherwise leave the binary findable, and the premise is what the repros assert.
+ *
+ * The protocol variables go too, like everywhere a fixture builds an environment.
  */
 export function envWithoutStore(): NodeJS.ProcessEnv {
   const entries = (process.env.PATH ?? "")
     .split(delimiter)
     .filter((dir) => dir !== "" && !isExecutable(join(dir, "bd")));
-  return { ...process.env, PATH: entries.join(delimiter) };
+  const env = envWithout();
+  env.PATH = entries.join(delimiter);
+  return env;
 }
 
 /**
@@ -593,7 +603,10 @@ export function envWithoutStore(): NodeJS.ProcessEnv {
  * directory nobody passed it). That is the same worker-versus-session split the read-only flag gets at the
  * top of this file, and it is dropped the same way: inherited, they make a green suite mean something
  * different inside a worker than in a session, and the suite a worker runs has to be the suite a session
- * runs.
+ * runs. `envWithout` and `envWithoutStore` drop them for the same reason - a caller that spreads one of
+ * them *after* naming its own `ARTIFACTS_DIR` would otherwise hand the node the ambient directory, which
+ * is how the worker of ticket beads-dag/29 overwrote its own run's `review-base` and `run-lock.json` with
+ * a temp Target's, leaving that run's review with a base commit no repository had.
  */
 export function runScript(
   script: string,
@@ -602,7 +615,7 @@ export function runScript(
 ): { stdout: string; stderr: string; status: number | null } {
   const path = [dirname(storeBinary()), process.env.PATH ?? ""].filter(Boolean).join(delimiter);
   const inherited = { ...process.env };
-  for (const name of ["INPUTS_ISSUE", "INPUTS_CONFIG", "ARTIFACTS_DIR"]) delete inherited[name];
+  for (const name of PROTOCOL_ENV) delete inherited[name];
   const r = spawnSync(process.execPath, [script], {
     cwd,
     encoding: "utf8",
