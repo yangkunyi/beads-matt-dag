@@ -2,8 +2,8 @@
 
 *Assembled 2026-09-15 from the `lab-zfl` wayfinder map (tickets `.1`–`.7`; the tickets are the argument,
 this is the result). Status: **designed, and implemented only where marked**. No experiment has been run
-under it yet — this machine has no DVC — so what follows is a design that has survived scrutiny, not one
-that has survived contact.*
+under it yet — DVC arrived on this machine on 2026-09-15, and no experiment has been run — so what follows
+is a design that has survived scrutiny, not one that has survived contact.*
 
 The domain holds one promise: **`closed` means the result is recorded.** That is bookkeeping, not a
 judgement. The record is complete when it says what was measured, whether it met the reference frozen
@@ -47,7 +47,8 @@ A **thin target-side script** does the two things that cannot be reconstructed a
 - **collection after it** — `dvc exp show --json`, the declared metric files, and `dvc.lock`.
 
 The script is copied in like `tools/inquiry/` (the flow's retrieval tooling): not a pack node, not
-installed, no package. **Where it lives is the one question this design leaves open** (see the end).
+installed, no package. Where it lives was this design's one open question; it is settled at
+`tools/experiments/` (see the end).
 
 ## DVC's seat
 
@@ -165,8 +166,10 @@ type in a Target (`bd config set types.custom experiment`) is the one act a Targ
 - **No runner, no scheduler, no cluster** — the destination stops at the interface.
 - **No run store is chosen.** W&B and MLflow both fit the socket; the record stays neutral by leaving it
   empty and naming sources per field.
-- **The experiment half's code has no home yet.** `.2` settled that there *is* a thin script (registration
-  before, collection after, copied in); which directory it sits in is implementation rather than this design,
-  so the map ruled it out of scope (2026-09-15) — it is settled the day the first experiment is really run.
+- **The experiment half's code has a home now.** `.2` settled that there *is* a thin script (registration
+  before, collection after, copied in); which directory it sits in was ruled implementation rather than
+  design, and implementation has decided it: **`tools/experiments/`**, fixed by
+  `docs/specs/2026-09-15-inquiry-and-experiment-executors.md`, which also settles that a run goes through
+  DVC's queue (temporary workspaces) rather than a plain `dvc exp run`.
 - **The drain gains nothing to do with this domain.** The development half's report stays the development
   half's.

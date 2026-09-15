@@ -8,7 +8,7 @@ The flow has three domains and one worker. `beads-dag-drain` starts what the sto
 each development issue in its own worktree, merges it into Main and records the outcome — and that is
 the whole of the automation. A question is read by hand: a session launches an agent, the agent leaves
 receipts and a note, the session commits them and writes the answer. An experiment is not run at all:
-its rules are paper, and this machine has no DVC.
+its rules are paper, and no experiment has been run under it.
 
 This spec is the other two executors. Both are new workflow folders in the same pack — **one pack, three
 domains, three executors** — and both are shaped the way the drain is: ask the store what is on the
@@ -102,22 +102,30 @@ way it can be: **that ticket is not opened** until its input exists (operator, 2
 22. As the operator, I want the two executors to refuse loudly when their premise is missing — no store,
     no `tools/inquiry/`, no `dvc` — so that "nothing happened" is distinguishable from "the run could not
     start".
-23. As the operator, I want the experiment executor to be honest about the machine it runs on, so that
-    building it before DVC exists is a known deferred acceptance and not a silent claim.
-24. As a session holding a map, I want the reading leg to be a workflow I start, so that the map's next
+23. As the operator, I want the experiment executor to refuse loudly on a machine without DVC, so that
+    "this machine cannot run the half yet" is one line at the opening node and not a failure three hours
+    into a turn.
+24. As the operator, I want a sweep — several seeds or configs against one frozen reference — to be one
+    ticket whose record has one row per run, so that "which of these wins" is one question with one table
+    rather than five tickets with five references.
+25. As the operator, I want the runs inside one ticket to go through DVC's own queue, so that they run
+    in parallel in temporary workspaces instead of colliding on the repository's DVC lock.
+26. As the operator, I want independent experiments to run at once when I ask for it (`concurrency`), so
+    that a batch of experiments is one run — not one run per experiment.
+27. As a session holding a map, I want the reading leg to be a workflow I start, so that the map's next
     ticket is read without me holding a session open for an hour.
-25. As a session closing a question ticket, I want the draft answer to be a comment I can append to, so
+28. As a session closing a question ticket, I want the draft answer to be a comment I can append to, so
     that the final answer is one comment with the operator's words in it.
-26. As a session, I want the clashing labels to be impossible to hold at once, so that a ticket cannot be
+29. As a session, I want the clashing labels to be impossible to hold at once, so that a ticket cannot be
     both "being read" and "read".
-27. As the flow's maintainer, I want the two new workflows to ride the existing seams — the node protocol,
+30. As the flow's maintainer, I want the two new workflows to ride the existing seams — the node protocol,
     the role table, the agent seam, the test harness — so that the pack grows three executors without
     three ways of doing anything.
-28. As the flow's maintainer, I want the new repros inside the pack's one suite, so that the gate stays
+31. As the flow's maintainer, I want the new repros inside the pack's one suite, so that the gate stays
     one command.
-29. As the flow's maintainer, I want the thin experiment script to be testable without DVC installed, so
+32. As the flow's maintainer, I want the thin experiment script to be testable without DVC installed, so
     that its verbs are pinned before the machine that needs them exists.
-30. As the flow's maintainer, I want the drain's readers to see a reading's commits in their range, so
+33. As the flow's maintainer, I want the drain's readers to see a reading's commits in their range, so
     that documents landing on Main are normal commits and not a special case the reviewers must know
     about.
 
@@ -261,16 +269,27 @@ visible and honest; the alternative is a second state to maintain.
 | Node | Script | Does |
 | --- | --- | --- |
 | `open` | `open.ts` | opens the store, takes the run lock, prints the configuration line, refuses when `dvc` or `tools/experiments/` is missing, repairs leftovers |
-| `pick` | `pick.ts` | the frontier: **one** handle per cycle |
+| `pick` | `pick.ts` | the frontier, truncated to `config.concurrency` |
 | `run` | `run.ts` | one ticket: claim and registration in one act, the run turn, the record, the completeness check, the close |
 | `report` | `report.ts` | the run's report and the artifacts |
 
 **The frontier** is the store's ready answer minus: not type `experiment`, not labelled `experiment`,
 already attempted by this run. Experiment tickets never carry the gate label, and by type they never
-enter a drain — this is the one frontier that selects *by* the non-work type instead of excluding it. It
-takes **one ticket per cycle**, whatever `concurrency` says: an experiment is a machine-wide resource,
-DVC's cache and refs are shared, and a second experiment started by the same run is a decision the
-operator makes by starting a second run, not one a fan-out makes for him.
+enter a drain — this is the one frontier that selects *by* the non-work type instead of excluding it.
+
+It truncates to `config.concurrency` like every other executor, so **several independent experiments run
+in one run** when the operator asks for it. What makes that safe is DVC's own queue, not a lock of ours:
+measured on DVC 3.67.1 (2026-09-15), two plain `dvc exp run` in one repository cannot overlap — the second
+dies on `.dvc/tmp/rwlock` (`exit 255`) — while `dvc exp run --queue` plus `dvc exp run --run-all -j N` runs
+the queued points in **temporary workspaces** side by side: two 20-second stages finished in 29.5 s wall
+clock at `-j 2`, against ~50 s serial. So the executor's parallel path is the queue path, and a plain
+`dvc exp run` is not what the runner does.
+
+**One question, one ticket, several runs.** A ticket freezes the deciding metric and the reference; a run
+is a row in the record's attempts table. So a sweep — three seeds, four configs, all read against the same
+frozen reference — is **one ticket** with three or four rows: one question, one table, one close. Two
+different references (or two metrics) are two questions and therefore two tickets, which is the same rule
+that makes a changed metric open a new ticket rather than amend one.
 
 **Claim = assignment, before any work**, in the same act as the registration, exactly as the domain spec
 fixed it:
@@ -329,12 +348,25 @@ package, no install):
 
 | Verb | Does | Writes |
 | --- | --- | --- |
-| `register` | reserves the run's identity and snapshots what cannot be reconstructed afterwards: the name, the parameters, the code commit the run starts from | a JSON line on stdout, and the run's registration in `ARTIFACTS_DIR` |
-| `collect` | `dvc exp show --json`, the ticket's declared metric files, `dvc.lock` | a JSON blob on stdout: the metric's value and source, the parameters, the three version pointers, the artifact pointers |
+| `register` | queues the run (`dvc exp run --queue -n <name>`) — which reserves the name **without executing anything** — and snapshots what cannot be reconstructed afterwards: the name, the queued points, the parameters, the code commit the run starts from | a JSON line on stdout, and the run's registration in `ARTIFACTS_DIR` |
+| `collect` | executes the queue (`dvc exp run --run-all -j <jobs>`, which implies `--temp`), then reads `dvc exp show --json`, the ticket's declared metric files and `dvc.lock` | a JSON blob on stdout: per run, the metric's value and source, the parameters, the three version pointers, the artifact pointers |
 
 It trains nothing, schedules nothing and knows no cluster. It shells out to `dvc` — resolved on `PATH`,
-with `DVC_BIN` as the escape hatch — so a repro can pin both verbs against a stub `dvc` on `PATH` and this
-machine's lack of DVC stops being an excuse for an untested script.
+with `DVC_BIN` as the escape hatch — so a repro can pin both verbs against a stub `dvc` on `PATH`, and the
+real thing is available too (installed on this machine 2026-09-15).
+
+Two measured details the verbs are built on, because both are easy to get wrong:
+
+- **`dvc exp show --json` is a column tree, not a table of rows.** The top level is a list holding the
+  `workspace` and `main` columns; each experiment is a child under `experiments[].revs[].` with its own
+  `{rev, name, data}`, and `data` carries `params` and `metrics` **per file**, where a file is either
+  `{data: {...}}` or `{error: {...}}` — a metric that is an output rather than a committed file reads as an
+  error on `main` and as a value on the experiment. `collect` finds its run by name in that tree, and
+  reports the error case as empty rather than guessing.
+- **the queue is the parallel path.** A second plain `dvc exp run` in the same repository is refused by
+  `.dvc/tmp/rwlock`; queueing is what makes several runs at once possible, and `--temp` is what keeps them
+  out of the operator's working tree (a plain run applies its results to the workspace, which a sweep of
+  five points would leave holding the last one).
 
 ### The two reports
 
@@ -366,8 +398,8 @@ The report is written by the node, never by a model, and it is never consulted a
 2. `beads-dag-inquiry`, its repros, and the first live acceptance against this repository (a real
    question, a real reading — the design repo is a Target now);
 3. `tools/experiments/` with its stub-DVC repros;
-4. `beads-dag-experiment` against a real `dvc` on a real experiment, whenever the machine has one — its
-   tickets can be built and tested before that, and their acceptance is recorded as deferred.
+4. `beads-dag-experiment` against the `dvc` now on the machine, with a real experiment ticket as its
+   acceptance — the repros pin the behaviour against a stub, and the real run is what makes it trustworthy.
 
 ## Testing Decisions
 
@@ -401,14 +433,17 @@ folder the pack's tests live in), and both typechecks stay clean — `tsconfig.p
 
 **The third gate is the acceptance**, and it is honest about which half can have one now: a real
 `archon workflow run beads-dag-inquiry` against this repository, with a question the operator actually
-wants answered — the reading is the acceptance. The experiment executor's acceptance needs DVC on the
-machine and a real experiment ticket, so it is deferred; until then its tickets say so, and no ticket
-claims an experiment was ever run.
+wants answered — the reading is the acceptance. The experiment executor's acceptance needs a **real
+experiment ticket** — a dataset, a stage and a frozen reference — rather than a capability: DVC arrived on
+this machine on 2026-09-15 (`uv tool install dvc`, 3.67.1, and its queue path measured), so the missing
+piece is the experiment, not the tool. Until that ticket exists, its tickets say so, and no ticket claims
+an experiment was ever run.
 
 ## Out of Scope
 
-- **DVC, and a real experiment.** Installing DVC, choosing a dataset, running a training job — the
-  experiment executor's acceptance waits for the machine to have DVC. Nothing here chooses a run store.
+- **A real experiment.** Choosing a dataset, writing a stage, running a training job — the executor's
+  acceptance waits for a ticket that is about something. DVC itself is installed (2026-09-15). Nothing
+  here chooses a run store.
 - **The experiment's own code.** A stage, a training script or a data pipeline that has to be written is a
   development ticket; this executor does not write code, and its record says which commit it ran on.
 - **A scheduler, a queue, GPU allocation, multi-machine runs.** One run at a time per Target, as today.
@@ -455,5 +490,8 @@ existing, and both executors are built out of them.
   records budgets and never enforces them, and a run longer than the clock is a failed attempt with the
   reason on the ticket.
 - **The experiment executor is built before it can be used.** Its repros pin its behaviour against a stub
-  `dvc`, which is not the same as having run an experiment. The first real run is the day it becomes
-  trustworthy, and no ticket before that day may claim more.
+  `dvc` and the measured command surface is real, but a stub is not an experiment. The first real run is
+  the day it becomes trustworthy, and no ticket before that day may claim more.
+- **`dvc` is a uv-installed tool, not a system package.** It lives in an isolated environment
+  (`uv tool`, `~/.local/bin/dvc`), so the flow's premise is one line of PATH — `open` refuses without it,
+  and a machine that loses it says so at the opening node rather than mid-turn.
