@@ -326,8 +326,10 @@ git as a record.
 ## Experiments: the ticket, the run, and the record
 
 An experiment ticket is a plan for producing a fact, and the plan is what makes it runnable. Its body
-carries the **deciding metric and where it will be read from**, the **reference** the result will be read
-against, and the **pin** it is meant to run on (the data, the code commit). A hypothesis — why it should
+carries the **deciding metric and where it will be read from** — one number, read from a named source (a
+metrics file, a field of the run store's record); other numbers may be recorded, but the reference is
+compared against this one — the **reference** the result will be read against, and the **pin** it is meant
+to run on (the data, the code commit). A hypothesis — why it should
 come out that way — and a budget are optional; a ticket missing the metric, the reference or the pin is not
 an experiment yet.
 
@@ -410,6 +412,15 @@ of type `decision`.
 - **Resolve**: `bd comment <id> "<answer>"`, then `bd close <id>`, then a context pointer (gist + link)
   in the map's Decisions-so-far. A decision issue's `closed` means its question is answered, which is
   legitimate only because the two domains never share an edge.
+
+**A question needs no source to exist, and no source to be answered.** It can come out of the operator's
+head, a discussion, or a reading, and the answer may come from a discussion (*grilling*), from a rough
+artifact somebody reacts to (*prototype*), or from **an experiment** — the experiment domain exists for the
+question that no published material answers, and manufacturing that fact is what it is for. A reading that
+turns up nothing says so out loud, and that is an answer too (*Reading, and the corpus*, below). Because
+nothing blocks across domains, a question waiting on an experiment is not *blocked* by it: it stays open
+until the result is read and the answer written in — which is what the review surface exists to make
+visible.
 
 ### Reading, and the corpus
 
