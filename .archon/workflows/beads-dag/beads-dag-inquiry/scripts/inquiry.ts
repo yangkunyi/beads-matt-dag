@@ -11,8 +11,12 @@
  * - the directory every question's body is published into and the corpus is written into. Both are
  * refused loudly at the opening node, so "nothing happened" is distinguishable from "the run could not
  * start". The pack ships neither: copying the tools in is the whole distribution story.
+ *
+ * One block here is not vocabulary but the run's own record: the paths a reading wrote that the flow does
+ * not name - written by the read node, read by the report (`UNNAMED_PATHS_FILE`), and kept here because
+ * both sides have to spell the file and its shape the same way.
  */
-import { existsSync, statSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { IssueNames } from "../../beads-dag-drain/scripts/naming.ts";
 
@@ -137,6 +141,61 @@ export function landedDraft(comments: readonly string[]): LandedDraft | undefine
     if (draft !== undefined) found = draft;
   }
   return found;
+}
+
+/**
+ * What one reading wrote that the flow does not name, as the run leaves it for its report.
+ *
+ * A reading writes documents the flow names - the receipts, the note - and the node commits exactly
+ * those. It also writes whatever a reading needs on the way (the claims file `note.ts` is handed, a
+ * working note), and none of that is a document: committing it would put a reader's scratch in Main, and
+ * leaving it silently is what the spec refuses - "a path the run wrote that the flow does not name is
+ * left uncommitted and **named in the run's report**". The store cannot answer it, and neither can the
+ * commit: the run is the only thing that saw the working tree before the turn and after it, so the read
+ * node writes what it found here, beside `attempted-ids.json` and `repairs.json`, and the report is what
+ * says it out loud. Nothing reads it back as state (ADR-0005).
+ *
+ * One line per ticket, appended: a batch reads its questions at once, and an append is the one write two
+ * nodes can make to one file without losing each other's. The report keeps the last line per ticket.
+ */
+export const UNNAMED_PATHS_FILE = "unnamed-paths.jsonl";
+
+/** One ticket's unnamed paths: what a reading left that the flow will not commit. */
+export type UnnamedPaths = { id: string; handle: string; paths: string[] };
+
+/**
+ * Record what one reading left behind. Nothing to record writes nothing: a reading that left no unnamed
+ * path has no row in the report, and an empty row would read as a ticket with a problem it does not have.
+ */
+export function recordUnnamedPaths(artifactsDir: string, entry: UnnamedPaths): void {
+  if (entry.paths.length === 0) return;
+  mkdirSync(artifactsDir, { recursive: true });
+  appendFileSync(join(artifactsDir, UNNAMED_PATHS_FILE), `${JSON.stringify(entry)}\n`);
+}
+
+/**
+ * The run's unnamed paths, one entry per ticket, in the order the tickets were read. A line that cannot
+ * be read is skipped rather than failing the report: this is run bookkeeping, and a report with one row
+ * missing is better than no report - the same reading `attempted.ts` takes of its own file.
+ */
+export function readUnnamedPaths(artifactsDir: string): UnnamedPaths[] {
+  const path = join(artifactsDir, UNNAMED_PATHS_FILE);
+  if (!existsSync(path)) return [];
+  const byId = new Map<string, UnnamedPaths>();
+  for (const line of readFileSync(path, "utf8").split("\n")) {
+    if (line.trim() === "") continue;
+    try {
+      const raw: unknown = JSON.parse(line);
+      const entry = raw as Partial<UnnamedPaths>;
+      if (typeof entry.id !== "string" || typeof entry.handle !== "string" || !Array.isArray(entry.paths)) continue;
+      const paths = entry.paths.filter((p): p is string => typeof p === "string");
+      if (paths.length === 0) continue;
+      byId.set(entry.id, { id: entry.id, handle: entry.handle, paths });
+    } catch {
+      continue;
+    }
+  }
+  return [...byId.values()];
 }
 
 /**

@@ -15,6 +15,12 @@ The rest of the family is not in the set: those skills carry no tracker surface,
 referenced, never copied. One instruction in two places is the duplication this source exists to
 prevent — and the set is exactly these seven, one copy per machine.
 
+The one document with a second home is the contract the setup skill carries: this repository is a
+store-backed Target, so it runs under that same contract as `docs/agents/issue-tracker.md`, and the two
+are one document — edit one, copy it over the other. `tracker-contract-repro.ts` in the pack's suite
+compares them byte for byte, because nothing else noticed when the Target's copy gained the draft-answer
+rule and the shipped one did not (`beads-dag/24`, found by `beads-dag/29`).
+
 ## Install
 
 ```

@@ -21,11 +21,12 @@ something different by *closed*:
 **The operator decides what to open; the session types it.** Which skill does a piece of work is
 `/ask-matt`'s question — this table only decides *where a thing belongs*.
 
-A session opens by looking at two things:
+A session opens by looking at three things:
 
 ```bash
 bd ready                                          # what can start now — a `wayfinder:map` bead is a container, not a ticket
 bd list -t experiment -s closed -l reading:none   # results nobody has read yet
+bd list -t decision -s open -l answer:draft       # questions whose reading landed and await my word
 ```
 
 Nothing blocks across domains, in either direction: a question waiting on an experiment is not *blocked*
@@ -438,7 +439,11 @@ of type `decision`.
   concurrent session reads.
 - **Resolve**: `bd comment <id> "<answer>"`, then `bd close <id>`, then a context pointer (gist + link)
   in the map's Decisions-so-far. A decision issue's `closed` means its question is answered, which is
-  legitimate only because the two domains never share an edge.
+  legitimate only because the two domains never share an edge. When the reading leg was run as a workflow,
+  the answer being written is the session's act on the operator's word: the comment he appends or corrects
+  the executor's `draft` with is the final answer, and the `answer:draft` label comes off in the same act
+  as the close — one action, both jobs, so the label and the record cannot disagree (the reading section
+  below names the one command that is both).
 
 **A question needs no source to exist, and no source to be answered.** It can come out of the operator's
 head, a discussion, or a reading, and the answer may come from a discussion (*grilling*), from a rough
@@ -471,6 +476,21 @@ Under the effort's own directory (`.scratch/<effort>/`):
   reading that turns into "and so we should keep X" has drifted into a decision nobody asked it to make —
   the answer it owes is what is true out there, quotable, and what a tool does *not* hold is as much an
   answer as what it does.
+- **The executor drafts the answer; the operator owns it.** The reading leg is a workflow, and a session
+  starts it from the Target: `archon workflow run beads-dag-inquiry` (the pack's README has the rest of
+  the invocation). When it runs, the executor leaves the reader's own last words on the ticket as a
+  comment whose first line is marked `draft` and names the note's path and the commit that carries it, and
+  stamps the `answer:draft` label in the same act as the status going back to `open`. That draft is the
+  reader's, not the answer: the operator appends or corrects it on the ticket, and the session writes the
+  final answer and closes. The close and the label are **one store command** —
+  `bd update <id> -s closed --remove-label answer:draft` — because bd has no other one that does both jobs:
+  `bd close` takes no label flag (`unknown flag: --remove-label`) and `bd batch`'s grammar has no label
+  key, so a close followed by a label removal is two acts, and a ticket that keeps `answer:draft` past its
+  close has a label stating a fact that is no longer true. The executor never closes the ticket — a
+  question's `closed` means the answer is written, which is a session's act on the operator's word — so
+  the label is what marks the reading as landed and awaiting him, and the query above is the whole list.
+  A run's report names those handles as it ends (`report.md`, the one document a reading run leaves to be
+  read), read out of that same query and kept nowhere else.
 - **A quote must re-anchor.** A claim enters a note only when its quote is found again in the source that
 owns it — the same text, whitespace aside. With a live fetch behind it, re-anchoring fetches again and the
 hash is what moves. A claim whose quote cannot be found is refused, and the reader says so out loud rather
@@ -487,10 +507,13 @@ nothing. Two readers disagreeing is information for the operator, who is the one
   and needs no key. **arxiv answers only through the operator's own proxy**, handed to the tool as
   `INQUIRY_PROXY` (it also reads `https_proxy`, `http_proxy`, `all_proxy`), and the value that works on this
   machine is `socks5h://127.0.0.1:23379` — `socks5h` worth naming rather than `http`, which measured ~0.4s
-  against ~8.6s for the same fetch. With no proxy set, the arxiv path refuses with its own sentence instead
-  of waiting out a timeout, and `export.arxiv.org`'s API is not the way around it: it answers 429 even with
-  a User-Agent. Since that proxy is the operator's own Clash client, **it answers only while that runs** —
-  which is where an unattended reading dies: loudly, at this step, with the note half written.
+  against ~8.6s for the same fetch. **A reading run inherits the variable from the environment that
+  started the workflow**, so a session that starts an unattended reading exports it first; a run with none
+  set answers from OpenAlex and plain URLs alone, and says which sources it could not fetch, because the
+  arxiv path refuses with its own sentence instead of waiting out a timeout — and `export.arxiv.org`'s API
+  is not the way around it: it answers 429 even with a User-Agent. Since that proxy is the operator's own
+  Clash client, **it answers only while that runs** — which is where an unattended reading dies: loudly,
+  at this step, with the note half written.
 - **These documents land on Main like any other document**, so a drain running later reports them in its
 range section as commits the run did not make. That is the boundary working, not the drain being
 polluted.
