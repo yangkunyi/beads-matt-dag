@@ -1,5 +1,9 @@
 # Close means merged
 
+> Amended 2026-09-14: the "two closure meanings on one graph" rejection at the end is superseded by
+> [ADR-0006](0006-closure-is-per-domain.md) — the domain is the issue's type, and blocking never crosses
+> it. Everything else here stands.
+
 Only the orchestrator closes an issue, and only to record that the work is in Main. A failed issue is
 never closed. `wontfix` is a label, not a closure.
 

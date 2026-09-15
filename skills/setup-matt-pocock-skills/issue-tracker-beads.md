@@ -287,6 +287,24 @@ bd dolt push                        # the pack's one-command backup, run from th
 After a restore or a pull, recompute the store's derived blocked-ness (`bd recompute-blocked`); `bd
 ready` trusts the stored flag, and a stale flag silently hides or surfaces work.
 
+### What travels in git, and what does not
+
+`bd init` commits the store's scaffolding — `config.yaml`, `metadata.json`, `interactions.jsonl` (the
+field-change audit trail: who claimed, closed or reassigned what) — and bd's own `.beads/.gitignore` keeps
+the Dolt database and runtime state out of git. The store's **content** — issues, edges, comments — is
+not in git by default, and comments are where the process lives: an idea's development, an experiment's
+event stream, a failed attempt's reason. A Target whose record has to survive a clone therefore keeps the
+export in git:
+
+```bash
+bd config set export.auto true         # refresh .beads/issues.jsonl after writes
+bd export -o .beads/issues.jsonl       # and explicitly, before committing
+```
+
+Track `.beads/issues.jsonl` (one JSON object per issue, comments and edges included) and leave
+`export.git-add` alone: something staged silently is something nobody read. A Dolt remote (`bd dolt
+push`, above) is still the full backup; the export is the part a human can diff.
+
 ## Where a run's artifacts live
 
 A drain writes views, never state: everything it produces lives in the run's `ARTIFACTS_DIR` (Archon's
@@ -389,6 +407,11 @@ Under the effort's own directory (`.scratch/<effort>/`):
 | `sources/<slug>.md` | one **receipt** per source: line 1 the URL that was fetched, then the id, a title, any aliases, how the text was extracted, a sha256 of the text, and the text itself (a page that sent the fetch elsewhere records both URLs) |
 | `notes/<slug>.md` | one **note** per question: the claims the reading supports, each citing a source, a locator and a quote; the file name is the reader's slug, chosen rather than derived |
 
+- **A reading answers with facts, not decisions.** A research ticket asks what a source or a tool
+  *holds*; which of those facts the flow keeps is a choice, and that choice is a grilling ticket's job. A
+  reading that turns into "and so we should keep X" has drifted into a decision nobody asked it to make —
+  the answer it owes is what is true out there, quotable, and what a tool does *not* hold is as much an
+  answer as what it does.
 - **A quote must re-anchor.** A claim enters a note only when its quote is found again in the source that
 owns it — the same text, whitespace aside. With a live fetch behind it, re-anchoring fetches again and the
 hash is what moves. A claim whose quote cannot be found is refused, and the reader says so out loud rather

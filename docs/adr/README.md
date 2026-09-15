@@ -5,8 +5,9 @@
 | [0001](0001-beads-owns-the-store-graph-and-frontier.md) | Beads owns the store, the graph and the frontier | accepted |
 | [0002](0002-merge-before-stamp.md) | Merge before stamp | accepted |
 | [0003](0003-three-statuses-the-rest-is-derived.md) | Three statuses; the rest is derived | accepted |
-| [0004](0004-close-means-merged.md) | Close means merged | accepted |
+| [0004](0004-close-means-merged.md) | Close means merged | accepted — partly superseded by 0006 |
 | [0005](0005-one-record-per-fact.md) | One record per fact | accepted |
+| [0006](0006-closure-is-per-domain.md) | Closure is per domain | accepted |
 
 Design record: `docs/specs/2026-09-11-beads-issue-tracker-consensus.md` (§10 settles the flow).
 

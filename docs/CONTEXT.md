@@ -50,8 +50,9 @@ below — if a term can only be explained by a command, it belongs in a spec.
 - **status** — an issue's single lifecycle slot: `open`, `in_progress`, `closed`.
 - **blocked** — derived, never stored: a blocker is not closed. The store maintains it.
 - **ready** — derived: `open` and not blocked.
-- **closed** — in development, the work is in Main: the one meaning that domain gives the word, and
-  no other. Each domain has its own (see Domains above; ADR-0004).
+- **closed** — every issue's `closed` means what its domain says it means: in development the work is in
+  Main, in inquiry the question is answered, in experiments the result is recorded, and never a general
+  "finished" (see Domains; ADR-0006).
 - **failed attempt** — an event, not a status: the git contract failed, the reason is a comment on the
   issue, and the issue is back to `open` — so `bd ready` is the whole retry channel. A later drain may
   start it again; the drain that failed it may not, because the issue is in that run's
@@ -64,6 +65,10 @@ below — if a term can only be explained by a command, it belongs in a spec.
 - **domain** — a family of issues whose closure means the same thing. Three: inquiry
   (`closed` = the question is answered), development (`closed` = the work is in Main), experiments
   (`closed` = the result is recorded).
+- **type** — the domain an issue belongs to, and the only thing a reader needs to know which closure it
+  carries: `decision` is inquiry's, `experiment` is experiments', every work type (`task`, `bug`, …) is
+  development's. A drain refuses a blocking chain that reaches a non-work type, so a closure in one domain
+  cannot release work in another (ADR-0006).
 - **crossing** — two non-blocking links join two domains, and no other kind does: `relates-to` for a
   loose see-also, and `discovered-from` for the handoff a result makes (a work ticket created because an
   experiment's result justified it). A blocking relation never crosses — neither `blocks` nor the
