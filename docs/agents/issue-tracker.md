@@ -483,7 +483,9 @@ Under the effort's own directory (`.scratch/<effort>/`):
   answer and closes (`bd comment`, then `bd close`, with the label coming off in the same act). The
   executor never closes the ticket — a question's `closed` means the answer is written, which is a
   session's act on the operator's word — so the label is what marks the reading as landed and awaiting
-  him, and the query above is the whole list.
+  him, and the query above is the whole list. A run's report names those handles as it ends
+  (`report.md`, the one document a reading run leaves to be read), read out of that same query and kept
+  nowhere else.
 - **A quote must re-anchor.** A claim enters a note only when its quote is found again in the source that
 owns it — the same text, whitespace aside. With a live fetch behind it, re-anchoring fetches again and the
 hash is what moves. A claim whose quote cannot be found is refused, and the reader says so out loud rather

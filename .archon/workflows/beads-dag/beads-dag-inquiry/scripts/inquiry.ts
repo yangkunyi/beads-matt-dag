@@ -107,6 +107,39 @@ export function draftLine(noteRel: string, commit: string): string {
 }
 
 /**
+ * The line `draftLine` writes, as the report reads it back: one producer and one consumer, so the two
+ * cannot spell a landing two ways. The path is `\S+` because every path this flow hands the reader is
+ * made of segments that cannot hold a space (the handle and the slug are validated in naming.ts), and
+ * the commit is whatever `git rev-parse` answered with - 40 hex digits, 64 in a sha256 repository.
+ */
+const DRAFT_LINE = /^draft: (\S+) \(commit ([0-9a-f]{7,64})\)$/;
+
+/** Where one landed reading is, as its comment names it. */
+export type LandedDraft = { noteRel: string; commit: string };
+
+/** The landing one comment records, or undefined when that comment is not a landing. */
+function readDraftLine(comment: string): LandedDraft | undefined {
+  const first = comment.split("\n", 1)[0] ?? "";
+  const m = DRAFT_LINE.exec(first.trim());
+  return m === null ? undefined : { noteRel: m[1]!, commit: m[2]! };
+}
+
+/**
+ * The landing a question's comment thread holds: the latest draft line, because a question read twice
+ * leaves two of them (the residual the spec names - a run killed between the comment and the label) and
+ * the newest is the reading that landed. Undefined when no comment names a landing, which is a state the
+ * report says out loud rather than guessing at.
+ */
+export function landedDraft(comments: readonly string[]): LandedDraft | undefined {
+  let found: LandedDraft | undefined;
+  for (const comment of comments) {
+    const draft = readDraftLine(comment);
+    if (draft !== undefined) found = draft;
+  }
+  return found;
+}
+
+/**
  * The reading premises, refused loudly and before anything is claimed or repaired: the Target has the
  * reading tools, and it has an effort area. Both names are absolute, so the operator sees exactly which
  * path was missing and where the run looked.

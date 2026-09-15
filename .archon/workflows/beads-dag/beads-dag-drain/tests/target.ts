@@ -583,6 +583,17 @@ export function envWithoutStore(): NodeJS.ProcessEnv {
  * the environment, nothing else — except that the store binary's directory joins PATH, as it would in
  * an operator's shell, so the node resolves the store the way the design says it may. `process.execPath`
  * is bun here, which is the runtime the YAMLs declare, so a test drives the same process the runner does.
+ *
+ * **The node protocol's own variables never come from this process.** `INPUTS_ISSUE`, `INPUTS_CONFIG` and
+ * `ARTIFACTS_DIR` are the runner's conversation with one node, and a repro's caller builds that
+ * conversation itself - the third argument, and nothing else. Inherited, they are a worker's own inputs:
+ * the implementer of a beads-dag ticket runs this suite with `INPUTS_ISSUE` set to its own handle and its
+ * own `ARTIFACTS_DIR`, and three repros then read the ambient run instead of their Target (measured
+ * 2026-09-15: `node-outcomes` and `worktree` published a handle no store carried, and `pick` found a run
+ * directory nobody passed it). That is the same worker-versus-session split the read-only flag gets at the
+ * top of this file, and it is dropped the same way: inherited, they make a green suite mean something
+ * different inside a worker than in a session, and the suite a worker runs has to be the suite a session
+ * runs.
  */
 export function runScript(
   script: string,
@@ -590,10 +601,12 @@ export function runScript(
   env: NodeJS.ProcessEnv = {},
 ): { stdout: string; stderr: string; status: number | null } {
   const path = [dirname(storeBinary()), process.env.PATH ?? ""].filter(Boolean).join(delimiter);
+  const inherited = { ...process.env };
+  for (const name of ["INPUTS_ISSUE", "INPUTS_CONFIG", "ARTIFACTS_DIR"]) delete inherited[name];
   const r = spawnSync(process.execPath, [script], {
     cwd,
     encoding: "utf8",
-    env: { ...process.env, PATH: path, ...env },
+    env: { ...inherited, PATH: path, ...env },
   });
   return { stdout: r.stdout ?? "", stderr: r.stderr ?? "", status: r.status };
 }

@@ -327,6 +327,28 @@ export function closeIssue(store: Store, target: string, id: string, reason: str
 type StoreComment = { text: string };
 
 /**
+ * Every comment the store holds for one issue, oldest first, as plain text.
+ *
+ * A comment is an event (§10.3): the reason a failed attempt carries, the draft line a landed reading
+ * leaves, the release an opening repair writes. Two readers in two domains read them - the drain's
+ * failures block and the reading executor's report - so the query and the narrowing of a comment's
+ * shape live here, beside every other store command, rather than once per reader.
+ */
+export function issueComments(store: Store, target: string, id: string): string[] {
+  const command = `comments ${id} --json`;
+  const parsed = parseJSON(command, runStore(store, target, ["comments", id, "--json"]));
+  if (!Array.isArray(parsed)) {
+    throw new Error(`${command} answered with something that is not a list of comments: ${JSON.stringify(parsed)}`);
+  }
+  return parsed
+    .filter(
+      (raw): raw is StoreComment =>
+        typeof raw === "object" && raw !== null && typeof (raw as { text?: unknown }).text === "string",
+    )
+    .map((comment) => comment.text);
+}
+
+/**
  * The failure record, as the flow writes it into a comment: `attempt N failed: <reason>`. One comment
  * per failed attempt (recordFailedAttempt), so the store's own comment trail is the count - and the
  * plainest reading of a failure there is, because `bd history` records transitions, not bodies.
@@ -343,7 +365,7 @@ export type RecordedFailure = {
 };
 
 /**
- * One issue's recorded failures, oldest first, from the store's own answers.
+ * One issue's recorded failures, oldest first, from the store's own answers (issueComments).
  *
  * `bd comments <id> --json` is the query the drain-end report reads: a failure is an event (§10.3) -
  * a comment plus a return to `open` - and this is where the reason lives. `bd history` cannot answer
@@ -351,20 +373,10 @@ export type RecordedFailure = {
  * so every failure there looks like every other update.
  */
 export function recordedFailures(store: Store, target: string, id: string): RecordedFailure[] {
-  const command = `comments ${id} --json`;
-  const parsed = parseJSON(command, runStore(store, target, ["comments", id, "--json"]));
-  if (!Array.isArray(parsed)) {
-    throw new Error(`${command} answered with something that is not a list of comments: ${JSON.stringify(parsed)}`);
-  }
-  return parsed
-    .filter(
-      (raw): raw is StoreComment =>
-        typeof raw === "object" && raw !== null && typeof (raw as { text?: unknown }).text === "string",
-    )
-    .flatMap((comment) => {
-      const m = FAILURE_COMMENT.exec(comment.text);
-      return m ? [{ attempt: Number(m[1]), reason: m[2] ?? "", text: comment.text }] : [];
-    });
+  return issueComments(store, target, id).flatMap((text) => {
+    const m = FAILURE_COMMENT.exec(text);
+    return m ? [{ attempt: Number(m[1]), reason: m[2] ?? "", text }] : [];
+  });
 }
 
 /**

@@ -3,11 +3,10 @@ description: |
   Read questions on this Target: ask the store which questions are on the reading frontier, claim them in
   one transaction, read each one, land its note and receipts as documents on Main, and leave a draft answer
   on the ticket. The ticket stays open: the last word - the final answer and the close - is a session's, on
-  the operator's word. Install this pack folder as ~/.archon/workflows/beads-dag; a symlink to a checkout
+  the operator's word. The run ends with `report.md`: the questions it read and where each landed, the ones
+  it failed with the store's own reason and ordinal, the frontier it left behind, and the draft answers now
+  awaiting the operator. Install this pack folder as ~/.archon/workflows/beads-dag; a symlink to a checkout
   is the intended install. The Target does not commit .archon/.
-
-  A run reads and lands; the run's own report arrives with beads-dag/25, so until then a batch run says
-  what it did only in its logs.
 worktree:
   enabled: false
 inputs:
@@ -46,3 +45,9 @@ nodes:
             # (landed and failed are both results), so an instance only fails when a node THREW - a runner
             # that cannot start, or a pack bug - and that must fail the run loudly.
             join: all_success
+  - id: report
+    script: report
+    runtime: bun
+    depends_on: [reading]
+    with:
+      config: $INPUTS.config

@@ -120,6 +120,33 @@ try {
     expect("naming the holder", readingRefused.stderr.includes("refusing to start"), readingRefused.stderr);
   });
 
+  // And the other direction, so the shared lock is pinned both ways: while a *drain* holds it, a reading
+  // run against the same Target is refused by the same file, with nothing of the refused run written.
+  await withTarget(async (root, artifacts) => {
+    initReadingTarget(root);
+    const question = publishIssue(root, {
+      title: "waiting for the drain",
+      type: "decision",
+      handle: "q/01",
+      slug: "waiting-for-the-drain",
+      labels: ["wayfinder:research"],
+    });
+    const drainRun = join(artifacts, "the-drain");
+    const opened = runScript(drain.script("open"), root, { ARTIFACTS_DIR: drainRun });
+    expectEqual("the drain takes the lock", opened.status, 0);
+    expect("and holds it after the node ends", existsSync(runLockFilePath(root)));
+
+    const readingRun = join(artifacts, "the-reading-run");
+    const refused = runScript(inquiry.script("open"), root, { ARTIFACTS_DIR: readingRun });
+    expectEqual("a reading run against the same Target exits non-zero", refused.status, 1);
+    expectEqual("with nothing on stdout", refused.stdout, "");
+    expect("refusing loudly", refused.stderr.includes("refusing to start"), refused.stderr);
+    expect("naming the drain", refused.stderr.includes(basename(drainRun)), refused.stderr);
+    expect("and the holder's pid", refused.stderr.includes(`pid ${process.pid}`), refused.stderr);
+    expect("the reading run wrote nothing", !existsSync(readingRun));
+    expectEqual("and claimed nothing", storeIssue(root, question.id).status, "open");
+  });
+
   // A dead holder's lock is stolen, with one line saying so, and the run proceeds.
   await withTarget(async (root, artifacts) => {
     initReadingTarget(root);
