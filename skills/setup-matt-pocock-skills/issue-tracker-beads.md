@@ -358,7 +358,7 @@ domains*, above) — and when he speaks later, the session comments it and the `
 
 **The review surface.** A recorded result nobody has read blocks nothing — no chain waits on it, and the
 ticket it might justify does not exist until the operator wants it — so nothing acts on it. It is made
-*visible* instead, in two places that hold one fact:
+*visible* instead, and the fact lives in **one place**, the store:
 
 - **The marker is the record's own `reading:` line**, plus a `reading:none` label stamped **in the same
   act** as the close — the same rule as an idea's state label. That makes the sweep one query, run at the
@@ -368,16 +368,14 @@ ticket it might justify does not exist until the operator wants it — so nothin
   bd list -t experiment -s closed -l reading:none
   ```
 
-- **The effort's map carries the line too**, under *Decisions so far* — a result being recorded is a step on
-  the route — because that is the page a human opens: entries like "result recorded for
-  `.scratch/<effort>/results/<NN>-<slug>.md`, reading: none yet".
+- **No second copy, anywhere.** A map does not list unread results: one fact lives in one place, and
+  whoever wants the list runs the query. A page repeating it is a second thing that can be wrong.
 
-Writing the reading is what clears both, in one act: the `reading:` line takes the operator's words and
-names whatever it spawned (`discovered-from`), the label comes off (`bd label remove <id> reading:none`), a
-comment is appended, and the map's line is updated. **Unread is not a debt**: a result the operator decides
-not to read is written down as such — `reading: declined — <why>` — and clears exactly the same way. When
-the map and the store disagree, the store wins: the record and the label are the fact, the map is a view of
-it.
+Writing the reading is what clears it, in one act: the `reading:` line takes the operator's words and
+names whatever it spawned (`discovered-from`), the label comes off (`bd label remove <id> reading:none`),
+and a comment is appended — documents hold the picture, comments hold the history. **Unread is not a
+debt**: a result the operator decides not to read is written down as such — `reading: declined — <why>` —
+and clears exactly the same way.
 
 **One act looks like an amendment and is not**: changing the deciding metric opens a *new* ticket — the old
 one closes with `wontfix`, a comment naming its successor and a `relates-to` link — because changing what
