@@ -1,0 +1,104 @@
+[
+  {
+    "statement": "npm runs the install lifecycle scripts (preinstall, install, postinstall) of a globally installed npm package by default.",
+    "sourceId": "url:https://docs.npmjs.com/cli/v11/using-npm/scripts",
+    "locator": "npm Docs, scripts, Life Cycle Operation Order",
+    "quote": "These also run when you run npm install -g <pkg-name> preinstall install postinstall"
+  },
+  {
+    "statement": "npm's own docs discourage using install scripts for setup, recommending a .gyp file for compilation and prepare for anything else.",
+    "sourceId": "url:https://docs.npmjs.com/cli/v11/using-npm/scripts",
+    "locator": "npm Docs, scripts, Best Practices",
+    "quote": "Don't use install. Use a.gyp file for compilation, and prepare for anything else."
+  },
+  {
+    "statement": "agent-workflow-beads is a real npm-distributed scaffold: a CLI installed once globally, then one command per repo scaffolds (or refreshes) the workflow inside that project.",
+    "sourceId": "url:https://raw.githubusercontent.com/jsiovn/agent-workflow-beads/main/README.md",
+    "locator": "agent-workflow-beads README, intro",
+    "quote": "You install the `agent-workflow-beads` CLI once on your machine, then run one command per project to scaffold (or refresh) the workflow inside that project."
+  },
+  {
+    "statement": "That tool's version story is the global npm package: upgrade with npm install -g agent-workflow-beads@latest, then refresh downstream repos with agent-workflow-beads update <repo>.",
+    "sourceId": "url:https://raw.githubusercontent.com/jsiovn/agent-workflow-beads/main/README.md",
+    "locator": "agent-workflow-beads README, install/refresh",
+    "quote": "Upgrade later the same way you upgrade any global package (`npm install -g agent-workflow-beads@latest`); there is no checkout to keep in sync and no shell alias to maintain. ### 2. Bootstrap a project Run this once per repo you want to use the workflow in: ```bash # myprefix = Beads issue-ID tag for this repo (acme → acme-1, acme-2) # Bootstrap: git init if needed → bd init + bd setup claude → scaffold Claude's.claude/ (skills + agents) agent-workflow-beads bootstrap /path/to/your-repo myprefix # Opt-in flags — also accepted by `update`, so you can adopt them later # (and are auto-detected on later runs once the surface exists): # --with-codex also scaffold Codex:.codex/ skills+agents + AGENTS.md + `bd setup codex` # --with-screenshots web/UI only: attach-web-screenshots skill + cleanup-screenshots.yml CI workflow agent-workflow-beads bootstrap /path/to/your-repo myprefix --with-codex --with-screenshots ``` ### 3. Refresh later When this template gets updates, upgrade the CLI (`npm install -g agent-workflow-beads@latest`) and refresh any downstream repo with: ```bash agent-workflow-beads update /path/to/your-repo"
+  },
+  {
+    "statement": "A git submodule is recorded as a particular commit of the other repository, not as its contents.",
+    "sourceId": "url:https://git-scm.com/book/en/v2/Git-Tools-Submodules",
+    "locator": "Git Book, Git Tools - Submodules",
+    "quote": "Instead, Git sees it as a particular commit from that repository."
+  },
+  {
+    "statement": "Cloning a project does not populate its submodules; the consumer must run git submodule init and git submodule update to check out the recorded commit.",
+    "sourceId": "url:https://git-scm.com/book/en/v2/Git-Tools-Submodules",
+    "locator": "Git Book, Git Tools - Submodules, Cloning a Project with Submodules",
+    "quote": "You must run two commands from the main project: git submodule init to initialize your local configuration file, and git submodule update to fetch all the data from that project and check out the appropriate commit listed in your superproject"
+  },
+  {
+    "statement": "A submodule can be moved to the upstream branch's tip with git submodule update --remote.",
+    "sourceId": "url:https://git-scm.com/book/en/v2/Git-Tools-Submodules",
+    "locator": "Git Book, Git Tools - Submodules, Working on a Project with Submodules",
+    "quote": "If you run git submodule update --remote, Git will go into your submodules and fetch and update for you."
+  },
+  {
+    "statement": "A Homebrew tap is a git repository of formulae, casks and external commands that brew tap clones into Homebrew's tap directory and brew update refreshes.",
+    "sourceId": "url:https://docs.brew.sh/Taps",
+    "locator": "Homebrew Documentation, Taps",
+    "quote": "The brew tap command adds repositories that Homebrew can use for formulae, casks and external commands. The one-argument form assumes a repository on GitHub, while the two-argument form accepts any URL supported by Git. Code in a tap can run with your user’s privileges. Read Tap Trust before using a non-official tap. The brew tap command brew tap without arguments lists the currently tapped repositories. It prints nothing when no taps are installed. $ brew tap petere/postgresql brew tap <user>/<repository> clones https://github.com/<user>/homebrew-<repository> into Homebrew’s tap directory. Homebrew updates the repository during brew update."
+  },
+  {
+    "statement": "AGENTS.md is a plain-Markdown convention with no required fields; the closest file to the edited file wins, so nested per-project files take precedence.",
+    "sourceId": "url:https://agents.md/",
+    "locator": "AGENTS.md landing page",
+    "quote": "A simple, open format for guiding coding agents, used by over 60k open-source projects. Think of AGENTS.md as a README for agents: a dedicated, predictable place to provide the context and instructions to help AI coding agents work on your project. Explore Examples View on GitHub # AGENTS.md ## Setup commands - Install deps: `pnpm install` - Start dev server: `pnpm dev` - Run tests: `pnpm test` ## Code style - TypeScript strict mode - Single quotes, no semicolons - Use functional patterns where possible Why AGENTS.md? README.md files are for humans: quick starts, project descriptions, and contribution guidelines. AGENTS.md complements this by containing the extra, sometimes detailed context coding agents need: build steps, tests, and conventions that might clutter a README or aren’t relevant to human contributors. We intentionally kept it separate to: Give agents a clear, predictable place for instructions. Keep READMEs concise and focused on human contributors. Provide precise, agent-focused guidance that complements existing README and docs. Rather than introducing another proprietary file, we chose a name and format that could work for anyone. If you’re building or using coding agents and find this helpful, feel free to adopt it. One AGENTS.md works across many agents Your agent definitions are compatible with a growing ecosystem of AI coding agents and tools: Codex from OpenAI Jules from Google Factory Aider goose opencode Zed Warp VS Code Devin from Cognition Autopilot & Coded Agents from UiPath Junie from JetBrains Codex from OpenAI Jules from Google Factory Aider goose opencode Zed Warp VS Code Devin from Cognition Autopilot & Coded Agents from UiPath Junie from JetBrains Amp Cursor RooCode Gemini CLI from Google Kilo Code Phoenix Semgrep Coding agent from GitHub Copilot Ona Windsurf from Cognition Augment Code Amp Cursor RooCode Gemini CLI from Google Kilo Code Phoenix Semgrep Coding agent from GitHub Copilot Ona Windsurf from Cognition Augment Code View all supported agents Examples # Sample AGENTS.md file ## Dev environment tips - Use `pnpm dlx turbo run where <project_name>` to jump to a package instead of scanning with `ls`. - Run `pnpm install --filter <project_name>` to add the package to your workspace so Vite, ESLint, and TypeScript can see it. - Use `pnpm create vite@latest <project_name> -- --template react-ts` to spin up a new React + Vite package with TypeScript checks ready. - Check the name field inside each package's package.json to confirm the right name—skip the top-level one. ## Testing instructions - Find the CI plan in the.github/workflows folder. - Run `pnpm turbo run test --filter <project_name>` to run every check defined for that package. - From the package root you can just call `pnpm test`. The commit should pass all tests before you merge. - To focus on one step, add the Vitest pattern: `pnpm vitest run -t \"<test name>\"`. - Fix any test or type errors until the whole suite is green. - After moving files or changing imports, run `pnpm lint --filter <project_name>` to be sure ESLint and TypeScript rules still pass. - Add or update tests for the code you change, even if nobody asked. ## PR instructions - Title format: [<project_name>] <Title> - Always run `pnpm lint` and `pnpm test` before committing. openai/codex General-purpose CLI tooling for AI coding agents. Rust + 607 apache/airflow Platform to programmatically author, schedule, and monitor workflows. Python + 4627 temporalio/sdk-java Java SDK for Temporal, workflow orchestration defined in code. Java + 153 PlutoLang/Pluto A superset of Lua 5.4 with a focus on general-purpose programming. C++ + 8 View 60k+ examples on GitHub How to use AGENTS.md? 1. Add AGENTS.md Create an AGENTS.md file at the root of the repository. Most coding agents can even scaffold one for you if you ask nicely. 2. Cover what matters Add sections that help an agent work effectively with your project. Popular choices: Project overview Build and test commands Code style guidelines Testing instructions Security considerations 3. Add extra instructions Commit messages or pull request guidelines, security gotchas, large datasets, deployment steps: anything you’d tell a new teammate belongs here too. 4. Large monorepo? Use nested AGENTS.md files for subprojects Place another AGENTS.md inside each package. Agents automatically read the nearest file in the directory tree, so the closest one takes precedence and every subproject can ship tailored instructions. For example, at time of writing the main OpenAI repo has 88 AGENTS.md files. About AGENTS.md emerged from collaborative efforts across the AI software development ecosystem, including OpenAI Codex, Amp, Jules from Google, Cursor, and Factory. We’re committed to helping maintain and evolve this as an open format that benefits the entire developer community, regardless of which coding agent you use. AGENTS.md is now stewarded by the Agentic AI Foundation under the Linux Foundation. Learn more → FAQ Are there required fields? No. AGENTS.md is just standard Markdown. Use any headings you like; the agent simply parses the text you provide."
+  },
+  {
+    "statement": "AGENTS.md nests: agents automatically read the nearest file in the directory tree, so the closest one takes precedence and a subproject can ship tailored instructions.",
+    "sourceId": "url:https://agents.md/",
+    "locator": "AGENTS.md landing page, How to use",
+    "quote": "Agents automatically read the nearest file in the directory tree, so the closest one takes precedence and every subproject can ship tailored instructions."
+  },
+  {
+    "statement": "The beads CLI is installed machine-wide by script, Homebrew or npm, and bd init is then run inside each project to initialize the store.",
+    "sourceId": "url:https://raw.githubusercontent.com/gastownhall/beads/main/README.md",
+    "locator": "beads README, Installation/Quick Install",
+    "quote": "curl -fsSL https://raw.githubusercontent.com/gastownhall/beads/main/scripts/install.sh | bash # Initialize in YOUR project cd your-project bd init"
+  },
+  {
+    "statement": "beads' first-party per-project setup step is bd setup: bd setup codex installs a skill, AGENTS.md guidance and hooks; bd setup claude installs hooks/settings.",
+    "sourceId": "url:https://raw.githubusercontent.com/gastownhall/beads/main/README.md",
+    "locator": "beads README, optional agent instructions",
+    "quote": "bd setup codex # Codex CLI - installs skill, AGENTS.md guidance, and hooks"
+  },
+  {
+    "statement": "bd init creates or updates AGENTS.md and installs project Claude/Codex integrations by default, unless --skip-agents or --stealth is passed.",
+    "sourceId": "url:https://raw.githubusercontent.com/gastownhall/beads/main/docs/getting-started/installation.md",
+    "locator": "beads installation guide, bd init",
+    "quote": "creates or updates `AGENTS.md` and installs project Claude/Codex integrations by default unless you use `--skip-agents` or `--stealth`"
+  },
+  {
+    "statement": "beads also ships an optional Claude Code plugin through a marketplace: /plugin marketplace add gastownhall/beads then /plugin install beads.",
+    "sourceId": "url:https://raw.githubusercontent.com/gastownhall/beads/main/docs/getting-started/installation.md",
+    "locator": "beads installation guide, Claude Code Plugin (Optional)",
+    "quote": "/plugin marketplace add gastownhall/beads /plugin install beads"
+  },
+  {
+    "statement": "beads' own model is a machine-wide bd CLI plus an optional per-harness plugin and an optional MCP server, with the CLI as the foundation.",
+    "sourceId": "url:https://raw.githubusercontent.com/gastownhall/beads/main/docs/getting-started/installation.md",
+    "locator": "beads installation guide, components table",
+    "quote": "| **bd CLI** | Core command-line tool | Always - this is the foundation | | **Claude Code Plugin** | Slash commands + enhanced UX | Optional"
+  },
+  {
+    "statement": "A community example of a beads skill is mikezupper/beads-skill, distributed by git clone and copying skills/beads into the harness skills directory; consumers need only skills/beads/.",
+    "sourceId": "url:https://raw.githubusercontent.com/mikezupper/beads-skill/main/README.md",
+    "locator": "beads-skill README, What's inside / Installation",
+    "quote": "Consumers only need `skills/beads/`.** The submodule is a maintenance aid; a plain `git clone` without `--recurse-submodules` gives you a fully usable skill."
+  },
+  {
+    "statement": "That skill's README documents the collision failure mode: for Codex the skill goes to .agents/skills/ and bd init's generated skill has the same name, and installing first does not protect the file — bd init overwrites it silently.",
+    "sourceId": "url:https://raw.githubusercontent.com/mikezupper/beads-skill/main/README.md",
+    "locator": "beads-skill README, Install order vs bd init",
+    "quote": "**Yes** — same skill name | **Installing first does not protect you.** Verified: `bd init` overwrites an existing `.agents/skills/beads/SKILL.md` silently — no prompt, no backup."
+  }
+]

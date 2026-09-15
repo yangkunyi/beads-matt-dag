@@ -1,0 +1,158 @@
+[
+  {
+    "statement": "A pi package is the harness's unit for sharing extensions, skills, prompt templates and themes through npm or git.",
+    "sourceId": "file:/data3/yky/.local/node-v24.19.0-linux-x64/lib/node_modules/@earendil-works/pi-coding-agent/docs/packages.md",
+    "from": "Pi packages bundle extensions",
+    "to": "through npm or git."
+  },
+  {
+    "statement": "A pi package declares its resources in package.json under the `pi` key, or relies on conventional directories.",
+    "sourceId": "file:/data3/yky/.local/node-v24.19.0-linux-x64/lib/node_modules/@earendil-works/pi-coding-agent/docs/packages.md",
+    "from": "A package can declare resources in",
+    "to": "or use conventional directories."
+  },
+  {
+    "statement": "Pi accepts three package source types: npm, git and local paths.",
+    "sourceId": "file:/data3/yky/.local/node-v24.19.0-linux-x64/lib/node_modules/@earendil-works/pi-coding-agent/docs/packages.md",
+    "from": "Pi accepts three source types",
+    "to": "`pi install`."
+  },
+  {
+    "statement": "npm-style pi packages pin versions in the spec, and pinned specs are skipped by package updates.",
+    "sourceId": "file:/data3/yky/.local/node-v24.19.0-linux-x64/lib/node_modules/@earendil-works/pi-coding-agent/docs/packages.md",
+    "from": "Versioned specs are pinned",
+    "to": "`pi update --all`)."
+  },
+  {
+    "statement": "Pi installs npm packages into a per-scope directory: ~/.pi/agent/npm/ for user installs, .pi/npm/ for project installs.",
+    "sourceId": "file:/data3/yky/.local/node-v24.19.0-linux-x64/lib/node_modules/@earendil-works/pi-coding-agent/docs/packages.md",
+    "from": "User installs go under",
+    "to": "`.pi/npm/`."
+  },
+  {
+    "statement": "git-source pi packages are pinned to a tag or commit, and pi's update commands reconcile the clone to that pinned ref rather than moving it.",
+    "sourceId": "file:/data3/yky/.local/node-v24.19.0-linux-x64/lib/node_modules/@earendil-works/pi-coding-agent/docs/packages.md",
+    "from": "Refs are pinned tags or commits.",
+    "to": "reconcile an existing clone to the configured ref."
+  },
+  {
+    "statement": "Moving a git-source pi package to a newer version is an explicit reinstall naming the new ref.",
+    "sourceId": "file:/data3/yky/.local/node-v24.19.0-linux-x64/lib/node_modules/@earendil-works/pi-coding-agent/docs/packages.md",
+    "from": "Use `pi install git:host/user/repo@new-ref`",
+    "to": "a new pinned ref."
+  },
+  {
+    "statement": "git-source pi packages are cloned under ~/.pi/agent/git/<host>/<path> globally, or .pi/git/<host>/<path> for project installs.",
+    "sourceId": "file:/data3/yky/.local/node-v24.19.0-linux-x64/lib/node_modules/@earendil-works/pi-coding-agent/docs/packages.md",
+    "from": "Cloned to `~/.pi/agent/git/",
+    "to": "`.pi/git/<host>/<path>` (project)."
+  },
+  {
+    "statement": "When a git-source package's checkout changes, pi resets and cleans the clone and runs npm install if the package has a package.json.",
+    "sourceId": "file:/data3/yky/.local/node-v24.19.0-linux-x64/lib/node_modules/@earendil-works/pi-coding-agent/docs/packages.md",
+    "from": "When reconciliation changes the checkout",
+    "to": "if `package.json` exists."
+  },
+  {
+    "statement": "pi install defaults to user settings; -l writes the package declaration to project settings .pi/settings.json.",
+    "sourceId": "file:/data3/yky/.local/node-v24.19.0-linux-x64/lib/node_modules/@earendil-works/pi-coding-agent/docs/packages.md",
+    "from": "By default, `install` and `remove` write to user settings",
+    "to": "(`.pi/settings.json`) instead."
+  },
+  {
+    "statement": "Project settings can be committed for a team, and pi installs any missing declared packages automatically on startup after the project is trusted.",
+    "sourceId": "file:/data3/yky/.local/node-v24.19.0-linux-x64/lib/node_modules/@earendil-works/pi-coding-agent/docs/packages.md",
+    "from": "Project settings can be shared with your team",
+    "to": "after the project is trusted."
+  },
+  {
+    "statement": "A local-path pi package is added to settings without copying it.",
+    "sourceId": "file:/data3/yky/.local/node-v24.19.0-linux-x64/lib/node_modules/@earendil-works/pi-coding-agent/docs/packages.md",
+    "from": "Local paths point to files or directories on disk",
+    "to": "without copying."
+  },
+  {
+    "statement": "When pi installs a package from npm or git it runs npm install, so the package's declared dependencies are installed with it.",
+    "sourceId": "file:/data3/yky/.local/node-v24.19.0-linux-x64/lib/node_modules/@earendil-works/pi-coding-agent/docs/packages.md",
+    "from": "When pi installs a package from npm or git",
+    "to": "installed automatically."
+  },
+  {
+    "statement": "Packages tagged `pi-package` are listed in the package gallery at pi.dev/packages.",
+    "sourceId": "file:/data3/yky/.local/node-v24.19.0-linux-x64/lib/node_modules/@earendil-works/pi-coding-agent/docs/packages.md",
+    "from": "The [package gallery](https://pi.dev/packages) displays packages tagged with `pi-package`.",
+    "to": "`pi-package`."
+  },
+  {
+    "statement": "Pi warns that packages run with full system access: extensions execute arbitrary code and skills can instruct the model to run executables.",
+    "sourceId": "file:/data3/yky/.local/node-v24.19.0-linux-x64/lib/node_modules/@earendil-works/pi-coding-agent/docs/packages.md",
+    "from": "Pi packages run with full system access.",
+    "to": "Review source code before installing third-party packages."
+  },
+  {
+    "statement": "Pi loads skills from global locations including ~/.agents/skills/, and from project locations including .agents/skills/ in the cwd and ancestor directories up to the git repo root.",
+    "sourceId": "file:/data3/yky/.local/node-v24.19.0-linux-x64/lib/node_modules/@earendil-works/pi-coding-agent/docs/skills.md",
+    "from": "Pi loads skills from:",
+    "to": "filesystem root when not in a repo)"
+  },
+  {
+    "statement": "A pi package can contribute skills through a skills/ directory or a pi.skills entry in package.json.",
+    "sourceId": "file:/data3/yky/.local/node-v24.19.0-linux-x64/lib/node_modules/@earendil-works/pi-coding-agent/docs/skills.md",
+    "from": "Packages: `skills/` directories",
+    "to": "entries in `package.json`"
+  },
+  {
+    "statement": "When two skill locations declare the same name, pi warns and keeps the first skill found.",
+    "sourceId": "file:/data3/yky/.local/node-v24.19.0-linux-x64/lib/node_modules/@earendil-works/pi-coding-agent/docs/skills.md",
+    "from": "Name collisions (same name from different locations)",
+    "to": "keep the first skill found."
+  },
+  {
+    "statement": "A skill is a directory whose only required file is SKILL.md; everything else in the folder is freeform.",
+    "sourceId": "file:/data3/yky/.local/node-v24.19.0-linux-x64/lib/node_modules/@earendil-works/pi-coding-agent/docs/skills.md",
+    "from": "A skill is a directory with a `SKILL.md` file.",
+    "to": "Everything else is freeform."
+  },
+  {
+    "statement": "Pi implements the Agent Skills standard, warning about violations but remaining lenient.",
+    "sourceId": "file:/data3/yky/.local/node-v24.19.0-linux-x64/lib/node_modules/@earendil-works/pi-coding-agent/docs/skills.md",
+    "from": "Pi implements the [Agent Skills standard]",
+    "to": "remaining lenient."
+  },
+  {
+    "statement": "Pi extensions are TypeScript modules that can subscribe to lifecycle events, register custom tools callable by the LLM, and add commands.",
+    "sourceId": "file:/data3/yky/.local/node-v24.19.0-linux-x64/lib/node_modules/@earendil-works/pi-coding-agent/docs/extensions.md",
+    "from": "Extensions are TypeScript modules",
+    "to": "add commands, and more."
+  },
+  {
+    "statement": "Pi extensions run with the user's full system permissions and can execute arbitrary code.",
+    "sourceId": "file:/data3/yky/.local/node-v24.19.0-linux-x64/lib/node_modules/@earendil-works/pi-coding-agent/docs/extensions.md",
+    "from": "Extensions run with your full system permissions",
+    "to": "Only install from sources you trust."
+  },
+  {
+    "statement": "Extensions are shared through npm or git as pi packages.",
+    "sourceId": "file:/data3/yky/.local/node-v24.19.0-linux-x64/lib/node_modules/@earendil-works/pi-coding-agent/docs/extensions.md",
+    "from": "To share extensions via npm or git as pi packages",
+    "to": "see [packages.md](packages.md)."
+  },
+  {
+    "statement": "pi packages can also contribute prompt templates through a prompts/ directory or pi.prompts entries in package.json.",
+    "sourceId": "file:/data3/yky/.local/node-v24.19.0-linux-x64/lib/node_modules/@earendil-works/pi-coding-agent/docs/prompt-templates.md",
+    "from": "Packages: `prompts/` directories",
+    "to": "entries in `package.json`"
+  },
+  {
+    "statement": "The settings key `packages` is an array of npm/git packages to load resources from.",
+    "sourceId": "file:/data3/yky/.local/node-v24.19.0-linux-x64/lib/node_modules/@earendil-works/pi-coding-agent/docs/settings.md",
+    "from": "| `packages` | array | `[]` | npm/git packages to load resources from |",
+    "to": "| `packages` | array | `[]` | npm/git packages to load resources from |"
+  },
+  {
+    "statement": "Pi can enable or disable resources from installed packages and local directories through the pi config command.",
+    "sourceId": "file:/data3/yky/.local/node-v24.19.0-linux-x64/lib/node_modules/@earendil-works/pi-coding-agent/docs/packages.md",
+    "from": "Use `pi config` to enable or disable",
+    "to": "installed packages and local directories."
+  }
+]

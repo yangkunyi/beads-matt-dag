@@ -1,0 +1,121 @@
+[
+  {
+    "statement": "npm runs the install lifecycle scripts (preinstall, install, postinstall) of a globally installed npm package by default.",
+    "sourceId": "url:https://docs.npmjs.com/cli/v11/using-npm/scripts",
+    "locator": "npm Docs, scripts, Life Cycle Operation Order",
+    "from": "These also run when you run npm install -g",
+    "to": "preinstall install postinstall"
+  },
+  {
+    "statement": "npm's own docs discourage using install scripts for setup, recommending a .gyp file for compilation and prepare for anything else.",
+    "sourceId": "url:https://docs.npmjs.com/cli/v11/using-npm/scripts",
+    "locator": "npm Docs, scripts, Best Practices",
+    "from": "Don't use install. Use a.gyp file for compilation, and prepare for anything else.",
+    "to": "Don't use install. Use a.gyp file for compilation, and prepare for anything else."
+  },
+  {
+    "statement": "agent-workflow-beads is a real npm-distributed scaffold: a CLI installed once globally, then one command per repo scaffolds (or refreshes) the workflow inside that project.",
+    "sourceId": "url:https://raw.githubusercontent.com/jsiovn/agent-workflow-beads/main/README.md",
+    "locator": "agent-workflow-beads README, intro",
+    "from": "You install the `agent-workflow-beads` CLI once on your machine,",
+    "to": "scaffold (or refresh) the workflow inside that project."
+  },
+  {
+    "statement": "That tool's version story is the global npm package: upgrade with npm install -g agent-workflow-beads@latest, then refresh downstream repos with agent-workflow-beads update <repo>.",
+    "sourceId": "url:https://raw.githubusercontent.com/jsiovn/agent-workflow-beads/main/README.md",
+    "locator": "agent-workflow-beads README, install/refresh",
+    "from": "Upgrade later the same way you upgrade any global package",
+    "to": "agent-workflow-beads update /path/to/your-repo"
+  },
+  {
+    "statement": "A git submodule is recorded as a particular commit of the other repository, not as its contents.",
+    "sourceId": "url:https://git-scm.com/book/en/v2/Git-Tools-Submodules",
+    "locator": "Git Book, Git Tools - Submodules",
+    "from": "Instead, Git sees it as a particular commit from that repository.",
+    "to": "Instead, Git sees it as a particular commit from that repository."
+  },
+  {
+    "statement": "Cloning a project does not populate its submodules; the consumer must run git submodule init and git submodule update to check out the recorded commit.",
+    "sourceId": "url:https://git-scm.com/book/en/v2/Git-Tools-Submodules",
+    "locator": "Git Book, Git Tools - Submodules, Cloning a Project with Submodules",
+    "from": "You must run two commands from the main project:",
+    "to": "check out the appropriate commit listed in your superproject"
+  },
+  {
+    "statement": "A submodule can be moved to the upstream branch's tip with git submodule update --remote.",
+    "sourceId": "url:https://git-scm.com/book/en/v2/Git-Tools-Submodules",
+    "locator": "Git Book, Git Tools - Submodules, Working on a Project with Submodules",
+    "from": "If you run git submodule update --remote, Git will go into your submodules and fetch and update for you.",
+    "to": "If you run git submodule update --remote, Git will go into your submodules and fetch and update for you."
+  },
+  {
+    "statement": "A Homebrew tap is a git repository of formulae, casks and external commands that brew tap clones into Homebrew's tap directory and brew update refreshes.",
+    "sourceId": "url:https://docs.brew.sh/Taps",
+    "locator": "Homebrew Documentation, Taps",
+    "from": "The brew tap command adds repositories that Homebrew can use for formulae, casks and external commands.",
+    "to": "Homebrew updates the repository during brew update."
+  },
+  {
+    "statement": "AGENTS.md is a plain-Markdown convention with no required fields; the closest file to the edited file wins, so nested per-project files take precedence.",
+    "sourceId": "url:https://agents.md/",
+    "locator": "AGENTS.md landing page",
+    "from": "A simple, open format for guiding coding agents, used by over 60k open-source projects.",
+    "to": "the agent simply parses the text you provide."
+  },
+  {
+    "statement": "AGENTS.md nests: agents automatically read the nearest file in the directory tree, so the closest one takes precedence and a subproject can ship tailored instructions.",
+    "sourceId": "url:https://agents.md/",
+    "locator": "AGENTS.md landing page, How to use",
+    "from": "Agents automatically read the nearest file in the directory tree,",
+    "to": "every subproject can ship tailored instructions."
+  },
+  {
+    "statement": "The beads CLI is installed machine-wide by script, Homebrew or npm, and bd init is then run inside each project to initialize the store.",
+    "sourceId": "url:https://raw.githubusercontent.com/gastownhall/beads/main/README.md",
+    "locator": "beads README, Installation/Quick Install",
+    "from": "curl -fsSL https://raw.githubusercontent.com/gastownhall/beads/main/scripts/install.sh | bash",
+    "to": "bd init"
+  },
+  {
+    "statement": "beads' first-party per-project setup step is bd setup: bd setup codex installs a skill, AGENTS.md guidance and hooks; bd setup claude installs hooks/settings.",
+    "sourceId": "url:https://raw.githubusercontent.com/gastownhall/beads/main/README.md",
+    "locator": "beads README, optional agent instructions",
+    "from": "bd setup codex # Codex CLI - installs skill, AGENTS.md guidance, and hooks",
+    "to": "bd setup codex # Codex CLI - installs skill, AGENTS.md guidance, and hooks"
+  },
+  {
+    "statement": "bd init creates or updates AGENTS.md and installs project Claude/Codex integrations by default, unless --skip-agents or --stealth is passed.",
+    "sourceId": "url:https://raw.githubusercontent.com/gastownhall/beads/main/docs/getting-started/installation.md",
+    "locator": "beads installation guide, bd init",
+    "from": "creates or updates `AGENTS.md`",
+    "to": "unless you use `--skip-agents` or `--stealth`"
+  },
+  {
+    "statement": "beads also ships an optional Claude Code plugin through a marketplace: /plugin marketplace add gastownhall/beads then /plugin install beads.",
+    "sourceId": "url:https://raw.githubusercontent.com/gastownhall/beads/main/docs/getting-started/installation.md",
+    "locator": "beads installation guide, Claude Code Plugin (Optional)",
+    "from": "/plugin marketplace add gastownhall/beads",
+    "to": "/plugin install beads"
+  },
+  {
+    "statement": "beads' own model is a machine-wide bd CLI plus an optional per-harness plugin and an optional MCP server, with the CLI as the foundation.",
+    "sourceId": "url:https://raw.githubusercontent.com/gastownhall/beads/main/docs/getting-started/installation.md",
+    "locator": "beads installation guide, components table",
+    "from": "| **bd CLI** | Core command-line tool | Always - this is the foundation",
+    "to": "| **Claude Code Plugin** | Slash commands + enhanced UX | Optional"
+  },
+  {
+    "statement": "A community example of a beads skill is mikezupper/beads-skill, distributed by git clone and copying skills/beads into the harness skills directory; consumers need only skills/beads/.",
+    "sourceId": "url:https://raw.githubusercontent.com/mikezupper/beads-skill/main/README.md",
+    "locator": "beads-skill README, What's inside / Installation",
+    "from": "Consumers only need `skills/beads/`.",
+    "to": "gives you a fully usable skill."
+  },
+  {
+    "statement": "That skill's README documents the collision failure mode: for Codex the skill goes to .agents/skills/ and bd init's generated skill has the same name, and installing first does not protect the file — bd init overwrites it silently.",
+    "sourceId": "url:https://raw.githubusercontent.com/mikezupper/beads-skill/main/README.md",
+    "locator": "beads-skill README, Install order vs bd init",
+    "from": "**Yes** — same skill name",
+    "to": "no prompt, no backup."
+  }
+]

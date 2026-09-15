@@ -1,0 +1,187 @@
+[
+  {
+    "statement": "The Archon marketplace index is fetched from https://archon.diy/workflows.json by default.",
+    "sourceId": "url:https://raw.githubusercontent.com/coleam00/Archon/main/packages/cli/src/commands/workflow.ts",
+    "locator": "workflow.ts (main branch, fetched 2026-09-15), marketplace section",
+    "from": "const DEFAULT_MARKETPLACE_URL = 'https://archon.diy/workflows.json';",
+    "to": "const DEFAULT_MARKETPLACE_URL = 'https://archon.diy/workflows.json';"
+  },
+  {
+    "statement": "The marketplace index URL can be overridden through the ARCHON_MARKETPLACE_URL environment variable.",
+    "sourceId": "url:https://raw.githubusercontent.com/coleam00/Archon/main/packages/cli/src/commands/workflow.ts",
+    "locator": "workflow.ts (main branch, fetched 2026-09-15), fetchMarketplace()",
+    "from": "const url = process.env.ARCHON_MARKETPLACE_URL",
+    "to": "DEFAULT_MARKETPLACE_URL;"
+  },
+  {
+    "statement": "Each marketplace entry carries slug, name, author, description, a GitHub sourceUrl, a commit sha, tags and an archonVersionCompat field.",
+    "sourceId": "url:https://raw.githubusercontent.com/coleam00/Archon/main/packages/cli/src/commands/workflow.ts",
+    "locator": "workflow.ts (main branch, fetched 2026-09-15), MarketplaceEntryJson",
+    "from": "interface MarketplaceEntryJson {",
+    "to": "featured?: boolean; }"
+  },
+  {
+    "statement": "The published marketplace index pins each entry to a full commit SHA of its source repository.",
+    "sourceId": "url:https://archon.diy/workflows.json",
+    "locator": "pocock-skills-workflow-family entry",
+    "from": "\"sha\":\"629e57716ea72bb8cf2f77fc7728d3845aa2cf92\"",
+    "to": "\"sha\":\"629e57716ea72bb8cf2f77fc7728d3845aa2cf92\""
+  },
+  {
+    "statement": "Archon refuses a marketplace source that is not a github.com URL.",
+    "sourceId": "url:https://raw.githubusercontent.com/coleam00/Archon/main/packages/cli/src/commands/workflow.ts",
+    "locator": "workflow.ts (main branch, fetched 2026-09-15), workflowInstallCommand()",
+    "from": "if (!entry.sourceUrl.startsWith('https://github.com/'))",
+    "to": "Only github.com sources are permitted."
+  },
+  {
+    "statement": "archon workflow install resolves the consumer repo root and installs into that repo's .archon directory.",
+    "sourceId": "url:https://raw.githubusercontent.com/coleam00/Archon/main/packages/cli/src/commands/workflow.ts",
+    "locator": "workflow.ts (main branch, fetched 2026-09-15), workflowInstallCommand()",
+    "from": "const archonDir = join(repoRoot, '.archon');",
+    "to": "const archonDir = join(repoRoot, '.archon');"
+  },
+  {
+    "statement": "A directory-form pack installs its main workflow as .archon/workflows/<slug>.yaml in the consumer repo.",
+    "sourceId": "url:https://raw.githubusercontent.com/coleam00/Archon/main/packages/cli/src/commands/workflow.ts",
+    "locator": "workflow.ts (main branch, fetched 2026-09-15), installDirectory()",
+    "from": "const destWorkflow = join(workflowsDir, `${slug}.yaml`);",
+    "to": "const destWorkflow = join(workflowsDir, `${slug}.yaml`);"
+  },
+  {
+    "statement": "A pack's subdirectories are routed by name: commands/ to .archon/commands, scripts/ to .archon/scripts, and any other subdirectory (the code names skills as the example) to .archon/<name>.",
+    "sourceId": "url:https://raw.githubusercontent.com/coleam00/Archon/main/packages/cli/src/commands/workflow.ts",
+    "locator": "workflow.ts (main branch, fetched 2026-09-15), installDirectory()",
+    "from": "if (subdir.name === 'commands') {",
+    "to": "targetDir = join(archonDir, subdir.name); }"
+  },
+  {
+    "statement": "Supporting pack files that already exist are skipped, not overwritten, unless --force is passed.",
+    "sourceId": "url:https://raw.githubusercontent.com/coleam00/Archon/main/packages/cli/src/commands/workflow.ts",
+    "locator": "workflow.ts (main branch, fetched 2026-09-15), installDirectory()",
+    "from": "if (existsSync(destFile) &&!force) {",
+    "to": "Skipped (exists): ${destFile}`); continue; }"
+  },
+  {
+    "statement": "An already-installed main workflow YAML makes install fail with an instruction to use --force.",
+    "sourceId": "url:https://raw.githubusercontent.com/coleam00/Archon/main/packages/cli/src/commands/workflow.ts",
+    "locator": "workflow.ts (main branch, fetched 2026-09-15), installDirectory()",
+    "from": "already exists at ${destWorkflow}.",
+    "to": "Use --force to overwrite."
+  },
+  {
+    "statement": "archon workflow install requires the consumer directory to be a git repository.",
+    "sourceId": "url:https://raw.githubusercontent.com/coleam00/Archon/main/packages/cli/src/commands/workflow.ts",
+    "locator": "workflow.ts (main branch, fetched 2026-09-15), workflowInstallCommand()",
+    "from": "if (!repoRoot) {",
+    "to": "Run archon workflow install from within a git repo.');"
+  },
+  {
+    "statement": "Directory-form installs list the source directory through the GitHub Contents API at the pinned SHA, so the installed content is the commit the index pinned.",
+    "sourceId": "url:https://raw.githubusercontent.com/coleam00/Archon/main/packages/cli/src/commands/workflow.ts",
+    "locator": "workflow.ts (main branch, fetched 2026-09-15), fetchGitHubDirectory()",
+    "from": "async function fetchGitHubDirectory",
+    "to": "?ref=${sha}`;"
+  },
+  {
+    "statement": "Archon is documented as loading home-scoped workflows, commands and scripts globally, usable from any repository.",
+    "sourceId": "url:https://archon.diy/guides/global-workflows/",
+    "locator": "Global Workflows, Commands, and Scripts, Overview",
+    "from": "Workflows placed in ~/.archon/workflows/,",
+    "to": "invoked from any repository."
+  },
+  {
+    "statement": "Archon's documented load priority is bundled defaults, then global home-scoped definitions, then repo-specific definitions, with the higher scope winning on a same-named file.",
+    "sourceId": "url:https://archon.diy/guides/global-workflows/",
+    "locator": "Global Workflows, Commands, and Scripts, Load Priority",
+    "from": "Bundled defaults (lowest priority)",
+    "to": "Same-named legacy/shared files at a higher scope win."
+  },
+  {
+    "statement": "Archon's own documented way to install home-scoped content is symlinking a dotfiles checkout into ~/.archon/workflows and ~/.archon/commands.",
+    "sourceId": "url:https://archon.diy/guides/global-workflows/",
+    "locator": "Global Workflows, Commands, and Scripts, Syncing with Dotfiles",
+    "from": "Then symlink during dotfiles setup:",
+    "to": "ln -sf ~/dotfiles/archon/workflows ~/.archon/workflows"
+  },
+  {
+    "statement": "A packaged workflow occupies .archon/workflows/<pack>/<workflow>/ and contains exactly one YAML definition, with bare command: and named script: references resolving only inside its own commands/ and scripts/ directories.",
+    "sourceId": "url:https://archon.diy/guides/authoring-workflows/",
+    "locator": "Authoring Workflows, packaged layout",
+    "from": "A packaged workflow contains exactly one YAML definition",
+    "to": "with no shared or cross-scope fallback."
+  },
+  {
+    "statement": "A workflow folder in the beads-dag pack carries its YAML, its scripts/ directory (each entry script a node the folder's YAML declares), and its tests/ for the drain.",
+    "sourceId": "file:/data3/yky/beads-matt-dag/.archon/workflows/beads-dag/README.md",
+    "from": "A workflow folder holds its YAML, its `scripts/` (each entry script is a node that folder's YAML declares),",
+    "to": "A workflow folder holds its YAML, its `scripts/` (each entry script is a node that folder's YAML declares),"
+  },
+  {
+    "statement": "The beads-dag README's install story is a symlink from ~/.archon/workflows/beads-dag to the pack folder in a checkout, so the checkout itself is the installed version.",
+    "sourceId": "file:/data3/yky/beads-matt-dag/.archon/workflows/beads-dag/README.md",
+    "from": "a checkout, so the checkout *is* the installed version:",
+    "to": "a checkout, so the checkout *is* the installed version:"
+  },
+  {
+    "statement": "The beads-dag README states that updating the symlinked install is a git pull in the checkout: nothing to re-copy and no diff to run.",
+    "sourceId": "file:/data3/yky/beads-matt-dag/.archon/workflows/beads-dag/README.md",
+    "from": "Updating an install is `git pull` in that checkout: there is nothing to re-copy and no diff to run,",
+    "to": "Updating an install is `git pull` in that checkout: there is nothing to re-copy and no diff to run,"
+  },
+  {
+    "statement": "The documented Archon failure mode for global installs is asymmetry: workflows can be discovered from a home path, but commands have no global search path, so a bundle of command prompts installed globally cannot run against another repo's worktree.",
+    "sourceId": "url:https://github.com/coleam00/Archon/issues/1682",
+    "locator": "Issue #1682, Summary (closed)",
+    "from": "The Workflow Marketplace install path treats workflows and commands asymmetrically:",
+    "to": "cannot be installed globally and then run against another repo's worktree."
+  },
+  {
+    "statement": "As fetched on 2026-09-15, main's getCommandFolderSearchPaths still returns only project-relative command paths, with no global parameter.",
+    "sourceId": "url:https://raw.githubusercontent.com/coleam00/Archon/main/packages/paths/src/archon-paths.ts",
+    "locator": "archon-paths.ts (main branch, fetched 2026-09-15), getCommandFolderSearchPaths()",
+    "from": "export function getCommandFolderSearchPaths(configuredFolder?: string): string[] {",
+    "to": "return paths; }"
+  },
+  {
+    "statement": "A separate documented Archon failure mode is discovery divergence: workflow run could see only the bundled defaults while workflow list saw the full set.",
+    "sourceId": "url:https://github.com/coleam00/Archon/issues/1959",
+    "locator": "Issue #1959, body (closed)",
+    "from": "run appears to see only the ~25 bundled defaults instead of the full set",
+    "to": "including.archon/workflows/experimental/)."
+  },
+  {
+    "statement": "Archon ships and installs its own agent skill by copying it into a consumer repo, either through archon setup or archon skill install <repo>, which writes .claude/skills/archon-cli.",
+    "sourceId": "url:https://archon.diy/getting-started/overview/",
+    "locator": "Getting Started, Using With Claude Code (Skill)",
+    "from": "run archon skill install /path/to/your/repo",
+    "to": "cp -r Archon/.claude/skills/archon-cli /path/to/your/repo/.claude/skills/"
+  },
+  {
+    "statement": "The installed archon CLI advertises `workflow install <slug>` as installing a workflow from the marketplace, `skill install [path]` as installing archon-cli into .claude/skills and .agents/skills, and --force as overwriting an existing file for workflow install.",
+    "sourceId": "file:/data3/yky/beads-matt-dag/.scratch/packaging/raw/archon-help.txt",
+    "from": "  workflow install <slug>    Install a workflow from the marketplace",
+    "to": "  --force                    Overwrite existing file (for workflow install)"
+  },
+  {
+    "statement": "Archon's roadmap lists a WORKFLOW.md spec as the standard format for shareable workflows in the planned marketplace work.",
+    "sourceId": "url:https://archon.diy/roadmap/",
+    "locator": "Roadmap, v0.5 Workflow Marketplace (Planned)",
+    "from": "WORKFLOW.md spec — standard format for shareable workflows",
+    "to": "WORKFLOW.md spec — standard format for shareable workflows"
+  },
+  {
+    "statement": "The marketplace's Matt Pocock pack is an example of the limits of pack distribution: its 18 skill directories live under .claude/skills/ outside .archon/, and the pack README's own install step is install.ps1 copying the pack into a target repo.",
+    "sourceId": "url:https://raw.githubusercontent.com/seanrobertwright/archon-pocock-workflow/629e57716ea72bb8cf2f77fc7728d3845aa2cf92/README.md",
+    "locator": "What's in the box, install section",
+    "from": ".claude/skills/ 18 skill dirs copied from upstream mattpocock/skills @ v1.1.0",
+    "to": "install.ps1 copy the pack into a target repo"
+  },
+  {
+    "statement": "That pack's update procedure for its bundled skills is manual: clone upstream, check out the new tag, re-copy the 18 skill directories into .claude/skills, then run archon validate workflows.",
+    "sourceId": "url:https://raw.githubusercontent.com/seanrobertwright/archon-pocock-workflow/629e57716ea72bb8cf2f77fc7728d3845aa2cf92/README.md",
+    "locator": "Notes (skills update)",
+    "from": "Update the skills: clone `mattpocock/skills`",
+    "to": "then `archon validate workflows`."
+  }
+]

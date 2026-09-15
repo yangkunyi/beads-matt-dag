@@ -1,0 +1,26 @@
+[
+  {
+    "statement": "The repo's skills/README.md defines the current convention: this folder is the source, and each machine carries one installed copy of every member under ~/.agents/skills/, the shared Agent Skills root every agent reads.",
+    "sourceId": "file:/data3/yky/beads-matt-dag/skills/README.md",
+    "from": "carries one installed **copy** of every member under `~/.agents/skills/`",
+    "to": "carries one installed **copy** of every member under `~/.agents/skills/`"
+  },
+  {
+    "statement": "The install is a copy of one folder per member, whole: SKILL.md, agents/ and every reference file.",
+    "sourceId": "file:/data3/yky/beads-matt-dag/skills/README.md",
+    "from": "Copy one folder per member, whole:",
+    "to": "and every reference file."
+  },
+  {
+    "statement": "The check that proves the install is diff -rq between every source folder and its installed copy, expected empty; a stale install is invisible to a timestamp look because cp -a preserves the source's mtimes.",
+    "sourceId": "file:/data3/yky/beads-matt-dag/skills/README.md",
+    "from": "A stale install is an installed copy older than this source",
+    "to": "diff` prints the differing file or the missing one."
+  },
+  {
+    "statement": "The documented bad outcomes of folder-copy into a shared root: a second copy under the same name is silently dead (the first one found wins, and it is not the project's), and a second copy under a new name shadows nothing but leaves two skills for one job.",
+    "sourceId": "file:/data3/yky/beads-matt-dag/skills/README.md",
+    "from": "A second copy under the **same name** is silently dead:",
+    "to": "which one runs depends on the agent's pick"
+  }
+]

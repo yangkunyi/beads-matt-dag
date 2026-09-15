@@ -1,0 +1,14 @@
+[
+  {
+    "statement": "A plugin can also be distributed as a zip archive downloaded over HTTPS, so installs work without git or npm on the user's machine.",
+    "sourceId": "url:https://code.claude.com/docs/en/plugin-marketplaces",
+    "locator": "Plugin marketplaces, Plugin sources, Zip archives",
+    "quote": "Zip archives Use archive to distribute a plugin as a zip file that Claude Code downloads over HTTPS, so installs work without git or npm on the user’s machine."
+  },
+  {
+    "statement": "A marketplace entry can point a plugin at a relative path inside the marketplace repository (the walkthrough's example source is ./plugins/quality-review-plugin).",
+    "sourceId": "url:https://code.claude.com/docs/en/plugin-marketplaces",
+    "locator": "Plugin marketplaces, walkthrough marketplace.json",
+    "quote": "\"source\": \"./plugins/quality-review-plugin\","
+  }
+]

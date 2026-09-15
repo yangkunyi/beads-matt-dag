@@ -1,0 +1,156 @@
+[
+  {
+    "statement": "A Claude Code plugin is a self-contained directory of components: skills, agents, hooks, MCP servers, LSP servers and monitors.",
+    "sourceId": "url:https://code.claude.com/docs/en/plugins-reference",
+    "locator": "Plugins reference, intro",
+    "from": "A plugin is a self-contained directory of components",
+    "to": "LSP servers, and monitors."
+  },
+  {
+    "statement": "A plugin manifest (.claude-plugin/plugin.json) is optional: without it Claude Code auto-discovers components in default locations and derives the plugin name from the directory name.",
+    "sourceId": "url:https://code.claude.com/docs/en/plugins-reference",
+    "locator": "Plugins reference, Plugin manifest schema",
+    "from": "The manifest is optional. If omitted,",
+    "to": "derives the plugin name from the directory name."
+  },
+  {
+    "statement": "A plugin's version is an optional semver string in plugin.json; setting it pins the plugin so users only receive updates when the author bumps it, and if it is also set in the marketplace entry plugin.json wins.",
+    "sourceId": "url:https://code.claude.com/docs/en/plugins-reference",
+    "locator": "Plugins reference, manifest fields, version",
+    "from": "version string Optional. Semantic version.",
+    "to": "If omitted, the version comes from the next source in Version management."
+  },
+  {
+    "statement": "A plugin can declare dependencies on other plugins with semver version constraints.",
+    "sourceId": "url:https://code.claude.com/docs/en/plugins-reference",
+    "locator": "Plugins reference, manifest fields, dependencies",
+    "from": "Other plugins this plugin requires, optionally with semver version constraints.",
+    "to": "Constrain plugin dependency versions"
+  },
+  {
+    "statement": "A marketplace is declared by .claude-plugin/marketplace.json at the repository root; each plugin entry needs at minimum a name and a source that tells Claude Code where to fetch it.",
+    "sourceId": "url:https://code.claude.com/docs/en/plugin-marketplaces",
+    "locator": "Plugin marketplaces, Create the marketplace file",
+    "from": "Each plugin entry needs at minimum a",
+    "to": "tells Claude Code where to fetch it from."
+  },
+  {
+    "statement": "A marketplace itself can be pinned to a branch or tag (ref) but not to a sha, while a plugin source listed in the marketplace can be pinned to either ref or exact commit sha.",
+    "sourceId": "url:https://code.claude.com/docs/en/plugin-marketplaces",
+    "locator": "Plugin marketplaces, Version resolution and release channels",
+    "from": "Git-based marketplace sources support ref (branch/tag) but not sha.",
+    "to": "Git-based plugin sources support both ref (branch/tag) and sha (exact commit)."
+  },
+  {
+    "statement": "Plugins can also be distributed as npm packages, installed with npm install from the public or a private registry, and pinned with a version or range field.",
+    "sourceId": "url:https://code.claude.com/docs/en/plugin-marketplaces",
+    "locator": "Plugin marketplaces, Plugin sources, npm packages",
+    "from": "Plugins distributed as npm packages are installed using npm install.",
+    "to": "or a private registry your team hosts."
+  },
+  {
+    "statement": "Installing a plugin offers user, project and local scopes; project scope installs for all collaborators on the repository, which adds the plugin to .claude/settings.json.",
+    "sourceId": "url:https://code.claude.com/docs/en/discover-plugins",
+    "locator": "Discover and install plugins, install scopes",
+    "from": "Project scope: install for all collaborators on this repository, which adds the plugin to.claude/settings.json",
+    "to": "Project scope: install for all collaborators on this repository, which adds the plugin to.claude/settings.json"
+  },
+  {
+    "statement": "The shared project settings file .claude/settings.json is meant to be committed so teammates get the project's plugins, hooks and environment variables.",
+    "sourceId": "url:https://code.claude.com/docs/en/settings",
+    "locator": "Settings files and precedence, scope table",
+    "from": "Shared project.claude/settings.json",
+    "to": "the environment variables the project needs"
+  },
+  {
+    "statement": "Updating a marketplace-based install is: push changes to the marketplace repository, then users refresh with /plugin marketplace update.",
+    "sourceId": "url:https://code.claude.com/docs/en/plugin-marketplaces",
+    "locator": "Plugin marketplaces, Overview",
+    "from": "Once your marketplace is live, you can update it by pushing changes to your repository.",
+    "to": "Users refresh their local copy with /plugin marketplace update."
+  },
+  {
+    "statement": "Marketplaces provide centralized discovery, version tracking, automatic updates and multiple source types including git repositories and local paths.",
+    "sourceId": "url:https://code.claude.com/docs/en/plugin-marketplaces",
+    "locator": "Plugin marketplaces, intro",
+    "from": "Marketplaces provide centralized discovery, version tracking, automatic updates,",
+    "to": "including git repositories and local paths."
+  },
+  {
+    "statement": "For copied plugins, each installed version is a separate directory in the plugin cache, grouped by marketplace and plugin and named for the resolved version.",
+    "sourceId": "url:https://code.claude.com/docs/en/plugins-reference",
+    "locator": "Plugins reference, plugin caching",
+    "from": "each installed version is a separate directory in the cache,",
+    "to": "named for the resolved version"
+  },
+  {
+    "statement": "Claude Code's dependency install for plugins is constrained so that no code from the plugin or its packages executes during it, with --ignore-scripts preventing preinstall, install and postinstall scripts.",
+    "sourceId": "url:https://code.claude.com/docs/en/plugins-reference",
+    "locator": "Plugins reference, plugin caching, dependency install",
+    "from": "no code from the plugin or its packages executes during it",
+    "to": "No lifecycle scripts: --ignore-scripts"
+  },
+  {
+    "statement": "A local --plugin-dir plugin with the same name as an installed marketplace plugin takes precedence for that session.",
+    "sourceId": "url:https://code.claude.com/docs/en/plugins",
+    "locator": "Create plugins, testing",
+    "from": "When a --plugin-dir plugin has the same name as an installed marketplace plugin,",
+    "to": "the local copy takes precedence for that session."
+  },
+  {
+    "statement": "Claude Code's official guidance for sharing is standalone .claude/ configuration for iteration, converted to a plugin when ready to share.",
+    "sourceId": "url:https://code.claude.com/docs/en/plugins",
+    "locator": "Create plugins, standalone vs plugins table",
+    "from": "Start with standalone configuration in.claude/ for quick iteration,",
+    "to": "then convert to a plugin when you’re ready to share."
+  },
+  {
+    "statement": "A plugin can also live in a skills directory: claude plugin init scaffolds it under ~/.claude/skills and it loads with no marketplace or install step.",
+    "sourceId": "url:https://code.claude.com/docs/en/plugins",
+    "locator": "Create plugins, skills-directory plugins",
+    "from": "On the next session it loads as my-tool@skills-dir with no marketplace or install step.",
+    "to": "On the next session it loads as my-tool@skills-dir with no marketplace or install step."
+  },
+  {
+    "statement": "Unlike a copied marketplace install, a skills-directory plugin is discovered in place rather than copied into the plugin cache.",
+    "sourceId": "url:https://code.claude.com/docs/en/plugins-reference",
+    "locator": "Plugins reference, skills-directory plugins",
+    "from": "Unlike a copied marketplace install,",
+    "to": "rather than copied into the plugin cache."
+  },
+  {
+    "statement": "Anthropic's own skills repository is consumed in Claude Code by registering it as a plugin marketplace and installing its plugin(s), not by copying folders.",
+    "sourceId": "url:https://raw.githubusercontent.com/anthropics/skills/main/README.md",
+    "locator": "anthropics/skills README, Try in Claude Code",
+    "from": "You can register this repository as a Claude Code Plugin marketplace",
+    "to": "/plugin marketplace add anthropics/skills"
+  },
+  {
+    "statement": "The Agent Skills specification defines a skill as a directory containing at minimum SKILL.md, with optional scripts/, references/ and assets/ directories and any additional files.",
+    "sourceId": "url:https://agentskills.io/specification",
+    "locator": "Agent Skills specification, Directory structure",
+    "from": "A skill is a directory containing, at minimum, a SKILL.md file:",
+    "to": "# Optional: executable code"
+  },
+  {
+    "statement": "The Agent Skills specification does not mandate where skill directories live, only what goes inside them; it recommends scanning .agents/skills/ so skills installed by other compliant clients are visible.",
+    "sourceId": "url:https://agentskills.io/integrate-skills",
+    "locator": "Adding skills support, Where to scan",
+    "from": "the Agent Skills specification does not mandate where skill directories live",
+    "to": "automatically visible to yours, and vice versa."
+  },
+  {
+    "statement": "The Agent Skills format has no version field; the spec suggests storing a version under the optional free-form metadata map.",
+    "sourceId": "url:https://agentskills.io/specification",
+    "locator": "Agent Skills specification, metadata field",
+    "from": "metadata field The optional metadata field:",
+    "to": "version: \"1.0\""
+  },
+  {
+    "statement": "skills.sh is a third-party Agent Skills directory whose install command is npx skills add <owner/repo>.",
+    "sourceId": "url:https://skills.sh/",
+    "locator": "skills.sh landing page",
+    "from": "Install them with a single command",
+    "to": "$ npx skills add <owner/repo>"
+  }
+]

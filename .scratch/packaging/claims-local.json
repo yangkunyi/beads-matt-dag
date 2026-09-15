@@ -1,0 +1,26 @@
+[
+  {
+    "statement": "The repo's skills/README.md defines the current convention: this folder is the source, and each machine carries one installed copy of every member under ~/.agents/skills/, the shared Agent Skills root every agent reads.",
+    "sourceId": "file:/data3/yky/beads-matt-dag/skills/README.md",
+    "locator": "/data3/yky/beads-matt-dag/skills/README.md:4",
+    "quote": "carries one installed **copy** of every member under `~/.agents/skills/`"
+  },
+  {
+    "statement": "The install is a copy of one folder per member, whole: SKILL.md, agents/ and every reference file.",
+    "sourceId": "file:/data3/yky/beads-matt-dag/skills/README.md",
+    "locator": "/data3/yky/beads-matt-dag/skills/README.md:19",
+    "quote": "Copy one folder per member, whole: `SKILL.md`, `agents/`, and every reference file."
+  },
+  {
+    "statement": "The check that proves the install is diff -rq between every source folder and its installed copy, expected empty; a stale install is invisible to a timestamp look because cp -a preserves the source's mtimes.",
+    "sourceId": "file:/data3/yky/beads-matt-dag/skills/README.md",
+    "locator": "/data3/yky/beads-matt-dag/skills/README.md:60",
+    "quote": "A stale install is an installed copy older than this source — someone edited here and did not\nre-install. It is invisible by looking: `cp -a` preserves timestamps, so the installed files wear\nthe source's own mtimes and can read as fresh. The check is how it is noticed — the member stops\nprinting `identical`, and `diff` prints the differing file or the missing one."
+  },
+  {
+    "statement": "The documented bad outcomes of folder-copy into a shared root: a second copy under the same name is silently dead (the first one found wins, and it is not the project's), and a second copy under a new name shadows nothing but leaves two skills for one job.",
+    "sourceId": "file:/data3/yky/beads-matt-dag/skills/README.md",
+    "locator": "/data3/yky/beads-matt-dag/skills/README.md:80",
+    "quote": "A second copy under the **same name** is silently dead: with the set installed globally, a\n  project that carries its own `to-tickets` never runs — the one pi found first wins, and it is not\n  the project's.\n- A second copy under a **new name** shadows nothing and is shadowed by nothing: the machine then\n  carries two skills for one job, and which one runs depends on the agent's pick"
+  }
+]

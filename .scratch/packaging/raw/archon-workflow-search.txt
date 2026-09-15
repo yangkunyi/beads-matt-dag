@@ -1,0 +1,88 @@
+
+Workflow Marketplace (14)
+
+  archon-piv-loop
+    Name:   Archon PIV Loop
+    Author: @coleam00
+    Tags:   development, planning
+    Guided Plan-Implement-Validate development with human-in-the-loop checkpoints...
+
+  archon-fix-github-issue
+    Name:   Fix GitHub Issue
+    Author: @coleam00
+    Tags:   development, automation
+    Automatically fix, resolve, or implement a solution for a GitHub issue. Syncs...
+
+  archon-comprehensive-pr-review
+    Name:   Comprehensive PR Review
+    Author: @coleam00
+    Tags:   review, automation
+    Full code review of a pull request with automatic fixes. Runs 5 specialized r...
+
+  archon-ralph-dag
+    Name:   Ralph DAG Loop
+    Author: @coleam00
+    Tags:   development, planning
+    Ralph implementation loop — generate or load a PRD, break it into stories, th...
+
+  video-generic
+    Name:   Video Generic
+    Author: @coleam00
+    Tags:   automation
+    Turn a freeform prompt (URL, GitHub repo, release notes, topic) into a voiced...
+
+  archon-idea-to-wo
+    Name:   Idea to Work Orders
+    Author: @lamachine
+    Tags:   planning, development
+    Interactive 8-node workflow that turns a raw idea into BKM-format Work Orders...
+
+  archon-smart-mr-review
+    Name:   Smart GitLab MR Review
+    Author: @lraphael
+    Tags:   review, automation
+    GitLab counterpart to archon-smart-pr-review. Adaptive code review of a GitLa...
+
+  archon-resolve-mr-conflicts
+    Name:   Resolve GitLab MR Conflicts
+    Author: @lraphael
+    Tags:   automation
+    GitLab counterpart to archon-resolve-conflicts. Rebases an MR onto its target...
+
+  archon-comprehensive-mr-review
+    Name:   Comprehensive GitLab MR Review
+    Author: @lraphael
+    Tags:   review, automation
+    GitLab counterpart to archon-comprehensive-pr-review. Full code review of a G...
+
+  piv-system-evolution
+    Name:   PIV Loop + System Evolution
+    Author: @coleam00
+    Tags:   development, planning, review
+    Runs the PIV loop (Plan-Implement-Validate) on a feature or bug behind four h...
+
+  harness-score
+    Name:   Harness Score
+    Author: @seanrobertwright
+    Tags:   review, automation
+    Audit a repository for AI-agent readiness. A deterministic script runs 10 che...
+
+  pocock-skills-workflow-family
+    Name:   Matt Pocock Skills Workflow Family
+    Author: @seanrobertwright
+    Tags:   development, planning, review, automation
+    Matt Pocock's 'Skills for Real Engineers' (v1.1.0) as six workflows that moun...
+
+  token-max-site-factory
+    Name:   Token-Max Site Factory
+    Author: @TheSmokeDev
+    Tags:   automation, development
+    Point-and-shoot programmatic SEO/GEO page factory. Scan any website, then exp...
+
+  image-node-factory
+    Name:   Image Node Factory
+    Author: @TheSmokeDev
+    Tags:   automation, development
+    One visual brief in, a grounded image prompt pack out (optional Codex-rendere...
+
+Install: archon workflow install <slug>
