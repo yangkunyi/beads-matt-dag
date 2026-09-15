@@ -51,3 +51,17 @@ Used by `/wayfinder`. The **map** is a file with one **child** file per ticket.
 - **Frontier**: scan `.scratch/<effort>/issues/` for files that are open, unblocked, and unclaimed; first by number wins.
 - **Claim**: set `Status: claimed` and save before any work.
 - **Resolve**: append the answer under an `## Answer` heading, set `Status: resolved`, then append a context pointer (gist + link) to the map's Decisions-so-far in `map.md`.
+
+## Archiving a finished effort
+
+When an effort is over — shipped, abandoned, or judged a failure — archive it instead of leaving it in the
+active set:
+
+- `mv .scratch/<feature-slug> .scratch/archive/<feature-slug>` — the move is the archive. Active scans
+  (`.scratch/*/issues/*.md`: the Orchestrator, the Base mirror) no longer see it.
+- Leave every ticket's `Status:` as it was: the values are history, not state. Do not invent an `ARCHIVED`
+  lifecycle value.
+- Write `RETRO.md` in the archived directory: what was built, why it stopped, what was kept, how to revive it.
+- Add one banner line under each ticket's title pointing at `RETRO.md`, so a reader arriving from a link knows
+  the effort is closed.
+- Say plainly in `RETRO.md` what is still live outside the repo (services, apps, tables) and how to stop it.
