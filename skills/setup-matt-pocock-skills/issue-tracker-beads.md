@@ -5,6 +5,33 @@ The issue's prose is a markdown file under `.scratch/`, frozen once published; i
 edges, labels and comments are the store's. One fact, one home: no state is ever written into a
 document.
 
+## Start here
+
+One store, three domains. Anything you might open belongs to one of them, and each domain means
+something different by *closed*:
+
+| You have | You open | Type | *Closed* means |
+|---|---|---|---|
+| a question worth knowing the answer to | a **question ticket** — answered by a reading (`/research`), a grilling, a prototype, or an experiment | `decision` | the answer is written down; the session closes it on the operator's word |
+| an idea — "this might be worth doing", no work agreed | an **idea ticket**; its comment thread is its development | `decision` | it graduated into a ticket in another domain (`relates-to`) or was dropped (`wontfix`) — *Ideas* |
+| work to do in the code | a **work ticket** carrying the gate label `ready-for-agent` | `task`, `bug`, … | a drain merged it into Main |
+| a question no published material can answer | an **experiment ticket** — the plan, and later its record | `experiment` | the result is recorded — *Experiments* |
+| a whole direction, still foggy, more than one session holds | a **map**, charted by `/wayfinder` | `decision`, labelled `wayfinder:map` | the destination document exists and the map's tickets are resolved — *Wayfinding operations* |
+
+**The operator decides what to open; the session types it.** Which skill does a piece of work is
+`/ask-matt`'s question — this table only decides *where a thing belongs*.
+
+A session opens by looking at two things:
+
+```bash
+bd ready                                          # what can start now — a `wayfinder:map` bead is a container, not a ticket
+bd list -t experiment -s closed -l reading:none   # results nobody has read yet
+```
+
+Nothing blocks across domains, in either direction: a question waiting on an experiment is not *blocked*
+by it — it stays open until the result is read and the answer written in. What crosses is a link, never a
+gate (*Closure never crosses domains*).
+
 ## Finding the store
 
 - The store is the repo's own — the Target the drain runs against: `.beads/` beside that repository,
