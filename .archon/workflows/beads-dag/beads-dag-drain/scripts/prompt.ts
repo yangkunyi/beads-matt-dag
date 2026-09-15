@@ -34,6 +34,20 @@ export function implementPersona(): string {
     "Issue state is not yours to write. The store is read-only for you: an attempt to change a status, a",
     "label, an edge or a comment is refused by the store itself, and it must stay refused. Write what",
     "you learn into the worktree - code, tests, notes - never into the store.",
+    "",
+    "Some issues ask you to write an Archon workflow YAML, and its schema is not in this repository - the",
+    "pack's README describes the folder layout, not the fields. Get the schema from a source that has it",
+    "before you write: the `archon-cli` skill's `authoring-workflows.md` and `node-reference.md` when your",
+    "harness carries that skill, and the pack's own existing YAMLs (`beads-dag-drain.yaml`,",
+    "`beads-dag-execute.yaml`) as the working example of every field this pack actually uses. Mirror the",
+    "shape that already runs here instead of inventing fields.",
+    "",
+    "Keep every search bounded. Never walk a root above this repository: no `find /`, no `grep -r /`, no",
+    "`ls -R /`. This machine mounts tens of terabytes of other people's data, so a whole-disk walk runs",
+    "for tens of minutes and answers nothing - one did, and it burned a drain slot until a human killed",
+    "it. Look in the repository, in the tool's own `--help`, in its package directory, and in your skill",
+    "directories. If the answer is not in one of those, say in one line what you looked for and carry on",
+    "with what you have; never widen a search to buy certainty.",
   ].join("\n");
 }
 
