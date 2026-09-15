@@ -129,8 +129,10 @@ need one.
 - [ ] Docs: pack `README.md` (the config paragraph and its key table, the settlement section, the artifacts
       list, and the module table if it gains a row), `docs/specs/2026-09-11-beads-dag.md`'s per-issue
       executor paragraph, and `skills/drain/SKILL.md` (its config table gains `verify`, and the incident
-      list says what a verify failure reads like) — with the installed skill copy refreshed and
-      `diff -rq` empty.
+      list says what a verify failure reads like). Refreshing the machine-level copies of the skills and
+      the pack is **not this ticket's business**: a worker touches its own worktree and nothing outside it,
+      and what keeps `~/.agents/skills/` and `~/.archon/workflows/beads-dag` in step with Main is a
+      post-merge act of the Target's, not something a brief can ask for mid-flight.
 - [ ] Both pack gates green: `bun .archon/workflows/beads-dag/beads-dag-drain/tests/run-all.ts` and
       `./node_modules/.bin/tsc -p tsconfig.pack.json`.
 - [ ] One real lab run, quoted with its run id and artifacts: a throwaway Target, a real store, a cheap test

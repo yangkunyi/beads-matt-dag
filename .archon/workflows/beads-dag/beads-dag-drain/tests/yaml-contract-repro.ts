@@ -19,6 +19,7 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { DEFAULT_CONFIG_REL, DEFAULT_VERIFY_TIMEOUT_MS } from "../scripts/config.ts";
+import { POST_MERGE_TIMEOUT_MS } from "../scripts/postmerge.ts";
 import { ROLES } from "../scripts/roles.ts";
 import { drain, execute, expect, expectEqual, inquiry, readBlock } from "./target.ts";
 
@@ -237,10 +238,12 @@ try {
 
     // The node's timeout is the runner's side of the role's wall clock: a node names the roles it runs,
     // the role table says how long each may run, and the node's own budget has to cover all of them
-    // (ticket 08 runs two turns in one node, so the sum, not the maximum). The pre-merge gate is not a
-    // role, so the role sum cannot see it: a node whose script calls `runVerify` buys two gate runs -
-    // one after the implementer's turn and one after the conflict turn - and the budget has to cover
-    // those too, or a later timeout edit could silently make the node shorter than its own work.
+    // (ticket 08 runs two turns in one node, so the sum, not the maximum). Two things in a node's script
+    // are not roles and cannot be seen in that sum: the pre-merge gate, whose command a node that calls
+    // `runVerify` runs twice - once after the implementer's turn and once after the conflict turn - and
+    // the post-merge act, which a node that calls `runPostMerge` can run once, on the path where the
+    // settlement succeeded (twice is impossible: the executor settles once and returns). Both clocks are
+    // the node's to cover, or a later timeout edit could silently make the node shorter than its own work.
     for (const node of nodes) {
       if (!node.script) continue;
       const source = scripts.get(node.script)?.source ?? "";
@@ -249,14 +252,16 @@ try {
         expect(`${file}: ${node.id} names a declared role`, role in ROLES, role);
       }
       const gates = /runVerify\s*\(/.test(source) ? 2 : 0;
-      if (roles.length === 0 && gates === 0) continue;
+      const acts = /runPostMerge\s*\(/.test(source) ? 1 : 0;
+      if (roles.length === 0 && gates === 0 && acts === 0) continue;
       const needed =
         roles.reduce((ms, role) => ms + ROLES[role as keyof typeof ROLES].wallMs, 0) +
-        gates * DEFAULT_VERIFY_TIMEOUT_MS;
+        gates * DEFAULT_VERIFY_TIMEOUT_MS +
+        acts * POST_MERGE_TIMEOUT_MS;
       expect(
         `${file}: ${node.id} outlasts the wall clocks of ${roles.join("+")}${
           gates > 0 ? ` plus ${gates} gate runs` : ""
-        } (${needed}ms)`,
+        }${acts > 0 ? ` plus ${acts} post-merge act` : ""} (${needed}ms)`,
         node.timeout !== undefined && node.timeout > needed,
         `${node.timeout}ms`,
       );

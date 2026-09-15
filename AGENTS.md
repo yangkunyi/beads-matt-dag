@@ -30,14 +30,18 @@ Single-context: one `docs/CONTEXT.md` plus `docs/adr/`. See `docs/agents/domain.
 The pack is copied to `~/.archon/workflows/beads-dag`. Its two local gates run from this repository and
 live in it, never in the pack: the repro suite
 (`bun .archon/workflows/beads-dag/beads-dag-drain/tests/run-all.ts`) and the typecheck
-(`./node_modules/.bin/tsc -p tsconfig.pack.json`).
+(`./node_modules/.bin/tsc -p tsconfig.pack.json`). The suite is one process per repro, eight at a time
+(~2.5 min; `REPRO_JOBS` and `REPRO_TIMEOUT_MS` tune it) — while you iterate, run the single repro you are
+changing, since each file is seconds on its own, and leave the whole suite as the gate before you finish.
 
 The Target-side tooling under `tools/` — the inquiry corpus tools and the experiment script — is not the pack
 and nothing else checks it, so it carries its own one-line gate: `./node_modules/.bin/tsc -p tsconfig.tools.json`.
 
 The machine's two copies of this checkout — the skill set in `~/.agents/skills/` and the pack link in
 `~/.archon/workflows/` — are checked, and refreshed, by one command run from here:
-`bun tools/flow.ts check` (add `install` to fix what it reports).
+`bun tools/flow.ts check` (add `install` to fix what it reports). The drain runs that refresh itself after
+every merge it lands (`.scratch/beads-dag.yaml`'s `postMerge`), so a session does not have to remember it,
+and no ticket brief may ask a worker to do it — writing outside its worktree is not a worker's act.
 
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:970c3bf2 -->
 ## Beads Issue Tracker

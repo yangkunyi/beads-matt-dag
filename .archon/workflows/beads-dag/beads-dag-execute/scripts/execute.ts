@@ -36,6 +36,11 @@ import { ensureWorktreesIgnored } from "../../beads-dag-drain/scripts/main-write
 import { bodyPath, issueNames } from "../../beads-dag-drain/scripts/naming.ts";
 import { runNode } from "../../beads-dag-drain/scripts/node-entry.ts";
 import { FAILED, MERGED, nodeLine } from "../../beads-dag-drain/scripts/node-outcomes.ts";
+import {
+  POST_MERGE_TIMEOUT_MS,
+  postMergeLogName,
+  runPostMerge,
+} from "../../beads-dag-drain/scripts/postmerge.ts";
 import { roleAgent } from "../../beads-dag-drain/scripts/roles.ts";
 import { recordMainCommit } from "../../beads-dag-drain/scripts/run-record.ts";
 import { settleFailed, settleMerged } from "../../beads-dag-drain/scripts/settle.ts";
@@ -170,8 +175,31 @@ export async function executeIssue(target: string, issueHandle: string, opts: Ex
   // which changed the tree. A conflicting settle is a distinct outcome the executor can answer with a
   // conflict turn, so it is thrown on to the caller; a red gate is only ever a failed attempt, so the
   // gate answers with the reason and the caller records it exactly as any other failure.
-  const settle = () =>
-    settleMerged(target, store, issue, names, opts.artifactsDir, () => bringMainIn(worktree.path, mainBranch(target)));
+  //
+  // The post-merge act runs after the settlement, inside the same call, and never in a failure path:
+  // there is nothing merged to act on there. It cannot throw and it cannot un-land the merge - by the
+  // time it runs the work is in Main and the issue is closed - so a red act is named on stderr and left
+  // in its log, and the attempt stays exactly as merged as it was (postmerge.ts).
+  const settle = async () => {
+    const landed = await settleMerged(target, store, issue, names, opts.artifactsDir, () =>
+      bringMainIn(worktree.path, mainBranch(target)),
+    );
+    const act = await runPostMerge(
+      target,
+      config.postMerge,
+      join(opts.artifactsDir, postMergeLogName(names.handle)),
+      POST_MERGE_TIMEOUT_MS,
+    );
+    if (!act.ok) {
+      const tail = act.tail === "" ? "(no output)" : act.tail;
+      console.error(
+        `${names.handle}: merged and recorded, but the Target's post-merge command failed` +
+          (act.timedOut ? ` (timed out after ${POST_MERGE_TIMEOUT_MS}ms): ` : ": ") +
+          tail,
+      );
+    }
+    return landed;
+  };
 
   /**
    * The Target's configured gate, over the tree that would be merged. `n` is 1 for the gate after the

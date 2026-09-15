@@ -38,6 +38,7 @@ const CONFIG: PackConfig = {
   store: undefined,
   verify: "",
   verifyTimeoutMs: DEFAULT_VERIFY_TIMEOUT_MS,
+  postMerge: "",
 };
 
 try {

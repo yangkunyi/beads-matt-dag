@@ -45,6 +45,7 @@ const DEFAULTS: PackConfig = {
   store: undefined,
   verify: "",
   verifyTimeoutMs: DEFAULT_VERIFY_TIMEOUT_MS,
+  postMerge: "",
 };
 
 try {
@@ -60,7 +61,7 @@ try {
     bare,
     "beads-dag: config: runner=pi (default), model=the runner's default (default), thinkingLevel=high (default), " +
       "concurrency=4 (default), store=/opt/beads/bd (PATH), verify=(none) (default), " +
-      `verifyTimeoutMs=${DEFAULT_VERIFY_TIMEOUT_MS} (default)`,
+      `verifyTimeoutMs=${DEFAULT_VERIFY_TIMEOUT_MS} (default), postMerge=(none) (default)`,
   );
   expect("the line names every key the pack reads", CONFIG_KEYS.every((key) => bare.includes(`${key}=`)), bare);
   expect("and is one line", !bare.includes("\n"), bare);
@@ -75,6 +76,7 @@ try {
       store: "/opt/other/bd",
       verify: "bun test",
       verifyTimeoutMs: 60_000,
+      postMerge: "",
     },
     {
       file,
@@ -95,11 +97,11 @@ try {
     written,
     `beads-dag: config: runner=dsh (${file}), model=some/model (${file}), thinkingLevel=max (${file}), ` +
       `concurrency=1 (${file}), store=/opt/other/bd (${file}), verify=bun test (${file}), ` +
-      `verifyTimeoutMs=60000 (${file})`,
+      `verifyTimeoutMs=60000 (${file}), postMerge=(none) (default)`,
   );
 
   const mixed = configLine(
-    { model: undefined, thinkingLevel: "high", concurrency: 2, runner: "pi", store: undefined, verify: "", verifyTimeoutMs: DEFAULT_VERIFY_TIMEOUT_MS },
+    { model: undefined, thinkingLevel: "high", concurrency: 2, runner: "pi", store: undefined, verify: "", verifyTimeoutMs: DEFAULT_VERIFY_TIMEOUT_MS, postMerge: "" },
     { file, fromFile: new Set<ConfigKey>(["concurrency"]) },
     { binary: "/opt/beads/bd", source: "environment" },
   );
@@ -108,7 +110,7 @@ try {
     mixed,
     `beads-dag: config: runner=pi (default), model=the runner's default (default), thinkingLevel=high (default), ` +
       `concurrency=2 (${file}), store=/opt/beads/bd (PATH), verify=(none) (default), ` +
-      `verifyTimeoutMs=${DEFAULT_VERIFY_TIMEOUT_MS} (default)`,
+      `verifyTimeoutMs=${DEFAULT_VERIFY_TIMEOUT_MS} (default), postMerge=(none) (default)`,
   );
 
   // loadConfig records the reading the line is built from: which file, and which keys it set.
@@ -183,6 +185,27 @@ try {
       refused = e instanceof Error ? e.message : String(e);
     }
     expect("a non-string gate command fails loudly", /invalid verify in .*beads-dag\.yaml: true/.test(refused), refused);
+
+    // The post-merge act is read, and refused, exactly as the gate is: empty means nothing runs after a
+    // merge, so a Target that meant to keep something true must not be left with silence there either.
+    writeFileSync(join(scratch, CONFIG_REL), "postMerge: bun tools/flow.ts install\n");
+    const refreshing = loadConfig(scratch);
+    expectEqual("a post-merge command is read as written", refreshing.config.postMerge, "bun tools/flow.ts install");
+    expectEqual("and is the file's own key", [...refreshing.provenance.fromFile], ["postMerge"]);
+
+    writeFileSync(join(scratch, CONFIG_REL), 'postMerge: ""\n');
+    const noAct = loadConfig(scratch);
+    expectEqual("an explicitly empty post-merge act is empty", noAct.config.postMerge, "");
+    expectEqual("and is still the file's, not the default's", [...noAct.provenance.fromFile], ["postMerge"]);
+
+    writeFileSync(join(scratch, CONFIG_REL), "postMerge: true\n");
+    refused = "";
+    try {
+      loadConfig(scratch);
+    } catch (e) {
+      refused = e instanceof Error ? e.message : String(e);
+    }
+    expect("a non-string post-merge command fails loudly", /invalid postMerge in .*beads-dag\.yaml: true/.test(refused), refused);
   } finally {
     rmSync(scratch, { recursive: true, force: true });
   }
@@ -210,22 +233,27 @@ try {
       opened.stderr,
       `beads-dag: config: runner=pi (default), model=the runner's default (default), thinkingLevel=high (default), ` +
         `concurrency=1 (${resolved}), store=${storeBinary()} (PATH), verify=(none) (default), ` +
-        `verifyTimeoutMs=${DEFAULT_VERIFY_TIMEOUT_MS} (default)\n`,
+        `verifyTimeoutMs=${DEFAULT_VERIFY_TIMEOUT_MS} (default), postMerge=(none) (default)\n`,
     );
     expectEqual("and the token is unchanged", opened.stdout, nodeLine(OPENED));
   });
 
-  // The gate's keys are read from that same file, and the line names it as their source.
+  // The gate's and the post-merge act's keys are read from that same file, and the line names it as their
+  // source. They are separate acts at separate moments - one command before a merge, another after it -
+  // and the line is where a Target sees which of them it has configured and where each came from.
   await withTarget(async (root, artifacts) => {
-    const configFile = writeTargetConfig(root, `store: ${storeBinary()}\nverify: bun test the suite\nverifyTimeoutMs: 1234\n`);
+    const configFile = writeTargetConfig(
+      root,
+      `store: ${storeBinary()}\nverify: bun test the suite\nverifyTimeoutMs: 1234\npostMerge: bun tools/flow.ts install\n`,
+    );
     const opened = runScript(drain.script("open"), root, { ARTIFACTS_DIR: artifacts });
     const resolved = join(root, configFile);
     expectEqual(
-      "the gate command and its timeout are the file's",
+      "the gate command, its timeout and the post-merge act are the file's",
       opened.stderr,
       `beads-dag: config: runner=pi (default), model=the runner's default (default), thinkingLevel=high (default), ` +
         `concurrency=4 (default), store=${storeBinary()} (${resolved}), verify=bun test the suite (${resolved}), ` +
-        `verifyTimeoutMs=1234 (${resolved})\n`,
+        `verifyTimeoutMs=1234 (${resolved}), postMerge=bun tools/flow.ts install (${resolved})\n`,
     );
     expectEqual("and the token is unchanged", opened.stdout, nodeLine(OPENED));
   });
@@ -239,7 +267,7 @@ try {
       opened.stderr,
       `beads-dag: config: runner=pi (default), model=the runner's default (default), thinkingLevel=high (default), ` +
         `concurrency=4 (default), store=${storeBinary()} (${join(root, configFile)}), verify=(none) (default), ` +
-        `verifyTimeoutMs=${DEFAULT_VERIFY_TIMEOUT_MS} (default)\n`,
+        `verifyTimeoutMs=${DEFAULT_VERIFY_TIMEOUT_MS} (default), postMerge=(none) (default)\n`,
     );
     expectEqual("open exits clean", opened.status, 0);
     expectEqual("and the token is unchanged", opened.stdout, nodeLine(OPENED));

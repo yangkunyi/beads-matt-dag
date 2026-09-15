@@ -95,6 +95,7 @@ const CONFIG: PackConfig = {
   store: storeBinary(),
   verify: "",
   verifyTimeoutMs: DEFAULT_VERIFY_TIMEOUT_MS,
+  postMerge: "",
 };
 
 /** Open one run the way the runner would, and return the base it recorded. */

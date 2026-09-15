@@ -85,6 +85,7 @@ const CONFIG: PackConfig = {
   store: storeBinary(),
   verify: "",
   verifyTimeoutMs: DEFAULT_VERIFY_TIMEOUT_MS,
+  postMerge: "",
 };
 
 /** Run the report pair the way the drain does, over one artifacts dir, and read back both. */

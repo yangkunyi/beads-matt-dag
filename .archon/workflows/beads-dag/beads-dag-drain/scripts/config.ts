@@ -33,6 +33,14 @@ export type PackConfig = {
   verify: string;
   /** How long one gate run may take before its process group is killed and the attempt fails. */
   verifyTimeoutMs: number;
+  /**
+   * The Target's post-merge act: one shell command, run with `sh -c` in the Target itself, after a merge
+   * has landed (postmerge.ts). Empty (the default) means this Target has none - no process, no record.
+   * It is where a Target keeps something outside its own git tree true: refreshing an installed copy of
+   * the flow, regenerating a document, syncing an index. Like `verify`, it comes from this file and never
+   * from an issue body.
+   */
+  postMerge: string;
 };
 
 /** The Target's config, relative to it. The workflow hands this path to every node as INPUTS_CONFIG. */
@@ -53,6 +61,7 @@ const DEFAULTS: PackConfig = {
   store: undefined,
   verify: "",
   verifyTimeoutMs: DEFAULT_VERIFY_TIMEOUT_MS,
+  postMerge: "",
 };
 
 /** The keys the pack reads, in the order the configuration line names them; every other top-level key
@@ -65,6 +74,7 @@ export const CONFIG_KEYS = [
   "store",
   "verify",
   "verifyTimeoutMs",
+  "postMerge",
 ] as const;
 export type ConfigKey = (typeof CONFIG_KEYS)[number];
 
@@ -242,6 +252,16 @@ export function parseConfigText(text: string, file: string): ParsedConfig {
         config.verifyTimeoutMs = value;
         fromFile.add(key);
         break;
+      case "postMerge":
+        // The same refusal as `verify`, for the same reason: an empty command means nothing runs after a
+        // merge, so a Target that wrote something that is not a string must hear about it rather than be
+        // left with silence where it meant to keep its machine copies honest.
+        if (typeof value !== "string") {
+          throw new Error(`invalid postMerge in ${file}: ${JSON.stringify(value)} (expected a shell command string)`);
+        }
+        config.postMerge = value;
+        fromFile.add(key);
+        break;
       case "thinkingLevel":
         if (typeof value !== "string" || !isThinkingLevel(value)) {
           throw new Error(`invalid thinkingLevel in ${file}: ${String(value)}`);
@@ -319,6 +339,7 @@ export function configLine(config: PackConfig, provenance: ConfigProvenance, sto
     store: store.binary,
     verify: config.verify === "" ? "(none)" : config.verify,
     verifyTimeoutMs: String(config.verifyTimeoutMs),
+    postMerge: config.postMerge === "" ? "(none)" : config.postMerge,
   };
   const sources: Record<ConfigKey, string> = {
     runner: sourceOf("runner"),
@@ -328,6 +349,7 @@ export function configLine(config: PackConfig, provenance: ConfigProvenance, sto
     store: store.source === "environment" ? "PATH" : file ?? "config",
     verify: sourceOf("verify"),
     verifyTimeoutMs: sourceOf("verifyTimeoutMs"),
+    postMerge: sourceOf("postMerge"),
   };
   return `beads-dag: config: ${CONFIG_KEYS.map((key) => `${key}=${values[key]} (${sources[key]})`).join(", ")}`;
 }

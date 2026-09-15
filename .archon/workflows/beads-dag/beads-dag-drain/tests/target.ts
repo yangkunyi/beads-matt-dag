@@ -4,6 +4,25 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { accessSync, chmodSync, constants, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
+import { READONLY_ENV } from "../scripts/worker-env.ts";
+
+/**
+ * This process stands in for the drain runner, and a runner's environment is not a worker's.
+ *
+ * The store's read-only mode belongs to the **agent subprocess** (worker-env.ts): the drain adds it to the
+ * environment it hands the runner for one turn, so a worker cannot move a Target's frontier. A node
+ * script never runs under it, and a repro that calls one in-process is standing where the node runs. The
+ * flag is therefore dropped here rather than inherited, because a worker that runs the pack's own gate
+ * from inside a worker is not the situation the pack creates for the code under test: inherited, it makes
+ * every repro that publishes an issue die with `operation 'create' is not allowed in read-only mode`,
+ * which reads as a broken suite rather than as an environment mismatch - it cost a real worker a
+ * fifteen-minute run on 2026-09-15, before it worked out to re-run under `env -u BD_READONLY`. Dropped
+ * here, the suite a worker runs is the suite a session runs.
+ *
+ * The read-only rule keeps its own test: the repros that prove a worker cannot write pass an environment
+ * the pack itself built (`workerEnv`), and an explicit value still wins wherever a caller sets one.
+ */
+delete process.env[READONLY_ENV];
 
 const drainDir = join(import.meta.dir, "..");
 const executeDir = join(import.meta.dir, "../../beads-dag-execute");
