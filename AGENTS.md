@@ -37,7 +37,9 @@ and nothing else checks it, so it carries its own one-line gate: `./node_modules
 
 The machine's two copies of this checkout — the skill set in `~/.agents/skills/` and the pack link in
 `~/.archon/workflows/` — are checked, and refreshed, by one command run from here:
-`bun tools/flow.ts check` (add `install` to fix what it reports).
+`bun tools/flow.ts check` (add `install` to fix what it reports). The drain runs that refresh itself after
+every merge it lands (`.scratch/beads-dag.yaml`'s `postMerge`), so a session does not have to remember it,
+and no ticket brief may ask a worker to do it — writing outside its worktree is not a worker's act.
 
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:970c3bf2 -->
 ## Beads Issue Tracker

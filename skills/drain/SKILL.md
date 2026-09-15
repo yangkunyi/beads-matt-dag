@@ -80,6 +80,7 @@ The Target's config is optional at `.scratch/beads-dag.yaml`:
 | `store` | the store binary; the contract's resolution puts this key first, then `bd` on PATH |
 | `verify` | the pre-merge gate: one shell command, run in the issue's worktree on the tree that would be merged, immediately before each merge. Unset means no gate runs and nothing is recorded |
 | `verifyTimeoutMs` | how long one gate run may take before its process group is killed and the attempt fails (default 15 min) |
+| `postMerge` | the post-merge act: one shell command, run **in the Target** after a merge has landed, for keeping something true outside the Target's own git tree (the design repo's own refresh of the machine's installed copies). Unset means no act runs and nothing is recorded |
 
 Absent is fine. The defaults are in
 `~/.archon/workflows/beads-dag/beads-dag-drain/scripts/config.ts`.
@@ -163,7 +164,8 @@ settings for it.
 --json` for each node's state and output, and the run's log at
 `~/.archon/workspaces/_local/<repo>/logs/<run-id>.jsonl` for what a node printed. `open` writes one line
 naming the configuration the run is using — `beads-dag: config: runner=…, model=…, thinkingLevel=…,
-concurrency=…, store=…, verify=…, verifyTimeoutMs=…`, each value followed by its source: `(default)`, the
+concurrency=…, store=…, verify=…, verifyTimeoutMs=…, postMerge=…`, each value followed by its source:
+`(default)`, the
 Target's resolved config
 file, or `PATH` for a store found there — so what actually ran is read rather than guessed. A refusal —
 no store in the Target, no store binary, a blocking relation across the domains, another drain already
@@ -191,6 +193,13 @@ nothing closed, and the issue is `open` for the next drain; the full output is i
 under the run's artifacts directory. `attempt N failed: verify failed: timed out after Nms: …` means the
 gate outlived `verifyTimeoutMs` and its process group was killed. The command is the Target's own — fix
 the tree or the command, or brake the issue while you do.
+
+**The Target's post-merge act failed.** It is not an issue failure and must not be read as one: the merge
+landed, the issue closed, and the merge stands. The act's failure is on the run's stderr — `merged and
+recorded, but the Target's post-merge command failed: …` — and its whole output is in the run's
+`post-merge-<handle>.log`. What it means is that whatever the Target keeps true outside its git tree
+(the machine's installed copies, in this repository) is now behind Main: `bun tools/flow.ts check` says
+by how much, and `install` fixes it.
 
 **An issue failed twice.** The reason is a comment on the issue and the issue is `open` again, so the
 store's own ready answer — the query the contract's frontier row names — is the whole retry channel, and

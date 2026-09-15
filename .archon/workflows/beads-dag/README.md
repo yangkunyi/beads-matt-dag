@@ -24,12 +24,15 @@ archon workflow run beads-dag-drain --detach
 ```
 
 The Target does not commit `.archon/`. Its config is optional and lives at `.scratch/beads-dag.yaml`; the
-keys are `model`, `thinkingLevel`, `concurrency`, `runner`, `store`, `verify` and `verifyTimeoutMs`, and
+keys are `model`, `thinkingLevel`, `concurrency`, `runner`, `store`, `verify`, `verifyTimeoutMs` and
+`postMerge`, and
 the defaults are in `beads-dag-drain/scripts/config.ts`. The opening node prints the effective
 configuration on stderr — one line naming each value and whether the Target's file or the built-in
 default supplied it, the store binary's resolution on PATH included — so a run says what it runs even
 when the Target has no file. `verify` is the pre-merge gate (`The pre-merge gate`, below): a shell
-command, empty by default, run in the issue's worktree on the tree that would be merged.
+command, empty by default, run in the issue's worktree on the tree that would be merged. `postMerge` is
+the post-merge act (`The post-merge act`, below): a shell command, empty by default, run in the Target
+after a merge has landed.
 
 ## The store
 
@@ -215,9 +218,10 @@ that latch, and the killed turn's half-work becomes visible on the branch and in
 
 **Timeout.** `verifyTimeoutMs` (default 15 min, `DEFAULT_VERIFY_TIMEOUT_MS`) bounds one gate run; on
 expiry the whole process group is killed and the attempt fails with `verify failed: timed out after
-<ms>ms: …` rather than hanging the node. The gate is not a role, so the role sum the workflow-contract
-test checks cannot see it: the execute node's own timeout has to outlast `implement + conflict + 2 ×
-verifyTimeoutMs`, and the contract test adds the two gate runs to the role wall clocks for that reason.
+<ms>ms: …` rather than hanging the node. The gate is not a role, and neither is the post-merge act, so
+the role sum the workflow-contract test checks cannot see either: the execute node's own timeout has to
+outlast `implement + conflict + 2 × verifyTimeoutMs + POST_MERGE_TIMEOUT_MS`, and the contract test adds
+those runs to the role wall clocks for that reason.
 
 **One residual race, stated and not hidden.** The settlement re-integrates Main inside the Main lock, so
 with `concurrency > 1` Main can move between the gate and the merge, and a clean re-merge then produces a
@@ -225,6 +229,44 @@ tree the gate did not test. That window is accepted deliberately: gating inside 
 every merge for the gate's whole duration and undo the reason concurrency exists. The conflict turn's gate
 is the mitigation — a divergence that conflicts is re-tested after resolution — and a post-merge check on
 Main is not part of this flow.
+
+## The post-merge act
+
+`verify` guards the tree on its way **in**. Nothing used to happen after a merge landed, and a Target
+usually keeps something true outside its own git tree: the design repo, which is a Target too, keeps the
+machine's installed copies of its skills and of this pack in step with Main. A merge that changed
+`skills/` left those stale, and what refreshed them was somebody remembering to. On 2026-09-15 that
+failed twice in one afternoon — the implementer of ticket 21 copied a **branch** skill into
+`~/.agents/skills/`, so the machine's copy described a gate Main did not contain until a session ran the
+install by hand, and the copies had sat about a day behind before that.
+
+```
+turn (implement)  ->  checkpoint-if-dirty  ->  verify  ->  settle()  ->  postMerge
+                                                             (merge, then record)
+```
+
+**One command, the Target's own.** `postMerge` in the Target's config is a shell command string, run as
+`sh -c <command>` with cwd set to **the Target** — the branch the merge just landed on, since the issue's
+worktree is removed by then. Empty — the default — means no process and no record, exactly as if the key
+were absent. Like `verify` it is read from the config file and never from an issue body.
+
+**It is not conditioned on which paths merged.** A Target's own refresh is expected to be idempotent and
+cheap (the design repo's is a byte-compare plus a copy), and a path filter would be a second thing to
+declare and to get wrong. Every merge that lands runs it once. The command reads the Target's **working
+tree**, not HEAD: during a drain that tree sits at Main with a clean `skills/`, which is exactly why
+"immediately after a merge" is the right moment for this one; a session editing `skills/` itself installs
+again once the edit is committed.
+
+**Red changes nothing about the issue.** By the time this runs, the work is in Main and the issue is
+closed; reopening it would say its work had not landed, which is false. So a failed act is named on
+stderr — `merged and recorded, but the Target's post-merge command failed: …` — and its whole output is
+left in `ARTIFACTS_DIR/post-merge-<handle>.log`, one log per issue, and that is all. There is no comment
+and no second record: the node still prints `merged` and exits clean.
+
+**The clock is short, on purpose.** `POST_MERGE_TIMEOUT_MS` (2 min) bounds one run, and on expiry the
+whole process group is killed. This is a Target's own small act beside two turns of two hours and two
+gate runs of fifteen minutes, and the workflow-contract test counts it against the execute node's budget
+for that reason.
 
 ## The settlement: merge, then record
 
@@ -361,7 +403,8 @@ is reviewed, the pack's own commits and all. So a drain that merged nothing says
 in the same repository reports exactly what the first drain's review left unviewed (its base is the
 recorded position). A reader that wrote a report prints `reported`. The three artifacts live in the
 run's `ARTIFACTS_DIR`, beside `pick-exclusions.json`, `attempted-ids.json`, `run-lock.json`,
-`main-commits.json`, `repairs.json` and the gate's own `verify-<n>.log`.
+`main-commits.json`, `repairs.json`, the gate's own `verify-<n>.log` and the post-merge act's
+`post-merge-<handle>.log`.
 
 - **the range section** (at the end of summary.md, above the failures block). The summary node writes it,
   from the run's own record and from git: the range both readers covered, then - when Main gained commits
@@ -408,8 +451,9 @@ cannot move the frontier.
 under, its persona, the brief its prompt is, and how long it may run. A node names its role and hands it
 the role's own arguments - nothing else about the role is spelled at a call site. The workflow's `timeout`
 is the other half of that agreement and the same test checks it: it must outlast the wall clock of every
-role the node's script names (two turns in one node means the sum), and a node whose script runs the
-pre-merge gate buys two gate runs on top of that (`verifyTimeoutMs` each).
+role the node's script names (two turns in one node means the sum), and a node whose script runs anything
+that is not a role buys that too - two gate runs of `verifyTimeoutMs` each, and the post-merge act's own
+`POST_MERGE_TIMEOUT_MS`.
 
 | Role | Turn | Wall clock |
 |---|---|---|
@@ -502,6 +546,7 @@ The modules the pack's workflows share, all in the drain's `scripts/`:
 | `main-writes.ts` | every git write to Main: the merge, the ignore line, the removal after a merge |
 | `settle.ts` | the one order: merge then record, or record the failure and reopen |
 | `verify.ts` | the pre-merge gate: one Target command on the would-be-merged tree, with its clock |
+| `postmerge.ts` | the post-merge act: one Target command in the Target itself, after a merge has landed |
 | `reconcile.ts` | the repair of a killed run's leftovers: closed from git, or reopened with a reason |
 | `domains.ts` | the domain boundary: the non-work types, and the cross-domain graph preflight |
 | `failures.ts` | the drain-end failures block: the store's own failure records, and how they read |

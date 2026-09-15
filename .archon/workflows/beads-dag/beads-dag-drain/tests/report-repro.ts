@@ -128,6 +128,7 @@ const CONFIG = {
   store: storeBinary(),
   verify: "",
   verifyTimeoutMs: DEFAULT_VERIFY_TIMEOUT_MS,
+  postMerge: "",
 };
 
 try {
