@@ -60,8 +60,8 @@ export const experiment = {
   script: (name: string): string => join(experimentDir, "scripts", `${name}.ts`),
 };
 
-/** The per-ticket experiment node the orchestrator includes once per handle: one ticket, claimed and
- * registered. A separate folder because Archon supports `fan_out:` on include nodes only. */
+/** The per-ticket experiment node the orchestrator includes once per handle: one ticket, claimed,
+ * registered, recorded and closed. A separate folder because Archon supports `fan_out:` on include nodes only. */
 export const experimentRun = {
   dir: experimentRunDir,
   yaml: join(experimentRunDir, "beads-dag-experiment-run.yaml"),
@@ -260,6 +260,14 @@ export function readingCorpusRel(handle: string): string {
 /** The note a question's reading owns: the effort's `notes/<slug>.md`, the ticket's own slug. */
 export function readingNoteRel(handle: string, slug: string): string {
   return join(readingCorpusRel(handle), "notes", `${slug}.md`);
+}
+
+/** The record an experiment ticket owns: `.scratch/<feature>/results/<NN>-<slug>.md`. Spelled here so a
+ * test that asked the pack could not catch the pack naming the wrong path. */
+export function experimentRecordRel(handle: string, slug: string): string {
+  const [feature, number] = handle.split("/");
+  if (!feature || !number) throw new Error(`experimentRecordRel: not a <feature>/<NN> handle: ${handle}`);
+  return join(".scratch", feature, "results", `${number}-${slug}.md`);
 }
 
 /**
@@ -541,11 +549,23 @@ export function commitFile(cwd: string, file: string, content: string, message: 
  * be driven to a real merge without a model; `commit-cwd` commits a file named after that cwd instead,
  * so a second issue in the same repository has its own content to land; `read` writes a receipt and the
  * note at the paths the brief carries and answers a draft, so a reading can be driven end to end; and
- * `read-silent` writes nothing and answers nothing, the turn that read and said nothing.
+ * `read-silent` writes nothing and answers nothing, the turn that read and said nothing;
+ * `record-complete` writes a complete experiment record at the path the brief carries; and
+ * `record-incomplete` writes a record that has a table row but none of the four closing labels.
  * `FAKE_PI_RECORD` names a file the fake leaves the turn's options in, for a test that wants to read them
  * back.
  */
-export type FakePiMode = "answer" | "none" | "hang" | "throw" | "commit" | "commit-cwd" | "read" | "read-silent";
+export type FakePiMode =
+  | "answer"
+  | "none"
+  | "hang"
+  | "throw"
+  | "commit"
+  | "commit-cwd"
+  | "read"
+  | "read-silent"
+  | "record-complete"
+  | "record-incomplete";
 
 export function fakePiSdk(root: string, mode: FakePiMode): string {
   const dir = join(root, `fake-pi-${mode}`);
@@ -631,6 +651,18 @@ function fakePiSource(mode: string): string {
     '        const notePath = cwd + "/" + note;',
     "        mkdirSync(dirname(notePath), { recursive: true });",
     '        writeFileSync(notePath, "# a fake note\\n\\n## Claims\\n\\n- **c1** the fake source says one thing\\n");',
+    "      }",
+    '      if (MODE === "record-complete" || MODE === "record-incomplete") {',
+    "        const record = /^Record: (\\S+)$/m.exec(text)?.[1];",
+    "        if (record === undefined) {",
+    "          throw new Error(\"the fake experimenter's brief carries no Record path\");",
+    "        }",
+    '        const recordPath = cwd + "/" + record;',
+    "        mkdirSync(dirname(recordPath), { recursive: true });",
+    '        const commit = execFileSync("git", ["-C", cwd, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();',
+    '        const table = "# record\\n\\n| run | metric | commit |\\n| --- | --- | --- |\\n| run-1 | 0.91 | " + commit + " |\\n";',
+    '        const labels = "\\nmeasured: acc=0.91 from metrics.json\\nreference: met the frozen baseline\\ncovered: one seed, one dataset, one config\\nreading: none yet\\n";',
+    '        writeFileSync(recordPath, MODE === "record-complete" ? table + labels : table);',
     "      }",
     '      if (MODE !== "none" && MODE !== "read-silent") {',,
     '        appendFileSync(file, JSON.stringify({ type: "message", message: { role: "assistant", content: [',

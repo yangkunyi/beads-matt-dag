@@ -1,11 +1,12 @@
 name: beads-dag-experiment-run
 description: |
-  One experiment ticket: claim it by assignment and reserve its run's name before anything executes, so a
-  session that reads the ticket sees a run and not a person, and an experiment cannot exist without a name
-  its record knows. Not a public entry: its issue input is required. Included by `beads-dag-experiment`
-  once per handle its pick offers, so it shares that run's ARTIFACTS_DIR.
+  One experiment ticket: claim it by assignment and reserve its run's name before anything executes, run
+  the ticket's plan, and close it when the record is complete. Not a public entry: its issue input is
+  required. Included by `beads-dag-experiment` once per handle its pick offers, so it shares that run's
+  ARTIFACTS_DIR.
 # The per-ticket instances of one experiment run fan out concurrently, so the block has to declare that it
-# does not mutate the checkout; an experiment's bytes are DVC's (temporary workspaces), not the Target's.
+# does not mutate the checkout; an experiment's bytes are DVC's (temporary workspaces), and the record
+# lands through one path-scoped commit under the Main lock (doc-commit.ts), the same as a reading.
 mutates_checkout: false
 inputs:
   issue:
@@ -18,6 +19,9 @@ nodes:
   - id: run
     script: run
     runtime: bun
+    # One experiment turn: EXPERIMENT_WALL_MS (4 h) in roles.ts, with the runner's own kill after it, plus
+    # the completeness check and the document commit. The contract test computes the same margin.
+    timeout: 14600000
     with:
       issue: $INPUTS.issue
       config: $INPUTS.config

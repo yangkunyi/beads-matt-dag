@@ -324,15 +324,35 @@ export function pushStore(store: Store, target: string): void {
 }
 
 /**
- * Close an issue as merged: the one closure this pack writes, and it means the work is in Main.
+ * Close an issue as merged: the drain's closure, and it means the work is in Main.
  *
  * The caller has the merge behind it (settle.ts merges first, then records), and the reason names the
  * branch that landed, so a reader of the store can see what the closure means without asking git. The
  * restriction is ADR-0004: closing an issue releases whatever waits on it, so a closure that could mean
- * anything else would release work against a dependency that was not delivered.
+ * anything else would release work against a dependency that was not delivered. An experiment's close
+ * is a different write (`closeIssueWithLabel`): `closed` there means the record is complete, and the
+ * unread marker has to land in the same command.
  */
 export function closeIssue(store: Store, target: string, id: string, reason: string): void {
   runStore(store, target, ["close", id, "--reason", reason]);
+}
+
+/**
+ * Close an issue and stamp one label **in the same store command** - one transaction, one act.
+ *
+ * The experiment executor's landing is this write: the record is complete, so the ticket goes to
+ * `closed`, and the unread marker that says nobody has read it arrives at the same moment. `bd close`
+ * has no label flag, so this is an `update` of status and label together - the same reason the inquiry
+ * landing is `openIssueWithLabel` rather than two writes that could disagree.
+ */
+export function closeIssueWithLabel(store: Store, target: string, id: string, label: string): void {
+  runStore(store, target, ["update", id, "-s", "closed", "--add-label", label]);
+}
+
+/** Take one label off an issue. The session's clearing of an unread result is this write, paired with
+ * the record's `reading:` line changing in the same act (`clearUnreadMarker`). */
+export function removeLabel(store: Store, target: string, id: string, label: string): void {
+  runStore(store, target, ["update", id, "--remove-label", label]);
 }
 
 /** One comment the store holds, as this module reads it back. */

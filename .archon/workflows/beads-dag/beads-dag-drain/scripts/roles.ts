@@ -7,12 +7,23 @@
  * disagree with the role it runs. The workflow's own timeout is the other half of that agreement: it
  * has to outlast the wall clock declared here or the runner kills a turn the agent is still on.
  *
- * `role` here is an agent role (implement, conflict, read, and the two drain-end readers, review and
- * summary). It is not a triage label: different axis, different word.
+ * `role` here is an agent role (implement, conflict, read, experiment, and the two drain-end readers,
+ * review and summary). It is not a triage label: different axis, different word.
  */
 import type { PackAgentOpts } from "./agent.ts";
 import type { PackConfig } from "./config.ts";
-import { conflictPersona, implementPersona, readPersona, readTask, reviewPersona, reviewTask, summaryPersona, summaryTask } from "./prompt.ts";
+import {
+  conflictPersona,
+  experimentPersona,
+  experimentTask,
+  implementPersona,
+  readPersona,
+  readTask,
+  reviewPersona,
+  reviewTask,
+  summaryPersona,
+  summaryTask,
+} from "./prompt.ts";
 import { workerEnv } from "./worker-env.ts";
 
 /**
@@ -38,6 +49,14 @@ export const REVIEW_WALL_MS = 30 * 60 * 1000;
 export const READ_WALL_MS = 60 * 60 * 1000;
 
 /**
+ * How long one experiment turn may run. An experiment is one turn - the experimenter runs the ticket's
+ * plan through the Target's thin script and writes the record - and it is its own constant because a
+ * run turn is neither an implementation turn nor a reading. The experiment loop's node timeout is read
+ * against it.
+ */
+export const EXPERIMENT_WALL_MS = 4 * 60 * 60 * 1000;
+
+/**
  * What each role is called with: the role's own arguments and nothing else. The handle keys the issue
  * roles' sessions; the body's path is the issue roles' whole brief. The reading role's arguments add the
  * two paths its brief carries, and the drain-end readers' arguments are what their brief is built from -
@@ -52,6 +71,11 @@ export type RoleShape = {
    * paths are what this role's arguments add - the corpus it writes and the note the node commits.
    */
   read: { handle: string; bodyPath: string; corpusRel: string; noteRel: string };
+  /**
+   * One experiment's run turn. The body's path is the ticket's plan; the record path is what this
+   * role's arguments add - the document the node checks and commits.
+   */
+  experiment: { handle: string; bodyPath: string; recordRel: string };
   /** One axis of the drain-end review, over the range this run merged. */
   review: { axisIndex: number; base: string; axis: string; head: string; log: string };
   /** The one report over the review, for the human who reads the run afterwards. */
@@ -98,6 +122,14 @@ export const ROLES: { [K in AgentRole]: RoleSpec<RoleShape[K]> } = {
     persona: () => readPersona(),
     prompt: (args) => readTask(args.bodyPath, args.corpusRel, args.noteRel),
     wallMs: READ_WALL_MS,
+  },
+  experiment: {
+    // One ticket, one session: the handle keys it, so a resumed attempt on the same experiment continues
+    // the turn it started, and two tickets never share a conversation.
+    sessionKey: (args) => args.handle,
+    persona: () => experimentPersona(),
+    prompt: (args) => experimentTask(args.bodyPath, args.recordRel),
+    wallMs: EXPERIMENT_WALL_MS,
   },
   review: {
     // One session per axis and per run's artifacts: a fresh run's review does not resume a previous

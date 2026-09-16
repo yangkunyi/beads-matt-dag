@@ -24,11 +24,19 @@ export const LANDED = "landed";
 export const FAILED = "failed";
 
 /**
- * An experiment ticket's outcome: the run's name is reserved and the ticket carries the run. One
- * experiment ticket's claim and its registration are one act (beads-dag-experiment), so this token is
- * the state a reader of the ticket sees when the run node ended cleanly.
+ * An experiment ticket's claim-and-register outcome: the run's name is reserved and the ticket carries
+ * the run. The per-ticket node continues from here into the run turn; a caller that stops after the
+ * reservation (the claim-register repro) reads this token, and the node itself prints `closed` or
+ * `failed` once the completeness check has run.
  */
 export const REGISTERED = "registered";
+
+/**
+ * An experiment ticket's outcome: its record is complete, the unread marker is on it, and the ticket
+ * is `closed`. The experiment executor's counterpart of the drain's `merged` and the reading's
+ * `landed` - a result rather than an error, so the run goes on to the next ticket in the batch.
+ */
+export const CLOSED = "closed";
 
 /** A drain-end reader's outcome when the run merged nothing: there is no range to report on. */
 export const NOTHING_TO_REPORT = "nothing";

@@ -1,7 +1,8 @@
 /**
- * One experiment ticket: claimed by assignment in the same act as its run's registration.
+ * One experiment ticket: claimed by assignment in the same act as its run's registration, then run,
+ * recorded, checked, and closed.
  *
- * This is the first half of the experiment executor, and the gate the domain spec fixes:
+ * The first half is the gate the domain spec fixes:
  *
  * 1. the ticket is claimed by **assignment** — `bd update <id> -s in_progress --assignee <who>`, one
  *    write, with `<who>` the run's own identity (`beads-dag-experiment/<run-id>`, `ticket.ts`) — so a
@@ -17,24 +18,44 @@
  * claimed and the run says why. A ticket this run has worked is recorded in `attempted-ids.json` even when
  * the registration failed, because the retry channel is the next run, not this one.
  *
- * The run's *name* is the ticket's own: `<NN>-<slug>` (`ticket.ts`), the record's basename at
- * `.scratch/<effort>/results/<NN>-<slug>.md`. The ticket's plan — the points a sweep is queued with, the
- * ignored data paths a queued run must see — is the run turn's own argument, read from the ticket's body
- * by the turn the record's ticket adds; this node reserves the name the plan will be run under.
+ * Then the run turn, under the `experiment` role, with the store read-only. The experimenter writes the
+ * record at `.scratch/<effort>/results/<NN>-<slug>.md` and writes no stage and no experiment code. After
+ * the turn a **completeness check** runs in this node, not in a model: the record must exist at that path,
+ * hold an attempts-table row, and hold the four labelled closing lines (`measured:`, `reference:`,
+ * `covered:`, `reading:`). Missing anything leaves the ticket open with
+ * `attempt N failed: record incomplete — <what is missing>` and nothing else happens. Only a complete
+ * record closes the ticket: the close, the `reading:none` label and the comment are one act, and the
+ * record (plus `dvc.lock` when the collection wrote it) is committed as one path-scoped commit under the
+ * Main lock.
+ *
+ * The run's *name* is the ticket's own: `<NN>-<slug>` (`ticket.ts`), the record's basename.
  */
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { defaultAgent, type AgentRunner } from "../../beads-dag-drain/scripts/agent.ts";
 import { addAttempted } from "../../beads-dag-drain/scripts/attempted.ts";
 import { loadConfig, type PackConfig } from "../../beads-dag-drain/scripts/config.ts";
+import { commitDocuments, documentSubject } from "../../beads-dag-drain/scripts/doc-commit.ts";
+import { revParse } from "../../beads-dag-drain/scripts/git.ts";
+import { bodyPath, issueNames } from "../../beads-dag-drain/scripts/naming.ts";
 import { runNode } from "../../beads-dag-drain/scripts/node-entry.ts";
-import { FAILED, nodeLine, REGISTERED } from "../../beads-dag-drain/scripts/node-outcomes.ts";
+import { CLOSED, FAILED, nodeLine, REGISTERED } from "../../beads-dag-drain/scripts/node-outcomes.ts";
+import { roleAgent } from "../../beads-dag-drain/scripts/roles.ts";
 import {
   claimByAssignment,
+  closeIssueWithLabel,
+  commentIssue,
   issueByHandle,
   preflightStore,
   recordFailedAttempt,
 } from "../../beads-dag-drain/scripts/store.ts";
+import {
+  experimentRecordRel,
+  inspectRecord,
+  READING_NONE_LABEL,
+  recordedLine,
+} from "../../beads-dag-experiment/scripts/record.ts";
 import { REGISTER_TOOL_REL } from "../../beads-dag-experiment/scripts/run-tool.ts";
 import { runIdentity, runName } from "../../beads-dag-experiment/scripts/ticket.ts";
 
@@ -53,6 +74,8 @@ export type RunOpts = {
   artifactsDir: string;
   /** The Target's config. Unset, the Target's own file is read. */
   config?: PackConfig;
+  /** The runner this turn spends. A run takes the pack's own; a test hands in a stub. */
+  runAgent?: AgentRunner;
 };
 
 /**
@@ -95,12 +118,9 @@ function registerRun(target: string, artifactsDir: string, name: string): Regist
 }
 
 /**
- * The run node's whole job: claim the ticket, reserve the run's name, and report which happened.
- *
- * `registered` means the ticket is running and carries the run's identity in the assignee field, and the
- * registration is in the run's artifacts. `failed` means the registration could not be made: the ticket
- * is back to `open` with the reason as an ordinary failed attempt and no assignee, this run keeps it out
- * of its own next cycle, and the reason is on stderr as well.
+ * Claim the ticket and reserve the run's name. `registered` means the ticket is running and carries the
+ * run's identity, and the registration is in the run's artifacts. `failed` means the registration could
+ * not be made: the ticket is back to `open` with the reason as an ordinary failed attempt and no assignee.
  */
 export async function claimAndRegister(target: string, issueHandle: string, opts: RunOpts): Promise<string> {
   const config = opts.config ?? loadConfig(target).config;
@@ -131,11 +151,84 @@ export async function claimAndRegister(target: string, issueHandle: string, opts
   }
 }
 
+/**
+ * One experiment ticket, start to finish: claim and register, the run turn, the completeness check, the
+ * close. Returns `closed` when the record is complete and the unread marker is on the ticket, `failed`
+ * when the attempt did not land (the reason is on the ticket and on stderr).
+ */
+export async function runExperiment(target: string, issueHandle: string, opts: RunOpts): Promise<string> {
+  const registered = await claimAndRegister(target, issueHandle, opts);
+  if (registered !== REGISTERED) return registered;
+
+  const config = opts.config ?? loadConfig(target).config;
+  const store = preflightStore(target, config);
+  const issue = issueByHandle(store, target, issueHandle);
+  const names = issueNames(issue);
+  const recordRel = experimentRecordRel(names);
+  const runAgent = opts.runAgent ?? defaultAgent;
+
+  const turn = await runAgent(
+    roleAgent({
+      role: "experiment",
+      args: {
+        handle: names.handle,
+        bodyPath: bodyPath(target, names),
+        recordRel,
+      },
+      // The turn runs in the Target, not in a worktree: an experiment writes no branch of its own, and
+      // its whole product is the record under `.scratch/`.
+      cwd: target,
+      artifactsDir: opts.artifactsDir,
+      config,
+    }),
+  );
+  console.error(`${names.handle}: experiment session ${turn.sessionFile}`);
+
+  /**
+   * The record is not complete. The reason is recorded on the ticket - `attempt N failed: record
+   * incomplete — <what is missing>` - and the claim goes back, so the next run retries it knowingly.
+   * Nothing is committed and the unread marker is not stamped.
+   */
+  const incomplete = (missing: string): string => {
+    const reason = `record incomplete — ${missing}`;
+    recordFailedAttempt(store, target, issue.id, reason, { giveBackTheClaim: true });
+    console.error(`${names.handle}: ${reason}`);
+    return FAILED;
+  };
+
+  const missing = inspectRecord(target, recordRel);
+  if (missing.length > 0) return incomplete(missing.join(", "));
+
+  let commit: string;
+  try {
+    const result = await commitDocuments(target, {
+      subject: documentSubject("record", names.handle, names.slug),
+      paths: [recordRel, "dvc.lock"],
+    });
+    // Nothing extra to commit is not a failure: a re-run whose bytes are exactly the ones HEAD holds has
+    // already landed, and the commit that carries the record is the one HEAD names.
+    commit = result.commit ?? revParse(target);
+  } catch (e) {
+    const reason = `the record could not be committed: ${e instanceof Error ? e.message : String(e)}`;
+    recordFailedAttempt(store, target, issue.id, reason, { giveBackTheClaim: true });
+    console.error(`${names.handle}: ${reason}`);
+    return FAILED;
+  }
+
+  commentIssue(store, target, issue.id, recordedLine(recordRel, commit));
+  // One store command, and it is this node's last act for the ticket: the close and the unread marker
+  // land together. The record's `reading:` line is already in the committed document; the label is the
+  // same fact in the store.
+  closeIssueWithLabel(store, target, issue.id, READING_NONE_LABEL);
+  console.error(`${names.handle}: record closed (${recordRel} at ${commit})`);
+  return CLOSED;
+}
+
 if (import.meta.main) {
   await runNode({
     issue: true,
     artifacts: true,
     run: async ({ target, issueHandle, artifactsDir, config }) =>
-      nodeLine(await claimAndRegister(target, issueHandle, { artifactsDir, config })),
+      nodeLine(await runExperiment(target, issueHandle, { artifactsDir, config })),
   });
 }

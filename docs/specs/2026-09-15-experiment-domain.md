@@ -38,7 +38,8 @@ An experiment ticket is a **plan for producing a fact**, and the plan is what ma
 
 Writing the script, running it, collecting the numbers and writing the record may all run **AFK**. The
 operator appears twice: agreeing the plan, and — later, optionally — saying what the result means. The
-store's writes stay with the session; the git documents are the AFK leg's.
+executor writes the store for this domain: the close, the `reading:none` label and the comment are one
+act once the record is complete. The git documents are the AFK leg's.
 
 A **thin target-side script** does the two things that cannot be reconstructed afterwards:
 
@@ -106,13 +107,15 @@ An attempts table — one row per run — and, per run, the fields:
 | artifact pointers (path + hash) | DVC |
 | run pointer, `<store>:<id>` | **empty in v1** — the socket |
 
-Closed by these lines:
+Closed by these four labelled lines — the document's shape and the executor's completeness check are the
+same rule:
 
-- what was measured, and which source it was read from;
-- whether it met the frozen reference — or what was observed, when the ticket said *exploratory*;
-- what the run covered: one seed, one dataset, one config. This is the line that stops a reader
+- `measured:` what was measured, and which source it was read from;
+- `reference:` whether it met the frozen reference — or what was observed, when the ticket said
+  *exploratory*;
+- `covered:` what the run covered: one seed, one dataset, one config. This is the line that stops a reader
   over-reading the result;
-- `reading: none yet` — a visible marker that nobody has interpreted it yet.
+- `reading:` `none yet` — a visible marker that nobody has interpreted it yet.
 
 **The ticket closes when the record holds all of that — no signature.** The operator's judgement is
 deliberately not a field of the record: it leaves the ticket as an idea or a work ticket, linked back
