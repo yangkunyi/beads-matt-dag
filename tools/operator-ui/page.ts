@@ -5,7 +5,7 @@
  * looking at the snapshot `bd` already answered.
  */
 
-import type { Overview, OverviewIssue } from "./model";
+import type { LiveRun, Overview, OverviewIssue } from "./model";
 
 function escapeHtml(value: string): string {
 	return value
@@ -63,7 +63,12 @@ const CLIENT = String.raw`
   var overview = JSON.parse(dataEl.textContent || '{"issues":[],"edges":[]}');
   var issues = overview.issues || [];
   var edges = overview.edges || [];
+  var live = overview.live || null;
   var selected = null;
+  var attempted = {};
+  if (live && live.attempted) {
+    for (var a = 0; a < live.attempted.length; a++) attempted[live.attempted[a]] = true;
+  }
 
   function checkedSet(name) {
     var boxes = document.querySelectorAll('input[data-filter="' + name + '"]');
@@ -191,6 +196,7 @@ const CLIENT = String.raw`
       var p = pos[issue.id];
       if (!p) continue;
       var cls = "node domain-" + issue.domain + " status-" + issue.status;
+      if (attempted[issue.id]) cls += " live";
       if (selected === issue.id) cls += " selected";
       var label = issue.handle || issue.id;
       var title = issue.title || "";
@@ -199,6 +205,7 @@ const CLIENT = String.raw`
       parts.push('<rect width="' + NODE_W + '" height="' + NODE_H + '" rx="8"></rect>');
       parts.push('<text class="id" x="12" y="20">' + escape(label) + "</text>");
       parts.push('<text class="title" x="12" y="40">' + escape(title) + "</text>");
+      if (attempted[issue.id]) parts.push('<text class="live-tag" x="188" y="18">live</text>');
       parts.push("</g>");
     }
     svg.setAttribute("viewBox", "0 0 " + Math.max(width, 400) + " " + Math.max(height + 24, 120));
@@ -232,6 +239,9 @@ const CLIENT = String.raw`
     html += "<dt>status</dt><dd>" + escape(issue.status) + "</dd>";
     html += "<dt>type</dt><dd>" + escape(issue.type) + " (" + escape(issue.domain) + ")</dd>";
     html += "<dt>labels</dt><dd>" + escape((issue.labels && issue.labels.length) ? issue.labels.join(", ") : "(none)") + "</dd>";
+    if (live && attempted[issue.id]) {
+      html += "<dt>live run</dt><dd>" + escape(live.kind) + " · " + escape(live.id) + " · attempted</dd>";
+    }
     html += "</dl>";
     html += "<h3>Comments</h3>";
     if (!issue.comments || issue.comments.length === 0) {
@@ -257,8 +267,34 @@ const CLIENT = String.raw`
     panel.innerHTML = html;
   }
 
+  function showLive() {
+    var el = document.getElementById("live");
+    if (!el) return;
+    if (!live) {
+      el.hidden = true;
+      return;
+    }
+    el.hidden = false;
+    var meta = document.getElementById("live-meta");
+    var n = live.attempted ? live.attempted.length : 0;
+    if (meta) {
+      meta.innerHTML = "<strong>Live " + escape(live.kind) + "</strong> · " + escape(live.id) +
+        " · " + escape(live.status || "") + " · " + n + " attempted";
+    }
+    var summary = document.getElementById("live-report-summary");
+    var reportEl = document.getElementById("live-report");
+    if (live.report && live.report.text) {
+      if (summary) summary.textContent = "Last report · " + (live.report.rel || "");
+      if (reportEl) reportEl.textContent = live.report.text;
+    } else {
+      if (summary) summary.textContent = "Last report · none yet";
+      if (reportEl) reportEl.textContent = "";
+    }
+  }
+
   var boxes = document.querySelectorAll("#filters input[type=checkbox]");
   for (var b = 0; b < boxes.length; b++) boxes[b].addEventListener("change", draw);
+  showLive();
   draw();
 })();
 `;
@@ -277,6 +313,7 @@ const STYLES = `
   --open: #ffffff;
   --progress: #fef3c7;
   --closed: #e2e8f0;
+  --live: #d97706;
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 ui-sans-serif, system-ui, sans-serif; }
@@ -284,6 +321,10 @@ header { padding: 16px 20px 8px; }
 header h1 { margin: 0 0 4px; font-size: 20px; }
 header p { margin: 0; color: var(--muted); }
 #count { font-weight: 600; color: var(--ink); }
+#live { margin: 0 20px 8px; padding: 10px 12px; background: #fffbeb; border: 1px solid #fcd34d; border-radius: 8px; }
+#live-meta { margin: 0; }
+#live details { margin-top: 8px; }
+#live pre { white-space: pre-wrap; background: var(--panel); padding: 8px; border-radius: 6px; margin: 6px 0 0; font: 12px/1.4 ui-monospace, monospace; max-height: 240px; overflow: auto; }
 #filters { display: flex; flex-wrap: wrap; gap: 12px; padding: 8px 20px 12px; }
 fieldset { border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 8px 12px; margin: 0; }
 legend { font-weight: 600; padding: 0 4px; }
@@ -300,8 +341,10 @@ g.status-open rect { fill: var(--open); }
 g.status-in_progress rect { fill: var(--progress); }
 g.status-closed rect { fill: var(--closed); }
 g.node.selected rect { stroke-width: 4; }
+g.node.live rect { stroke: var(--live); stroke-width: 3; }
 g.node text { font-size: 12px; fill: var(--ink); }
 g.node text.id { font-weight: 650; }
+g.node text.live-tag { font-size: 10px; font-weight: 700; fill: var(--live); text-anchor: end; }
 #detail { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px; min-height: 320px; }
 #detail h2 { margin: 0 0 4px; font-size: 16px; }
 #detail .title { margin: 0 0 12px; }
@@ -331,8 +374,15 @@ export function renderPage(overview: Overview): string {
 <body>
 <header>
   <h1>Target beads graph</h1>
-  <p>Read from the beads store via <code>bd</code>, not the jsonl export. A view, not a second graph. Covers inquiry, experiment, and drain issues. <span id="count"></span></p>
+  <p>Read from the beads store via <code>bd</code>, not the jsonl export. A view, not a second graph. Covers inquiry, experiment, and drain issues. Live overlay is the run lock, Archon status, the run's artefacts, and attempted — not a pack publish API. <span id="count"></span></p>
 </header>
+<section id="live" hidden aria-label="Live run">
+  <p id="live-meta"></p>
+  <details id="live-report-wrap">
+    <summary id="live-report-summary">Last report</summary>
+    <pre id="live-report"></pre>
+  </details>
+</section>
 <section id="filters" aria-label="Filters">${filtersHtml(overview)}</section>
 <div id="layout">
   <div id="graph-wrap"><svg id="graph" role="img" aria-label="Issue DAG"></svg></div>
@@ -360,4 +410,21 @@ export function pageCarriesDetail(html: string, issue: OverviewIssue): boolean {
 
 export function pageHasFilters(html: string): boolean {
 	return html.includes("<legend>Type</legend>") && html.includes("<legend>Status</legend>") && html.includes("<legend>Label</legend>");
+}
+
+/** The page still names all three domains even when a live run of one kind is overlaid. */
+export function pageCoversThreeDomains(html: string): boolean {
+	return html.includes("inquiry") && html.includes("experiment") && html.includes("drain");
+}
+
+/** Values the live overlay must carry so the graph can show the run and its last report. */
+export function pageCarriesLive(html: string, live: LiveRun): boolean {
+	if (!html.includes(live.id)) return false;
+	if (!html.includes(live.kind)) return false;
+	if (!html.includes(live.status)) return false;
+	for (const id of live.attempted) {
+		if (!html.includes(id)) return false;
+	}
+	if (live.report !== null && !html.includes(live.report.text)) return false;
+	return html.includes("Last report");
 }

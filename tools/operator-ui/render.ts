@@ -2,25 +2,29 @@
 /**
  * Render the Target's beads graph as a local HTML page.
  *
- *   bun tools/operator-ui/render.ts [--dir <target>] [--store <bd>] [--out <file>]
+ *   bun tools/operator-ui/render.ts [--dir <target>] [--store <bd>] [--archon <bin>] [--out <file>]
  *
- * The graph is `bd list` / `bd show`, never `.beads/issues.jsonl`. Write `--out` or stdout.
+ * The graph is `bd list` / `bd show`, never `.beads/issues.jsonl`. The live overlay is the run lock,
+ * Archon status, the run's artefacts and attempted. Write `--out` or stdout.
  */
 
 import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { documentsFor } from "./documents";
 import { assembleOverview } from "./model";
+import { fetchLive, resolveArchon } from "./overlay";
 import { renderPage } from "./page";
 import { fetchStore, makeRunner, resolveBd } from "./store";
 
-const USAGE = `usage: bun tools/operator-ui/render.ts [--dir <target>] [--store <bd>] [--out <file>]
+const USAGE = `usage: bun tools/operator-ui/render.ts [--dir <target>] [--store <bd>] [--archon <bin>] [--out <file>]
 
-  --dir <target>  the Target whose store is read (default: the working directory)
-  --store <bd>    the store binary (default: store: in .scratch/beads-dag.yaml, then PATH)
-  --out <file>    write the page here (default: stdout)
+  --dir <target>    the Target whose store is read (default: the working directory)
+  --store <bd>      the store binary (default: store: in .scratch/beads-dag.yaml, then PATH)
+  --archon <bin>    the Archon binary (default: PATH); used only to read workflow status
+  --out <file>      write the page here (default: stdout)
 
-The graph is read via bd, not the jsonl export. The page is a view, not a second graph.`;
+The graph is read via bd, not the jsonl export. The live overlay is the run lock, Archon status,
+the run's artefacts, and attempted — not a pack publish API. One page covers inquiry, experiment, and drain.`;
 
 class UsageError extends Error {}
 
@@ -54,9 +58,15 @@ function unknownFlags(argv: string[], known: string[]): string[] {
 	return extra;
 }
 
-function renderHtml(dir: string, store: string): string {
+function renderHtml(dir: string, store: string, archon?: string): string {
 	const fetched = fetchStore(makeRunner(store, dir));
-	const overview = assembleOverview(fetched.issues, fetched.commentsById, (issue) => documentsFor(issue, dir));
+	const live = fetchLive(dir, { archon });
+	const overview = assembleOverview(
+		fetched.issues,
+		fetched.commentsById,
+		(issue) => documentsFor(issue, dir),
+		live,
+	);
 	return renderPage(overview);
 }
 
@@ -66,12 +76,14 @@ try {
 		process.stdout.write(USAGE + "\n");
 		process.exit(0);
 	}
-	const extra = unknownFlags(argv, ["--dir", "--store", "--out", "--help", "-h"]);
+	const extra = unknownFlags(argv, ["--dir", "--store", "--archon", "--out", "--help", "-h"]);
 	if (extra.length > 0) throw new UsageError(`unknown argument: ${extra.join(" ")}`);
 	const dir = resolve(flag(argv, "--dir") ?? process.cwd());
 	const out = flag(argv, "--out");
 	const store = resolveBd(dir, flag(argv, "--store"));
-	const html = renderHtml(dir, store);
+	const archonFlag = flag(argv, "--archon");
+	if (archonFlag !== undefined) resolveArchon(dir, archonFlag);
+	const html = renderHtml(dir, store, archonFlag);
 	if (out === undefined || out === "-") process.stdout.write(html);
 	else {
 		const path = resolve(out);

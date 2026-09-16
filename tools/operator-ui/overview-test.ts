@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
 /**
  * The overview's seams: the graph is `bd`, never jsonl; the page filters by type / status / label;
- * a selected issue carries status, comments and documents.
+ * a selected issue carries status, comments and documents; a live drain / inquiry / experiment run
+ * overlays from the run lock, Archon status, artefacts and attempted — not a pack publish API.
  *
  *   bun tools/operator-ui/overview-test.ts
  */
@@ -13,13 +14,16 @@ import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { documentsFor, bodyRel, issueNames, noteRel, recordRel } from "./documents";
 import {
+	assembleLive,
 	assembleOverview,
 	filterOverview,
 	issueDetail,
+	type LiveRun,
 	type StoreComment,
 	type StoreIssue,
 } from "./model";
-import { pageCarriesDetail, pageHasFilters, renderPage } from "./page";
+import { fetchLive, gitDirOf, RUN_LOCK_NAME } from "./overlay";
+import { pageCarriesDetail, pageCarriesLive, pageCoversThreeDomains, pageHasFilters, renderPage } from "./page";
 import { fetchStore, type BdRunner } from "./store";
 
 let failed = 0;
@@ -293,6 +297,229 @@ expect("CLI page embeds the body document", page.includes("body from disk"));
 const help = spawnSync(process.execPath, [renderPath, "--help"], { encoding: "utf8" });
 expectEqual("help exits 0", help.status, 0);
 expect("help names bd, not jsonl", (help.stdout ?? "").includes("via bd") || (help.stdout ?? "").includes("jsonl export"));
+expect("help names the overlay sources", (help.stdout ?? "").includes("run lock") && (help.stdout ?? "").includes("Archon"));
+
+const drainLive: LiveRun = {
+	kind: "drain",
+	id: "run-drain",
+	status: "running",
+	workflow: "beads-dag-drain",
+	pid: 9,
+	artifactsDir: join("artifacts", "runs", "run-drain"),
+	attempted: ["c"],
+	report: { rel: "summary.md", text: "drain last report: merged one" },
+};
+expectEqual(
+	"no lock means no overlay",
+	assembleLive({ lock: undefined, archon: [{ id: "run-drain", workflow: "beads-dag-drain", status: "running" }], artifacts: undefined }),
+	null,
+);
+expectEqual(
+	"lock without a matching Archon run is not live",
+	assembleLive({
+		lock: { pid: 9, run: "run-drain" },
+		archon: [{ id: "other", workflow: "beads-dag-drain", status: "running" }],
+		artifacts: undefined,
+	}),
+	null,
+);
+expectEqual(
+	"a non-executor workflow is not this overlay",
+	assembleLive({
+		lock: { pid: 9, run: "run-x" },
+		archon: [{ id: "run-x", workflow: "archon-ship", status: "running" }],
+		artifacts: undefined,
+	}),
+	null,
+);
+
+const joinedDrain = assembleLive({
+	lock: { pid: 9, run: "run-drain" },
+	archon: [{ id: "run-drain", workflow: "beads-dag-drain", status: "running" }],
+	artifacts: {
+		dir: drainLive.artifactsDir!,
+		record: { pid: 9, run: "run-drain" },
+		attempted: ["c"],
+		reports: [
+			{ rel: "summary.md", text: "drain last report: merged one" },
+			{ rel: "report.md", text: "not the drain report" },
+		],
+	},
+});
+expectEqual("drain overlay kind", joinedDrain?.kind, "drain");
+expectEqual("drain overlay id", joinedDrain?.id, "run-drain");
+expectEqual("drain overlay attempted", joinedDrain?.attempted, ["c"]);
+expectEqual("drain last report is summary.md", joinedDrain?.report, drainLive.report);
+
+const joinedInquiry = assembleLive({
+	lock: { pid: 8, run: "run-inq" },
+	archon: [{ id: "run-inq", workflow: "beads-dag-inquiry", status: "running" }],
+	artifacts: {
+		dir: "artifacts/runs/run-inq",
+		record: { pid: 8, run: "run-inq" },
+		attempted: ["a"],
+		reports: [{ rel: "report.md", text: "inquiry last report: one draft" }],
+	},
+});
+expectEqual("inquiry overlay kind", joinedInquiry?.kind, "inquiry");
+expectEqual("inquiry last report is report.md", joinedInquiry?.report?.rel, "report.md");
+
+const joinedExperiment = assembleLive({
+	lock: { pid: 7, run: "run-exp" },
+	archon: [{ id: "run-exp", workflow: "beads-dag-experiment", status: "paused" }],
+	artifacts: {
+		dir: "artifacts/runs/run-exp",
+		record: { pid: 7, run: "run-exp" },
+		attempted: ["b"],
+		reports: [{ rel: "report.md", text: "experiment last report: one row" }],
+	},
+});
+expectEqual("experiment overlay kind", joinedExperiment?.kind, "experiment");
+expectEqual("experiment last report is report.md", joinedExperiment?.report?.rel, "report.md");
+
+expectEqual(
+	"a run-lock record for another run is not this overlay's artefacts",
+	assembleLive({
+		lock: { pid: 9, run: "run-drain" },
+		archon: [{ id: "run-drain", workflow: "beads-dag-drain", status: "running" }],
+		artifacts: {
+			dir: "wrong",
+			record: { pid: 1, run: "someone-else" },
+			attempted: ["nope"],
+			reports: [{ rel: "summary.md", text: "wrong report" }],
+		},
+	})?.attempted,
+	[],
+);
+
+const liveOverview = assembleOverview(
+	[blocker, experiment, work],
+	new Map([["c", [comment]]]),
+	(item) => documentsFor(item, probe),
+	joinedDrain,
+);
+expectEqual("live overlay rides on the same graph", liveOverview.live?.id, "run-drain");
+expectEqual(
+	"filter keeps the overlay",
+	filterOverview(liveOverview, { types: new Set(["task"]) }).live?.kind,
+	"drain",
+);
+expectEqual(
+	"filter still shows all three domains on the unfiltered page",
+	liveOverview.issues.map((item) => item.domain),
+	["inquiry", "experiment", "development"],
+);
+
+const liveHtml = renderPage(liveOverview);
+expect("page still covers inquiry, experiment, and drain", pageCoversThreeDomains(liveHtml));
+expect("page has type/status/label filters with overlay", pageHasFilters(liveHtml));
+expect("page carries the live drain and its last report", joinedDrain !== null && pageCarriesLive(liveHtml, joinedDrain!));
+expect("page still carries issue detail", pageCarriesDetail(liveHtml, issueDetail(liveOverview, "c")!));
+expect("page does not invent a pack publish API", !liveHtml.includes("publish API") || liveHtml.includes("not a pack publish API"));
+
+const overlaySrc = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "overlay.ts"), "utf8");
+expect(
+	"overlay does not import the pack",
+	!overlaySrc.includes(".archon/workflows") && !overlaySrc.includes("beads-dag/scripts"),
+);
+expect("overlay reads the run-lock record", overlaySrc.includes("run-lock.json"));
+expect("overlay reads attempted", overlaySrc.includes("attempted-ids.json"));
+expect("overlay reads Archon workflow status", overlaySrc.includes("workflow") && overlaySrc.includes("status"));
+
+const liveTmp = mkdtempSync(join(tmpdir(), "operator-ui-live-"));
+const inited = spawnSync("git", ["-C", liveTmp, "init", "-q"], { encoding: "utf8" });
+expectEqual("overlay fixture is a git repo", inited.status, 0);
+const gitDir = gitDirOf(liveTmp);
+expect("overlay fixture has a git dir", typeof gitDir === "string" && gitDir.length > 0);
+const runId = "live-run-id";
+if (gitDir) writeFileSync(join(gitDir, RUN_LOCK_NAME), `${process.pid}\n${runId}\n`);
+const artifactsDir = join(liveTmp, "artifacts", "runs", runId);
+mkdirSync(artifactsDir, { recursive: true });
+writeFileSync(
+	join(artifactsDir, "run-lock.json"),
+	`${JSON.stringify({ run: runId, pid: process.pid, path: join(gitDir ?? "", RUN_LOCK_NAME) })}\n`,
+);
+writeFileSync(join(artifactsDir, "attempted-ids.json"), `${JSON.stringify(["c"])}\n`);
+writeFileSync(join(artifactsDir, "summary.md"), "drain last report: merged one\n");
+const statusJson = JSON.stringify({
+	runs: [
+		{
+			id: runId,
+			workflow_name: "beads-dag-drain",
+			status: "running",
+			output_root: liveTmp,
+		},
+	],
+});
+const fetchedLive = fetchLive(liveTmp, {
+	archonRunner: (args) => {
+		expectEqual("Archon is asked for workflow status", args, ["workflow", "status", "--json"]);
+		return statusJson;
+	},
+});
+expectEqual("fetchLive kind", fetchedLive?.kind, "drain");
+expectEqual("fetchLive id", fetchedLive?.id, runId);
+expectEqual("fetchLive attempted from artefacts", fetchedLive?.attempted, ["c"]);
+expectEqual("fetchLive last report from artefacts", fetchedLive?.report, {
+	rel: "summary.md",
+	text: "drain last report: merged one\n",
+});
+expectEqual("fetchLive artefacts dir", fetchedLive?.artifactsDir, artifactsDir);
+
+writeFileSync(join(gitDir ?? liveTmp, RUN_LOCK_NAME), `2147483646\n${runId}\n`);
+expectEqual("a dead lock holder is not in progress", fetchLive(liveTmp, { archonRunner: () => statusJson }), null);
+
+const fakeArchon = join(liveTmp, "fake-archon");
+writeFileSync(
+	fakeArchon,
+	`#!/usr/bin/env bun
+const args = process.argv.slice(2);
+if (args[0] === "workflow" && args[1] === "status") {
+  process.stdout.write(${JSON.stringify(statusJson)});
+  process.exit(0);
+}
+process.stderr.write("unexpected " + args.join(" "));
+process.exit(1);
+`,
+);
+chmodSync(fakeArchon, 0o755);
+writeFileSync(join(gitDir ?? liveTmp, RUN_LOCK_NAME), `${process.pid}\n${runId}\n`);
+mkdirSync(join(liveTmp, ".beads"), { recursive: true });
+writeFileSync(
+	join(liveTmp, ".beads", "issues.jsonl"),
+	`${JSON.stringify({ id: "from-jsonl", title: "From jsonl", status: "open" })}\n`,
+);
+const liveBd = join(liveTmp, "fake-bd");
+writeFileSync(
+	liveBd,
+	`#!/usr/bin/env bun
+const args = process.argv.slice(2);
+if (args.includes("list")) {
+  process.stdout.write(${JSON.stringify(listJson)});
+  process.exit(0);
+}
+if (args.includes("show")) {
+  process.stdout.write(${JSON.stringify(showJson)});
+  process.exit(0);
+}
+process.stderr.write("unexpected " + args.join(" "));
+process.exit(1);
+`,
+);
+chmodSync(liveBd, 0o755);
+const liveOut = join(liveTmp, "overview.html");
+const liveSpawned = spawnSync(
+	process.execPath,
+	[renderPath, "--dir", liveTmp, "--store", liveBd, "--archon", fakeArchon, "--out", liveOut],
+	{ encoding: "utf8" },
+);
+expectEqual("live render exits 0", liveSpawned.status, 0);
+if (liveSpawned.status !== 0) console.error(liveSpawned.stderr);
+const livePage = liveSpawned.status === 0 ? readFileSync(liveOut, "utf8") : "";
+expect("CLI page overlays the live drain", livePage.includes("run-drain") === false && livePage.includes(runId));
+expect("CLI page carries the last report", livePage.includes("drain last report: merged one"));
+expect("CLI page still covers inquiry, experiment, and drain", pageCoversThreeDomains(livePage));
+expect("CLI page is still from bd, not jsonl", livePage.includes("From bd") && !livePage.includes("From jsonl"));
 
 if (failed > 0) {
 	console.error(`${failed} failure(s)`);
