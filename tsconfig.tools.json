@@ -1,4 +1,5 @@
-// Typecheck gate for the Target-side tooling: the inquiry domain's tools and the experiment script. Dev-only,
+// Typecheck gate for the Target-side tooling: the inquiry domain's tools, the experiment script, and the
+// operator-ui overview. Dev-only,
 // and it lives here rather than beside the tools for the same reason the pack's gate does: what a Target
 // copies in must carry nothing the runtime cannot use.
 //
