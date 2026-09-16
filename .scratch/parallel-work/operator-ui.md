@@ -2,9 +2,10 @@
 
 ## Tickets
 
-- Local HTML inbox that lists tickets awaiting the operator (`answer:draft` questions, `reading:none` experiments) and shows the draft comment or experiment record to read — files: `tools/operator-ui/` — socket: none
-- Comment box on that page writes a pending operator reply; a session applies it as `bd comment` (and the existing close / `reading:` / label acts for that domain) — files: `tools/operator-ui/`, `docs/agents/issue-tracker.md` — socket: needs
+- Local HTML overview of the Target’s beads graph: DAG of issues, filter by type / status / label (inquiry, experiment, drain), click a node for that ticket’s status, comments, and documents — files: `tools/operator-ui/` — socket: none
+- Overlay live drain / inquiry / experiment runs on that graph (what is in progress, last report) — files: `tools/operator-ui/` — socket: needs
+- On a selected node, leave an operator reply; a session applies it as `bd comment` (and the existing close / `reading:` / label acts for that domain) — files: `tools/operator-ui/`, `docs/agents/issue-tracker.md` — socket: needs
 
 ## Seam
 
-An operator-reply inbox: other legs can publish “awaiting the operator” from store facts that already exist, the human types in a page instead of chat, and a session drains that text into the beads store. The UI is an editor, not a second source of truth — no parallel comment store, no LangGraph checkpoint, no annotation dataset. Do not use `bd human respond` (it closes with reason Responded). Inquiry close and experiment `reading:` stay the session’s act on the operator’s word (ADR-0006).
+A read model of the Target: the issue DAG from the beads store via `bd` (not `.beads/issues.jsonl`), plus a place the three executors can publish “this run is doing X” so one page covers inquiry, experiment, and drain. The UI is a view and an editor, not a second graph or comment store. Do not use `bd human respond` (it closes with reason Responded). Inquiry close and experiment `reading:` stay the session’s act on the operator’s word (ADR-0006).
