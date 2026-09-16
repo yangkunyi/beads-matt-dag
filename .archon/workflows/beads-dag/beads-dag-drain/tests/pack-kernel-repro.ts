@@ -2,10 +2,11 @@
 /**
  * Repro: the pack kernel is a pack folder, not the drain executor.
  *
- * inquiry, experiment, execute, and read import store, locks, attempted, roles, naming, doc-commit,
- * node-entry, git, domains, failures, agent, worker-env, prompt, config, and node-outcomes from the
- * kernel. They do not reach through the drain executor to get those. Drain-alone merge modules stay in
- * drain. Existing callers keep their behaviour; this file is the import graph, as text.
+ * inquiry, experiment, execute, and read import store, locks, the opening lock-and-release shell,
+ * attempted, roles, naming, doc-commit, node-entry, git, domains, failures, agent, worker-env, prompt,
+ * config, and node-outcomes from the kernel. They do not reach through the drain executor to get those.
+ * Drain-alone merge modules stay in drain. Existing callers keep their behaviour; this file is the
+ * import graph, as text.
  */
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -21,6 +22,7 @@ const KERNEL = [
   "naming",
   "doc-commit",
   "node-entry",
+  "open-lock",
   "git",
   "domains",
   "failures",

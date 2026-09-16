@@ -321,8 +321,8 @@ export function loadConfig(target: string, configPath?: string): LoadedConfig {
  * second form: `store.ts` resolves the binary from the config override first, then PATH, and its
  * `source` says which answered - the file the override was read from, or PATH.
  *
- * `open.ts` writes it to stderr, never stdout: a node's stdout is its token channel, and open's whole
- * stdout has to stay one `opened` token.
+ * The opening shell (`open-lock.ts`) writes it to stderr, never stdout: a node's stdout is its token
+ * channel, and open's whole stdout has to stay one `opened` token.
  *
  * The two records are typed out over `CONFIG_KEYS`, so a key added to the pack cannot be left out of
  * the line: the record is missing it and the typecheck fails.
