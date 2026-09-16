@@ -8,10 +8,11 @@
  * one thing the store cannot answer on its own is *which run* attempted an issue, and that is bookkeeping
  * the run already has (`attempted-ids.json`, the same file pick composes the frontier from).
  *
- * Two reports read it. The drain's summary narrows the rows with `failedIssues` below, whose repairs are
- * git facts; the reading executor's report (`beads-dag-inquiry/scripts/report.ts`) builds that half
- * itself, because a reading's repair is a store fact, and reads `failuresBlock` for the shape — one
- * format for one fact, whichever domain is reporting.
+ * Three reports read it. The drain's summary narrows the rows with `failedIssues` below, whose repairs are
+ * git facts; the reading executor's report (`beads-dag-inquiry/scripts/report.ts`) and the experiment
+ * executor's report (`beads-dag-experiment/scripts/report.ts`) each build that half themselves, because
+ * a reading's repair and an experiment's failure are store facts, and read `failuresBlock` for the
+ * shape — one format for one fact, whichever domain is reporting.
  *
  * The block is written by the node, never by a model: the numbers a reader sees are exactly the store's
  * answers, and the report's prose is left where it was, above the block.

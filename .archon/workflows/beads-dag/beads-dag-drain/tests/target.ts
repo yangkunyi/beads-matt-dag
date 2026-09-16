@@ -56,7 +56,7 @@ export const execute = {
   script: (name: string): string => join(executeDir, "scripts", `${name}.ts`),
 };
 
-/** The experiment executor's orchestrator folder: open, the pick/run loop. */
+/** The experiment executor's orchestrator folder: open, the pick/run loop, then report. */
 export const experiment = {
   dir: experimentDir,
   yaml: join(experimentDir, "beads-dag-experiment.yaml"),

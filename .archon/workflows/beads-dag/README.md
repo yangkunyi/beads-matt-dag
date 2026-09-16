@@ -91,7 +91,7 @@ The lock names the run — the basename of the run's artifacts directory, Archon
 workflow runner every node of the run shares. A pid that is gone is a killed run's leftover and is
 stolen exactly as `lock.ts` steals one, with one line saying so; a live one refuses, and the refusal on
 stderr names the holder's run id and pid, so `archon workflow status` finds the run to wait for — or to
-kill. The run's last node releases the lock — `summary` for a drain, `report` for a reading run — and
+kill. The run's last node releases the lock — `summary` for a drain, `report` for a reading or experiment run — and
 `open` releases it when its own work fails before the loop; but no node after `open` is guaranteed to
 run, so a run killed or failed on the way leaves the file behind, which is exactly what the dead-pid
 steal is for. The run also records the lock it
@@ -169,6 +169,11 @@ hold the four labelled closing lines (`measured:`, `reference:`, `covered:`, `re
 leaves the ticket open with `attempt N failed: record incomplete — <what is missing>` and nothing else
 happens. Only a complete record closes the ticket: the close, the `reading:none` label and the comment are
 one act, and the record is committed as one path-scoped commit under the Main lock.
+
+The run's last node is not a reader and not a draft report. It releases the Target run lock this run's
+`open` took, and writes attempted, closed-on-record, and failed — from the run's `attempted-ids.json` and
+the store. Closed stays the completeness check the per-ticket node already made (ADR-0006); this node does
+not close, and it does not merge the experiment-run include into itself.
 
 ## One issue, one worktree, one brief
 
@@ -628,7 +633,7 @@ beads-dag-execute/   one issue, start to finish. Not a public entry: its issue i
 beads-dag-inquiry/   the reading executor: open, the loop (pick, read), then report
 beads-dag-read/      one question, read and landed as a draft answer. Not a public entry: its issue
                      input is required, and beads-dag-inquiry composes it, one instance per handle.
-beads-dag-experiment/      the experiment executor: open, the pick/run loop
+beads-dag-experiment/      the experiment executor: open, the pick/run loop, then report
 beads-dag-experiment-run/  one experiment ticket: claim, registration, record and close. Not a public
                            entry: its issue input is required, and its fork exists because a fan-out
                            needs an include
