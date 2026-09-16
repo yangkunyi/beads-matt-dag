@@ -59,6 +59,12 @@ to `PATH` — an operator who set it meant it to be used.
   list, no comment thread**. State moves in the store, not in the file.
 - Comments and conversation history append to the issue in the store (`bd comment`), never to the body.
 
+## Operator reply
+
+The operator UI writes a reply as `bd comment` on the selected issue. Beads remains the only comment
+store. Close, `reading:`, and the domain's label acts stay the session's on the operator's word
+(ADR-0006). `bd human respond` is not used: it closes with reason Responded.
+
 ## Identity: the two metadata keys
 
 A bead's hash id is its identity in the store; its human-readable identity is metadata:
