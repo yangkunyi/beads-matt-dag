@@ -35,7 +35,7 @@
  * the turn wrote under the effort that the flow does not commit (the claims file `note.ts` is handed, a
  * working note). The effort's working tree is read before the turn and again at every exit, and the
  * difference - what this turn wrote that the commit did not land - goes into the run's record
- * (`UNNAMED_PATHS_FILE`, inquiry.ts) for the report to name. A path that was already lying there before
+ * (`UNNAMED_PATHS_FILE`, reading.ts) for the report to name. A path that was already lying there before
  * this run is not this run's, and a turn that failed names its leftovers all the same: the spec's rule is
  * about what the run wrote, not about what landed.
  */
@@ -56,7 +56,7 @@ import {
   preflightStore,
   recordFailedAttempt,
 } from "../../scripts/store.ts";
-import { DRAFT_LABEL, draftLine, readingPaths, recordUnnamedPaths } from "../../beads-dag-inquiry/scripts/inquiry.ts";
+import { DRAFT_LABEL, draftLine, readingPaths, recordUnnamedPaths } from "./reading.ts";
 
 /** What one reading node needs: where to write, and the runner/seam a test replaces. */
 export type ReadOpts = {

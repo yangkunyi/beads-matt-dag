@@ -626,8 +626,9 @@ beads-dag-drain/     the drain: open, the loop (pick, execute), then the two rea
                      the operator's one-command store backup
 beads-dag-execute/   one issue, start to finish. Not a public entry: its issue input is required.
 beads-dag-inquiry/   the reading executor: open, the loop (pick, read), then report
-beads-dag-read/      one question, read and landed as a draft answer. Not a public entry: its issue
-                     input is required, and beads-dag-inquiry composes it, one instance per handle.
+beads-dag-read/      one question, read and landed as a draft answer. Owns the reading's labels and
+                     paths. Not a public entry: its issue input is required, and beads-dag-inquiry
+                     composes it, one instance per handle.
 beads-dag-experiment/      the experiment executor: open, the pick/run loop
 beads-dag-experiment-run/  one experiment ticket: claim, registration, record and close. Not a public
                            entry: its issue input is required, and its fork exists because a fan-out
@@ -637,7 +638,9 @@ beads-dag-experiment-run/  one experiment ticket: claim, registration, record an
 A workflow folder holds its YAML, its `scripts/` (each entry script is a node that folder's YAML declares),
 and, for the drain, its `tests/`. `backup.ts` sits beside the YAML rather than in `scripts/` because it is
 an operator command, not a node. Shared modules live in the pack kernel; a node body may not, because
-the folder whose YAML declares a node is where that node's script resolves.
+the folder whose YAML declares a node is where that node's script resolves. Vocabulary an include needs
+— the reading's labels and paths — lives in a module that include's folder owns, not in the parent and
+not in the kernel.
 
 The three per-ticket folders (`beads-dag-execute`, `beads-dag-read`, `beads-dag-experiment-run`) exist
 for one reason: **only an include or a workflow node can be fanned out over a runtime list**. The drain

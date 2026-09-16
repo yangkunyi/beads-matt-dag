@@ -315,6 +315,7 @@ try {
   //      landed reading leaves the question open.
   for (const file of [
     readBlock.script("read"),
+    readBlock.script("reading"),
     readBlock.yaml,
     inquiry.script("inquiry"),
     inquiry.script("leftovers"),

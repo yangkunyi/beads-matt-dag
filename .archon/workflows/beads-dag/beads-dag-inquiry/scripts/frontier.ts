@@ -27,7 +27,8 @@ import {
   type Store,
   type StoreIssue,
 } from "../../scripts/store.ts";
-import { DRAFT_LABEL, MAP_LABEL, READING_LEG_LABEL } from "./inquiry.ts";
+import { DRAFT_LABEL } from "../../beads-dag-read/scripts/reading.ts";
+import { MAP_LABEL, READING_LEG_LABEL } from "./inquiry.ts";
 
 /**
  * Why a question the store offered was left out. These are the rules this module applies, and the only
