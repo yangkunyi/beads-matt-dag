@@ -367,17 +367,19 @@ instead of a story told afterwards. Freezing it is what the claim buys.
 
 **Who does what.** Writing the script, running it, collecting the numbers and writing the record may all
 run AFK. The operator appears twice: agreeing the plan, and — later, optionally — saying what the result
-means. The store's writes stay with the session (the comment, the close); git documents are the AFK leg's,
-exactly as in the inquiry domain.
+means. The executor writes the store for this domain: the close, the `reading:none` label and the comment
+are one act once the record is complete. Git documents are the AFK leg's.
 
 **The record** is one document per ticket at `.scratch/<effort>/results/<NN>-<slug>.md`, holding an
-attempts table — one row per run — and closed by these lines:
+attempts table — one row per run — and closed by these four labelled lines (the document's shape and the
+executor's completeness check are the same rule):
 
-- what was measured, and which source it was read from;
-- whether it met the frozen reference — or what was observed, when the ticket said *exploratory*;
-- what the run covered: one seed, one dataset, one config. This is the line that stops a reader
+- `measured:` what was measured, and which source it was read from;
+- `reference:` whether it met the frozen reference — or what was observed, when the ticket said
+  *exploratory*;
+- `covered:` what the run covered: one seed, one dataset, one config. This is the line that stops a reader
   over-reading the result;
-- `reading: none yet` — a visible marker that nobody has interpreted the result.
+- `reading:` `none yet` — a visible marker that nobody has interpreted the result.
 
 Every change appends a comment (a document holds the picture, comments hold the history), a thin
 target-side script registers the run's identity before it starts and collects afterwards, and **the ticket

@@ -42,7 +42,7 @@ nodes:
             # the batch the pool can take, not everything that is startable.
             items: "$pick.output"
             as: issue
-            # all_success, deliberately: an instance's own outcome is exit 0 (`registered` and `failed`
+            # all_success, deliberately: an instance's own outcome is exit 0 (`closed` and `failed`
             # are both results), so an instance only fails when a node THREW - a Target whose tool
             # directory vanished, a store that cannot be read - which has to fail the run rather than be
             # an archon_failed marker the run reports success over.

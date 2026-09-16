@@ -14,13 +14,14 @@
  * registration under the run's artifacts, the stub's record of what it was asked, and the node's token.
  */
 import { existsSync, readFileSync } from "node:fs";
-import { basename, join } from "node:path";
+import { join } from "node:path";
 import {
   envWithRunTool,
   envWithout,
   expect,
   expectEqual,
   experimentRun,
+  fakePiSdk,
   gitC,
   installExperimentTools,
   publishExperiment,
@@ -48,21 +49,30 @@ try {
     const bin = join(artifacts, "bin");
     writeStubDvc(bin);
     const ticket = publishExperiment(root, { title: "pilot", handle: "exp/01", slug: "pilot" });
+    const startedFrom = gitC(root, "rev-parse", "HEAD");
 
-    const run = runScript(experimentRun.script("run"), root, envWithRunTool(bin, { ARTIFACTS_DIR: artifacts, INPUTS_ISSUE: ticket.handle }));
+    const run = runScript(
+      experimentRun.script("run"),
+      root,
+      envWithRunTool(bin, {
+        ARTIFACTS_DIR: artifacts,
+        INPUTS_ISSUE: ticket.handle,
+        PI_SDK_PATH: fakePiSdk(artifacts, "record-complete"),
+      }),
+    );
     expectEqual("the run node exits clean", run.status, 0);
-    expectEqual("and speaks its token", run.stdout, "registered\n");
+    expectEqual("and speaks its token", run.stdout, "closed\n");
 
     const issue = storeIssue(root, ticket.id);
-    expectEqual("the ticket is running", issue.status, "in_progress");
-    expectEqual("and the assignee is the run, not a person", issue.assignee, `beads-dag-experiment/${basename(artifacts)}`);
+    expectEqual("the ticket is closed: the record was complete", issue.status, "closed");
+    expect("carrying the unread marker", issue.labels.includes("reading:none"), issue.labels);
 
     // The registration is in the run's artifacts, and it reserved the ticket's own name.
     const registrationFile = join(artifacts, "experiments", "01-pilot.json");
     expect("the registration is in the run's artifacts", existsSync(registrationFile), registrationFile);
     const registration = JSON.parse(readFileSync(registrationFile, "utf8"));
     expectEqual("it names the run", registration.name, "01-pilot");
-    expectEqual("it names the commit the run starts from", registration.code, gitC(root, "rev-parse", "HEAD"));
+    expectEqual("it names the commit the run starts from", registration.code, startedFrom);
     expectEqual("the queue holds the reserved run", registration.runs.map((entry: { name: string }) => entry.name), ["01-pilot"]);
 
     const state = stubState(root);
@@ -126,12 +136,21 @@ try {
     expectEqual("the first attempt fails", failed.stdout, "failed\n");
     expectEqual("and leaves the ticket open", storeIssue(root, ticket.id).status, "open");
 
-    const next = runScript(experimentRun.script("run"), root, envWithRunTool(bin, { ARTIFACTS_DIR: artifacts, INPUTS_ISSUE: ticket.handle }));
-    expectEqual("the next run registers it", next.stdout, "registered\n");
-    expectEqual("the ticket is running under the run", storeIssue(root, ticket.id).status, "in_progress");
+    const next = runScript(
+      experimentRun.script("run"),
+      root,
+      envWithRunTool(bin, {
+        ARTIFACTS_DIR: artifacts,
+        INPUTS_ISSUE: ticket.handle,
+        PI_SDK_PATH: fakePiSdk(artifacts, "record-complete"),
+      }),
+    );
+    expectEqual("the next run closes it", next.stdout, "closed\n");
+    expectEqual("the ticket is closed under the run", storeIssue(root, ticket.id).status, "closed");
     expect("its name is the record's basename", existsSync(join(artifacts, "experiments", "02-retried.json")), "02-retried.json");
-    expect("and the failure is history on the ticket", storeComments(root, ticket.id).length === 1, storeComments(root, ticket.id));
-    expectEqual("with a second ordinal, not a rewrite", (storeComments(root, ticket.id)[0]?.text ?? "").startsWith("attempt 1 failed:"), true);
+    const comments = storeComments(root, ticket.id).map((comment) => comment.text);
+    expect("the failure is history on the ticket", comments[0]?.startsWith("attempt 1 failed:"), comments[0]);
+    expect("and the close is a second comment, not a rewrite", comments[1]?.startsWith("recorded:"), comments[1]);
   });
 
   // The node requires its two inputs, the way every per-ticket node does.

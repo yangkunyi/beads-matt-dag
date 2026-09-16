@@ -163,6 +163,13 @@ run's artifacts. A registration that fails gives the claim back and puts the rea
 ordinary failed attempt, so nothing is left claimed and the run says why. A ticket the run has worked is
 kept out of its own later cycles by `attempted-ids.json`, exactly as in a drain.
 
+After the registration the node runs one agent turn under the `experiment` role, then a completeness
+check in the node itself: the record must exist at the ticket's own path, hold an attempts-table row, and
+hold the four labelled closing lines (`measured:`, `reference:`, `covered:`, `reading:`). Missing anything
+leaves the ticket open with `attempt N failed: record incomplete — <what is missing>` and nothing else
+happens. Only a complete record closes the ticket: the close, the `reading:none` label and the comment are
+one act, and the record is committed as one path-scoped commit under the Main lock.
+
 ## One issue, one worktree, one brief
 
 An issue's git identity comes from its two metadata keys, and from nothing else:
@@ -620,8 +627,9 @@ beads-dag-inquiry/   the reading executor: open, the loop (pick, read), then rep
 beads-dag-read/      one question, read and landed as a draft answer. Not a public entry: its issue
                      input is required, and beads-dag-inquiry composes it, one instance per handle.
 beads-dag-experiment/      the experiment executor: open, the pick/run loop
-beads-dag-experiment-run/  one experiment ticket: claim and registration. Not a public entry: its issue
-                           input is required, and its fork exists because a fan-out needs an include
+beads-dag-experiment-run/  one experiment ticket: claim, registration, record and close. Not a public
+                           entry: its issue input is required, and its fork exists because a fan-out
+                           needs an include
 ```
 
 A workflow folder holds its YAML, its `scripts/` (each entry script is a node that folder's YAML declares),

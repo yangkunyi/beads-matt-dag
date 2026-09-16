@@ -11,7 +11,7 @@
  *                    one that did it
  */
 import { readFileSync } from "node:fs";
-import { EMPTY_PICK, FAILED, NOTHING_TO_REPORT, OPENED, REGISTERED, nodeLine } from "../scripts/node-outcomes.ts";
+import { CLOSED, EMPTY_PICK, FAILED, NOTHING_TO_REPORT, OPENED, REGISTERED, nodeLine } from "../scripts/node-outcomes.ts";
 import { GATE_LABEL, drain, execute, experiment, expect, expectEqual, fakePiSdk, inquiry, publishIssue, runScript, withTarget } from "./target.ts";
 
 try {
@@ -63,7 +63,7 @@ try {
     expect("the reason names the input", /INPUTS_ISSUE is required/.test(missing.stderr), missing.stderr);
 
     // The vocabulary this slice uses is the one the nodes print, not a second list.
-    for (const token of [OPENED, EMPTY_PICK, FAILED, REGISTERED, NOTHING_TO_REPORT]) {
+    for (const token of [OPENED, EMPTY_PICK, FAILED, REGISTERED, CLOSED, NOTHING_TO_REPORT]) {
       expect("a token is non-empty and single-line", token.length > 0 && !token.includes("\n"), token);
     }
   });
