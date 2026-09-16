@@ -22,7 +22,7 @@ import { nodeLine, OPENED } from "../../scripts/node-outcomes.ts";
 import { recordRunLock, releaseRunLock, stoleLine, takeRunLock } from "../../scripts/run-lock.ts";
 import { preflightStore, recomputeBlocked } from "../../scripts/store.ts";
 import { reconcileExperiments } from "./reconcile.ts";
-import { requireExperimentTools, resolveRunTool } from "./run-tool.ts";
+import { requireExperimentTools, resolveRunTool } from "../../beads-dag-experiment-run/scripts/run-tool.ts";
 
 if (import.meta.main) {
   await runNode({

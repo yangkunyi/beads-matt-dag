@@ -24,7 +24,7 @@ import { readAttempted } from "../../scripts/attempted.ts";
 import { runNode } from "../../scripts/node-entry.ts";
 import { nodeLine } from "../../scripts/node-outcomes.ts";
 import { preflightStore, readyIssues, type StoreIssue } from "../../scripts/store.ts";
-import { EXPERIMENT_LABEL, EXPERIMENT_TYPE } from "./ticket.ts";
+import { EXPERIMENT_LABEL, EXPERIMENT_TYPE } from "../../beads-dag-experiment-run/scripts/ticket.ts";
 
 /**
  * Why an issue the store offered was left out. These are the rules this executor applies, and the only

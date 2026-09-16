@@ -21,7 +21,7 @@
  * alone is named on stderr rather than silently skipped.
  */
 import { inProgressIssues, recordFailedAttempt, type Store } from "../../scripts/store.ts";
-import { EXPERIMENT_TYPE } from "./ticket.ts";
+import { EXPERIMENT_TYPE } from "../../beads-dag-experiment-run/scripts/ticket.ts";
 
 /** What one leftover was resolved to: a released claim, or a status this executor leaves to its owner. */
 export type ExperimentRepair = {
