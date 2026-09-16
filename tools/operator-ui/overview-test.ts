@@ -2,12 +2,14 @@
 /**
  * The overview's seams: the graph is `bd`, never jsonl; the page filters by type / status / label;
  * a selected issue carries status, comments and documents; a live drain / inquiry / experiment run
- * overlays from the run lock, Archon status, artefacts and attempted — not a pack publish API.
+ * overlays from the run lock, Archon status, artefacts and attempted — not a pack publish API;
+ * an operator reply is `bd comment` on the selected issue, never `bd human respond`, and close /
+ * `reading:` / labels stay the session's.
  *
  *   bun tools/operator-ui/overview-test.ts
  */
 
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -23,8 +25,10 @@ import {
 	type StoreIssue,
 } from "./model";
 import { fetchLive, gitDirOf, RUN_LOCK_NAME } from "./overlay";
-import { pageCarriesDetail, pageCarriesLive, pageCoversThreeDomains, pageHasFilters, renderPage } from "./page";
-import { fetchStore, type BdRunner } from "./store";
+import { addComment, parseCommentBody } from "./comment";
+import { pageCarriesDetail, pageCarriesLive, pageCoversThreeDomains, pageHasFilters, pageOffersReply, renderPage } from "./page";
+import { createOverviewServer, handleOverviewRequest } from "./serve";
+import { fetchStore, type BdRunner, type BdWriteRunner } from "./store";
 
 let failed = 0;
 
@@ -186,6 +190,7 @@ expectEqual(
 
 const html = renderPage(overview);
 expect("page has type/status/label filters", pageHasFilters(html));
+expect("static snapshot does not offer a reply endpoint", !pageOffersReply(html));
 expect("page carries the DAG nodes", html.includes('"id":"a"') && html.includes('"id":"c"'));
 const selected = issueDetail(overview, "c");
 expect("selected issue is in the model", selected !== undefined);
@@ -520,6 +525,161 @@ expect("CLI page overlays the live drain", livePage.includes("run-drain") === fa
 expect("CLI page carries the last report", livePage.includes("drain last report: merged one"));
 expect("CLI page still covers inquiry, experiment, and drain", pageCoversThreeDomains(livePage));
 expect("CLI page is still from bd, not jsonl", livePage.includes("From bd") && !livePage.includes("From jsonl"));
+
+const writes: { args: string[]; stdin: string | undefined }[] = [];
+const writeRunner: BdWriteRunner = (args, stdin) => {
+	writes.push({ args, stdin });
+	return "";
+};
+addComment(writeRunner, "from-bd", "operator reply");
+expectEqual("reply is bd comment", writes, [{ args: ["comment", "from-bd", "--stdin"], stdin: "operator reply" }]);
+expect(
+	"reply is not human respond, close, or a label",
+	writes.every(
+		(call) =>
+			call.args[0] === "comment" &&
+			!call.args.includes("human") &&
+			!call.args.includes("respond") &&
+			!call.args.includes("close") &&
+			!call.args.includes("label") &&
+			!call.args.includes("update"),
+	),
+);
+
+writes.length = 0;
+let refused = false;
+try {
+	addComment(writeRunner, "from-bd", "   ");
+} catch {
+	refused = true;
+}
+expect("empty reply is refused", refused);
+expectEqual("empty reply does not write", writes, []);
+
+const parsed = parseCommentBody(JSON.stringify({ id: "from-bd", text: "leave this", close: true, labels: ["reading:none"] }));
+expectEqual("extra close/label fields are ignored", parsed, { id: "from-bd", text: "leave this" });
+writes.length = 0;
+addComment(writeRunner, parsed.id, parsed.text);
+expectEqual("ignored fields still write only bd comment", writes[0]?.args, ["comment", "from-bd", "--stdin"]);
+
+let badBody = false;
+try {
+	parseCommentBody("not-json");
+} catch {
+	badBody = true;
+}
+expect("non-JSON comment body is refused", badBody);
+
+const servedHtml = renderPage(overview, { commentEndpoint: "/comment" });
+expect("served page offers a reply endpoint", pageOffersReply(servedHtml));
+expect("served page still carries issue detail", pageCarriesDetail(servedHtml, issueDetail(overview, "c")!));
+expect("served page still has filters", pageHasFilters(servedHtml));
+expect(
+	"served page has no close or label control",
+	!servedHtml.includes('name="close"') &&
+		!servedHtml.includes("bd close") &&
+		!servedHtml.includes('name="labels"') &&
+		!servedHtml.includes("bd human"),
+);
+expect("served page posts id and text", servedHtml.includes("JSON.stringify({ id: issue.id, text: text })"));
+
+const added: { id: string; text: string }[] = [];
+const handler = {
+	add: (id: string, text: string) => {
+		added.push({ id, text });
+	},
+	page: () => renderPage(overview, { commentEndpoint: "/comment" }),
+};
+const getPage = await handleOverviewRequest({ method: "GET", url: "/" }, "", handler);
+expectEqual("GET / is 200", getPage.status, 200);
+expect("GET / offers a reply endpoint", pageOffersReply(getPage.body));
+const posted = await handleOverviewRequest(
+	{ method: "POST", url: "/comment" },
+	JSON.stringify({ id: "from-bd", text: "operator reply", close: true, labels: ["reading:none"] }),
+	handler,
+);
+expectEqual("POST /comment is 204", posted.status, 204);
+expectEqual("POST /comment writes only the reply", added, [{ id: "from-bd", text: "operator reply" }]);
+const emptyPost = await handleOverviewRequest(
+	{ method: "POST", url: "/comment" },
+	JSON.stringify({ id: "from-bd", text: "" }),
+	handler,
+);
+expectEqual("empty POST is 400", emptyPost.status, 400);
+expectEqual("empty POST does not write", added.length, 1);
+const missing = await handleOverviewRequest({ method: "POST", url: "/close" }, "", handler);
+expectEqual("unknown path is 404", missing.status, 404);
+
+const commentTmp = mkdtempSync(join(tmpdir(), "operator-ui-comment-"));
+const commentLog = join(commentTmp, "comment.log");
+const commentBd = join(commentTmp, "fake-bd");
+writeFileSync(
+	commentBd,
+	`#!/usr/bin/env bun
+const fs = require("fs");
+const args = process.argv.slice(2);
+if (args[0] === "comment") {
+  const stdin = fs.readFileSync(0, "utf8");
+  fs.appendFileSync(${JSON.stringify(commentLog)}, JSON.stringify({ args, stdin }) + "\\n");
+  process.exit(0);
+}
+if (args.includes("human") || args.includes("respond") || args[0] === "close" || args[0] === "update" || args[0] === "label") {
+  process.stderr.write("forbidden " + args.join(" "));
+  process.exit(2);
+}
+if (args.includes("list")) {
+  process.stdout.write(${JSON.stringify(listJson)});
+  process.exit(0);
+}
+if (args.includes("show")) {
+  process.stdout.write(${JSON.stringify(showJson)});
+  process.exit(0);
+}
+process.stderr.write("unexpected " + args.join(" "));
+process.exit(1);
+`,
+);
+chmodSync(commentBd, 0o755);
+const commentServer = createOverviewServer({ dir: commentTmp, store: commentBd });
+const commentPort = await new Promise<number>((resolve, reject) => {
+	commentServer.once("error", reject);
+	commentServer.listen(0, "127.0.0.1", () => {
+		const address = commentServer.address();
+		if (typeof address === "object" && address !== null) resolve(address.port);
+		else reject(new Error("server has no port"));
+	});
+});
+const commentGet = await fetch(`http://127.0.0.1:${commentPort}/`);
+expectEqual("live GET / is 200", commentGet.status, 200);
+const commentPage = await commentGet.text();
+expect("live page offers a reply endpoint", pageOffersReply(commentPage));
+expect("live page is from bd, not jsonl", commentPage.includes("From bd") && !commentPage.includes("From jsonl"));
+const livePost = await fetch(`http://127.0.0.1:${commentPort}/comment`, {
+	method: "POST",
+	headers: { "content-type": "application/json" },
+	body: JSON.stringify({ id: "from-bd", text: "operator reply", close: true }),
+});
+expectEqual("live POST /comment is 204", livePost.status, 204);
+const logged = existsSync(commentLog) ? readFileSync(commentLog, "utf8").trim() : "";
+const recorded = logged === "" ? null : JSON.parse(logged.split("\n")[0] ?? logged);
+expectEqual("live write is bd comment", recorded?.args, ["comment", "from-bd", "--stdin"]);
+expectEqual("live write stdin is the reply", recorded?.stdin, "operator reply");
+expect("live write is not human respond", recorded !== null && !(recorded.args as string[]).includes("human"));
+await new Promise<void>((resolve, reject) => commentServer.close((err) => (err ? reject(err) : resolve())));
+
+const servePath = join(dirname(fileURLToPath(import.meta.url)), "serve.ts");
+const serveHelp = spawnSync(process.execPath, [servePath, "--help"], { encoding: "utf8" });
+expectEqual("serve help exits 0", serveHelp.status, 0);
+expect("serve help names bd comment", (serveHelp.stdout ?? "").includes("bd comment"));
+expect("serve help does not name human respond", !(serveHelp.stdout ?? "").includes("human respond"));
+
+const contract = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "..", "docs", "agents", "issue-tracker.md"), "utf8");
+expect("contract: UI writes bd comment", contract.includes("The operator UI writes a reply as `bd comment`"));
+expect("contract: human respond is not used", contract.includes("`bd human respond` is not used"));
+expect(
+	"contract: close, reading:, and labels stay with the session",
+	contract.includes("Close, `reading:`, and the domain's label acts stay the session's"),
+);
 
 if (failed > 0) {
 	console.error(`${failed} failure(s)`);

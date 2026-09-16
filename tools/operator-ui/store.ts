@@ -2,7 +2,8 @@
  * The only place the overview talks to the store.
  *
  * Every graph is `bd list --all --json --limit 0`, and comments are `bd show … --json --include-comments`.
- * The jsonl export is not a source, and nothing here opens `.beads/issues.jsonl`.
+ * A reply is `bd comment` through the write runner — never `--readonly`. The jsonl export is not a
+ * source, and nothing here opens `.beads/issues.jsonl`.
  */
 
 import { accessSync, constants, existsSync, readFileSync, statSync } from "node:fs";
@@ -75,14 +76,14 @@ export function resolveBd(target: string, override?: string): string {
 	throw new Error("cannot find the store binary: bd is not on PATH; pass --store or set store: in .scratch/beads-dag.yaml");
 }
 
-/** One store command. Read-only: the flag is the runner's, so a view cannot write the graph it shows. */
-export function runBd(binary: string, cwd: string, args: string[]): string {
-	const result = spawnSync(binary, ["--readonly", ...args], {
+function runBdCommand(binary: string, cwd: string, args: string[], env: NodeJS.ProcessEnv, stdin?: string): string {
+	const result = spawnSync(binary, args, {
 		cwd,
 		encoding: "utf8",
-		env: { ...process.env, BD_READONLY: "1" },
+		env,
+		input: stdin,
 	});
-	const command = [binary, "--readonly", ...args].join(" ");
+	const command = [binary, ...args].join(" ");
 	if (result.error) throw new Error(`cannot run ${command}: ${result.error.message}`);
 	if (result.status !== 0) {
 		const reason = `${result.stderr ?? ""}${result.stdout ?? ""}`.trim();
@@ -91,8 +92,26 @@ export function runBd(binary: string, cwd: string, args: string[]): string {
 	return result.stdout ?? "";
 }
 
+/** One store command. Read-only: the flag is the runner's, so a view cannot write the graph it shows. */
+export function runBd(binary: string, cwd: string, args: string[]): string {
+	return runBdCommand(binary, cwd, ["--readonly", ...args], { ...process.env, BD_READONLY: "1" });
+}
+
 export function makeRunner(binary: string, cwd: string): BdRunner {
 	return (args) => runBd(binary, cwd, args);
+}
+
+/** A store write: never `--readonly`, and `BD_READONLY` is stripped so a comment can land. */
+export type BdWriteRunner = (args: string[], stdin?: string) => string;
+
+export function runBdWrite(binary: string, cwd: string, args: string[], stdin?: string): string {
+	const env = { ...process.env };
+	delete env.BD_READONLY;
+	return runBdCommand(binary, cwd, args, env, stdin);
+}
+
+export function makeWriteRunner(binary: string, cwd: string): BdWriteRunner {
+	return (args, stdin) => runBdWrite(binary, cwd, args, stdin);
 }
 
 function parseJSON(command: string, stdout: string): unknown {
