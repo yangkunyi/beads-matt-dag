@@ -2,7 +2,8 @@
  * The overview's read model: issues, edges, comments and documents as one page of the Target.
  *
  * The store is the source of the graph; this module does not talk to `bd` and does not read the jsonl
- * export. Assembly is a pure join of what the store reader and the document locator already answered.
+ * export. Assembly is a pure join of what the store reader, the document locator and the live overlay
+ * already answered.
  */
 
 export type OverviewComment = {
@@ -44,9 +45,33 @@ export type OverviewEdge = {
 	type: string;
 };
 
+/** Which pack executor is holding the Target. Named from Archon's workflow, never from a new field. */
+export type LiveRunKind = "drain" | "inquiry" | "experiment";
+
+export type LiveReport = {
+	rel: string;
+	text: string;
+};
+
+/**
+ * A live drain / inquiry / experiment run, as the overlay reads it: the Target lock, Archon status,
+ * the run's artefacts directory, and attempted. Absent when nothing holds the Target.
+ */
+export type LiveRun = {
+	kind: LiveRunKind;
+	id: string;
+	status: string;
+	workflow: string;
+	pid: number | undefined;
+	artifactsDir: string | undefined;
+	attempted: string[];
+	report: LiveReport | null;
+};
+
 export type Overview = {
 	issues: OverviewIssue[];
 	edges: OverviewEdge[];
+	live: LiveRun | null;
 };
 
 export type OverviewFilter = {
@@ -93,12 +118,14 @@ export type StoreComment = {
 
 /**
  * Join the store's issues and comments with the documents located for each issue. Edges are the
- * store's own dependencies, pointing from the depended-on issue to the dependent.
+ * store's own dependencies, pointing from the depended-on issue to the dependent. The live overlay
+ * is joined here too, so the page is still one snapshot.
  */
 export function assembleOverview(
 	issues: StoreIssue[],
 	commentsById: ReadonlyMap<string, StoreComment[]>,
 	documentsFor: (issue: StoreIssue) => OverviewDocument[],
+	live: LiveRun | null = null,
 ): Overview {
 	const known = new Set(issues.map((issue) => issue.id));
 	const edges: OverviewEdge[] = [];
@@ -124,7 +151,7 @@ export function assembleOverview(
 			edges.push({ from: dep.id, to: issue.id, type: dep.type });
 		}
 	}
-	return { issues: assembled, edges };
+	return { issues: assembled, edges, live };
 }
 
 export function matchesFilter(issue: OverviewIssue, filter: OverviewFilter): boolean {
@@ -145,10 +172,86 @@ export function filterOverview(overview: Overview, filter: OverviewFilter): Over
 	const issues = overview.issues.filter((issue) => matchesFilter(issue, filter));
 	const ids = new Set(issues.map((issue) => issue.id));
 	const edges = overview.edges.filter((edge) => ids.has(edge.from) && ids.has(edge.to));
-	return { issues, edges };
+	return { issues, edges, live: overview.live };
 }
 
 /** The detail a click shows: status, comments and documents of one issue, or undefined if unknown. */
 export function issueDetail(overview: Overview, id: string): OverviewIssue | undefined {
 	return overview.issues.find((issue) => issue.id === id);
+}
+
+/** The three executors the overlay knows. Any other Archon workflow is not this page's live run. */
+export function kindOfWorkflow(workflow: string): LiveRunKind | undefined {
+	if (workflow === "beads-dag-drain") return "drain";
+	if (workflow === "beads-dag-inquiry") return "inquiry";
+	if (workflow === "beads-dag-experiment") return "experiment";
+	return undefined;
+}
+
+/** The report artefact that kind writes: drain `summary.md`, inquiry and experiment `report.md`. */
+export function reportRelFor(kind: LiveRunKind): string {
+	return kind === "drain" ? "summary.md" : "report.md";
+}
+
+export type LiveLock = {
+	pid: number;
+	run: string;
+};
+
+export type LiveArchonRun = {
+	id: string;
+	workflow: string;
+	status: string;
+};
+
+export type LiveArtifacts = {
+	dir: string;
+	/** The run-lock.json record, when the artefacts directory held one. */
+	record: LiveLock | undefined;
+	attempted: string[];
+	reports: LiveReport[];
+};
+
+/**
+ * The overlay's facts, already read. Assembly is a pure join: a live holder, an Archon row for the
+ * same run that is one of the three executors, and whatever the artefacts directory held for it.
+ */
+export type LiveRunFacts = {
+	lock: LiveLock | undefined;
+	archon: ReadonlyArray<LiveArchonRun>;
+	artifacts: LiveArtifacts | undefined;
+};
+
+function pickReport(kind: LiveRunKind, reports: ReadonlyArray<LiveReport>): LiveReport | null {
+	const wanted = reportRelFor(kind);
+	const hit = reports.find((report) => report.rel === wanted);
+	return hit === undefined ? null : { rel: hit.rel, text: hit.text };
+}
+
+/**
+ * Join the lock, Archon status and artefacts into one live run, or null when nothing is in progress.
+ * A lock whose run Archon does not list, or whose workflow is not an executor, is not this overlay.
+ */
+export function assembleLive(facts: LiveRunFacts): LiveRun | null {
+	const lock = facts.lock;
+	if (lock === undefined) return null;
+	const run = facts.archon.find((row) => row.id === lock.run);
+	if (run === undefined) return null;
+	const kind = kindOfWorkflow(run.workflow);
+	if (kind === undefined) return null;
+	const artifacts =
+		facts.artifacts !== undefined &&
+		(facts.artifacts.record === undefined || facts.artifacts.record.run === lock.run)
+			? facts.artifacts
+			: undefined;
+	return {
+		kind,
+		id: run.id,
+		status: run.status,
+		workflow: run.workflow,
+		pid: lock.pid,
+		artifactsDir: artifacts?.dir,
+		attempted: artifacts?.attempted ?? [],
+		report: pickReport(kind, artifacts?.reports ?? []),
+	};
 }
