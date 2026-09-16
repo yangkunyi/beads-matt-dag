@@ -12,7 +12,7 @@
  * Four things, in the order the spec lists them:
  *
  *   1. the questions this run read and landed - the note's path and the commit, read out of the draft
- *      comment the reading wrote (`landedDraft`, inquiry.ts), and the label the landing stamped;
+ *      comment the reading wrote (`landedDraft`, reading.ts), and the label the landing stamped;
  *   2. the questions it attempted and left failing - the store's own `attempt N failed:` comments, with
  *      the ordinal and the count the store holds, in the drain's failures block (`failuresBlock`);
  *   3. the frontier it left behind - the handles still eligible, recomputed with `pick`'s own rules over
@@ -24,7 +24,7 @@
  *
  * And one thing the spec's own module rule asks for, which belongs to none of the four: the paths the run
  * wrote that the flow does not name - a reading's working files, left uncommitted on purpose and named
- * here rather than committed (`UNNAMED_PATHS_FILE`, inquiry.ts). It comes last, so the four sections keep
+ * here rather than committed (`UNNAMED_PATHS_FILE`, reading.ts). It comes last, so the four sections keep
  * the spec's order, and it says `none this run` like every other section rather than being left out.
  *
  * The one fact the store cannot answer is *which questions this run touched*: `attempted-ids.json` is the
@@ -54,7 +54,7 @@ import {
   type StoreIssue,
 } from "../../scripts/store.ts";
 import { compareHandles, handleOrId, readingFrontier } from "./frontier.ts";
-import { DRAFT_LABEL, landedDraft, readUnnamedPaths, type UnnamedPaths } from "./inquiry.ts";
+import { DRAFT_LABEL, landedDraft, readUnnamedPaths, type UnnamedPaths } from "../../beads-dag-read/scripts/reading.ts";
 import { readReadingRepairs, type ReadingRepair } from "./leftovers.ts";
 
 /** The run's report, relative to ARTIFACTS_DIR. The one document a reading run leaves to be read. */
