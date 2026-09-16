@@ -8,6 +8,10 @@ the tracker contract) **and worked here**: since 2026-09-15 its own beads store 
 the drain built in `.archon/workflows/beads-dag/` runs against this repository. Work opened before that
 date lives as markdown under `.scratch/beads-dag/issues/` and stays where it is — history, not a second
 tracker.
+>
+> This is the only live lab. `/data3/yky/beads-lab-target` is a frozen clone of this repository; open
+sessions and drain runs here, not there. The clone's experiment-map prose is archived at
+`.scratch/experiments/`.
 
 ## Agent skills
 
