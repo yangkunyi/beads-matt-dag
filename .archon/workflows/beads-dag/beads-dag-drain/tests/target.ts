@@ -1,15 +1,43 @@
 #!/usr/bin/env bun
 /** Shared Target fixture for the repro scripts: a temp git repo, a real store, store helpers, git, expects. */
 import { execFileSync, spawnSync } from "node:child_process";
-import { accessSync, chmodSync, constants, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { accessSync, chmodSync, constants, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
+import { READONLY_ENV } from "../scripts/worker-env.ts";
+
+/**
+ * This process stands in for the drain runner, and a runner's environment is not a worker's.
+ *
+ * The store's read-only mode belongs to the **agent subprocess** (worker-env.ts): the drain adds it to the
+ * environment it hands the runner for one turn, so a worker cannot move a Target's frontier. A node
+ * script never runs under it, and a repro that calls one in-process is standing where the node runs. The
+ * flag is therefore dropped here rather than inherited, because a worker that runs the pack's own gate
+ * from inside a worker is not the situation the pack creates for the code under test: inherited, it makes
+ * every repro that publishes an issue die with `operation 'create' is not allowed in read-only mode`.
+ * Dropped here, the suite a worker runs is the suite a session runs.
+ *
+ * The read-only rule keeps its own test: the repros that prove a worker cannot write pass an environment
+ * the pack itself built (`workerEnv`), and an explicit value still wins wherever a caller sets one.
+ */
+delete process.env[READONLY_ENV];
+
+/**
+ * The runner's conversation with one node: the three variables Archon sets for a node and nothing else.
+ * A fixture never inherits them, in any shape.
+ */
+const PROTOCOL_ENV = ["INPUTS_ISSUE", "INPUTS_CONFIG", "ARTIFACTS_DIR"];
 
 const drainDir = join(import.meta.dir, "..");
 const executeDir = join(import.meta.dir, "../../beads-dag-execute");
+const experimentDir = join(import.meta.dir, "../../beads-dag-experiment");
+const experimentRunDir = join(import.meta.dir, "../../beads-dag-experiment-run");
 
-/** The pack root, the folder both workflow folders live in. */
+/** The pack root, the folder the workflow folders live in. */
 export const packDir = join(import.meta.dir, "../..");
+
+/** The repository this pack is designed in: where the Target-side tool directories live. */
+export const repoRoot = join(packDir, "../../..");
 
 /**
  * Where one workflow folder's YAML and scripts are. A test names them the way the YAML does, so a
@@ -27,11 +55,31 @@ export const execute = {
   script: (name: string): string => join(executeDir, "scripts", `${name}.ts`),
 };
 
+/** The experiment executor's orchestrator folder: open, the pick/run loop. */
+export const experiment = {
+  dir: experimentDir,
+  yaml: join(experimentDir, "beads-dag-experiment.yaml"),
+  script: (name: string): string => join(experimentDir, "scripts", `${name}.ts`),
+};
+
+/** The per-ticket experiment node the orchestrator includes once per handle: one ticket, claimed and
+ * registered. A separate folder because Archon supports `fan_out:` on include nodes only. */
+export const experimentRun = {
+  dir: experimentRunDir,
+  yaml: join(experimentRunDir, "beads-dag-experiment-run.yaml"),
+  script: (name: string): string => join(experimentRunDir, "scripts", `${name}.ts`),
+};
+
 /** The drain's config, relative to the Target: what the tests write a store override into. */
 export const CONFIG_REL = ".scratch/beads-dag.yaml";
 
 /** The gate label: an issue without it is outside the frontier. */
 export const GATE_LABEL = "ready-for-agent";
+
+/** The experiment domain's type and label, spelled here so the fixture does not agree with the pack by
+ * construction: the pack's own spelling is what a drift in either direction must fail against. */
+export const EXPERIMENT_TYPE = "experiment";
+export const EXPERIMENT_LABEL = "experiment";
 
 export function mkTemp(prefix = "target-"): string {
   return mkdtempSync(join(tmpdir(), prefix));
@@ -268,6 +316,70 @@ export async function expectReject(
 }
 
 /**
+ * Publish one experiment ticket: type `experiment` and its own label, never the gate label. The type has
+ * to exist in the store before `bd` will create one, so it is registered first (`bd config set
+ * types.custom experiment`) — the one act a Target does itself for the domain.
+ */
+export function publishExperiment(root: string, opts: Omit<PublishOpts, "type" | "labels"> & { labels?: string[] }): PublishedIssue {
+  registerType(root, EXPERIMENT_TYPE);
+  return publishIssue(root, { ...opts, type: EXPERIMENT_TYPE, labels: opts.labels ?? [EXPERIMENT_LABEL] });
+}
+
+/**
+ * Copy the repository's own `tools/experiments/` into a Target, the way a Target gets the tool directory:
+ * copied in, no package. The repro drives the real verbs, so a tool directory that is not there fails this
+ * fixture loudly instead of reporting a green suite.
+ */
+export function installExperimentTools(root: string): string {
+  const from = join(repoRoot, "tools", "experiments");
+  if (!existsSync(join(from, "register.ts"))) {
+    throw new Error(`no ${from}/register.ts: the fixture drives the tool directory in the repository it lives in`);
+  }
+  const to = join(root, "tools", "experiments");
+  mkdirSync(dirname(to), { recursive: true });
+  cpSync(from, to, { recursive: true });
+  return to;
+}
+
+/**
+ * A stub `dvc` on a PATH of the repro's own: the run tool a machine without DVC does not have. What lands
+ * on PATH is a sh wrapper around the runtime this repro is already on, because a script on PATH needs an
+ * interpreter the suite cannot assume.
+ */
+export function writeStubDvc(binDir: string): string {
+  mkdirSync(binDir, { recursive: true });
+  const wrapper = join(binDir, "dvc");
+  writeFileSync(
+    wrapper,
+    `#!/bin/sh\nexec "${process.execPath}" "${join(import.meta.dir, "experiments-stub-dvc.ts")}" "$@"\n`,
+  );
+  chmodSync(wrapper, 0o755);
+  return wrapper;
+}
+
+/** The environment a node runs under with the stub run tool on PATH: the stub first, then the store.
+ * `DVC_BIN` is emptied so an ambient override cannot hide the stub; a caller that needs one sets it. */
+export function envWithRunTool(binDir: string, env: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
+  const path = [binDir, dirname(storeBinary()), process.env.PATH ?? ""].filter(Boolean).join(delimiter);
+  return { DVC_BIN: "", ...env, PATH: path };
+}
+
+/**
+ * The environment as a machine with no run tool: every PATH entry under which an executable `dvc`
+ * resolves is out, so the premise `open` refuses on is real and not a guess about one directory.
+ * The protocol variables go too, like everywhere a fixture builds an environment.
+ */
+export function envWithoutRunTool(): NodeJS.ProcessEnv {
+  const entries = (process.env.PATH ?? "")
+    .split(delimiter)
+    .filter((dir) => dir !== "" && !isExecutable(join(dir, "dvc")));
+  const env = envWithout();
+  env.PATH = entries.join(delimiter);
+  env.DVC_BIN = "";
+  return env;
+}
+
+/**
  * A store that is also a probe. Every command the pack asks the store is recorded first, with two facts
  * read at that moment: whether the process that spawned the store held the Main lock (the lock file's
  * pid against the wrapper's own parent), and how many parents Main's tip had (3 is a merge commit).
@@ -480,7 +592,7 @@ function fakePiSource(mode: string): string {
 
 export function envWithout(...names: string[]): NodeJS.ProcessEnv {
   const env = { ...process.env };
-  for (const name of names) delete env[name];
+  for (const name of [...PROTOCOL_ENV, ...names]) delete env[name];
   return env;
 }
 
@@ -493,7 +605,9 @@ export function envWithoutStore(): NodeJS.ProcessEnv {
   const entries = (process.env.PATH ?? "")
     .split(delimiter)
     .filter((dir) => dir !== "" && !isExecutable(join(dir, "bd")));
-  return { ...process.env, PATH: entries.join(delimiter) };
+  const env = envWithout();
+  env.PATH = entries.join(delimiter);
+  return env;
 }
 
 /**
@@ -508,10 +622,12 @@ export function runScript(
   env: NodeJS.ProcessEnv = {},
 ): { stdout: string; stderr: string; status: number | null } {
   const path = [dirname(storeBinary()), process.env.PATH ?? ""].filter(Boolean).join(delimiter);
+  const inherited = { ...process.env };
+  for (const name of PROTOCOL_ENV) delete inherited[name];
   const r = spawnSync(process.execPath, [script], {
     cwd,
     encoding: "utf8",
-    env: { ...process.env, PATH: path, ...env },
+    env: { ...inherited, PATH: path, ...env },
   });
   return { stdout: r.stdout ?? "", stderr: r.stderr ?? "", status: r.status };
 }

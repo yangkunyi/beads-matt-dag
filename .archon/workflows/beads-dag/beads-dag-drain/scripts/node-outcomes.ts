@@ -16,6 +16,13 @@ export const MERGED = "merged";
 /** Its work is not in Main. The reason is on stderr, and the drain goes on. */
 export const FAILED = "failed";
 
+/**
+ * An experiment ticket's outcome: the run's name is reserved and the ticket carries the run. One
+ * experiment ticket's claim and its registration are one act (beads-dag-experiment), so this token is
+ * the state a reader of the ticket sees when the run node ended cleanly.
+ */
+export const REGISTERED = "registered";
+
 /** A drain-end reader's outcome when the run merged nothing: there is no range to report on. */
 export const NOTHING_TO_REPORT = "nothing";
 

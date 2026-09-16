@@ -294,6 +294,18 @@ function quoteBatchToken(token: string): string {
 }
 
 /**
+ * Claim one issue by assignment: the status and the assignee in a single write.
+ *
+ * The experiment domain's claim is the assignment itself, so the status and the name land together and
+ * there is never a moment where a ticket is running and nobody can say whose run it is. `bd batch`
+ * cannot express the assignee (`claimIssues` above leaves it alone for that reason), so this is a plain
+ * `update`: one command is one transaction, and a ticket either carries both facts or neither.
+ */
+export function claimByAssignment(store: Store, target: string, id: string, assignee: string): void {
+  runStore(store, target, ["update", id, "-s", "in_progress", "--assignee", assignee]);
+}
+
+/**
  * Recompute the store's derived blocked-ness for every issue. The opening step runs it so a change made
  * outside the drain cannot leave a stale answer behind: `bd ready` trusts the denormalized flag, and
  * the recompute is the repair for a pulled or hand-edited store.
@@ -382,9 +394,21 @@ export function recordedFailures(store: Store, target: string, id: string): Reco
  * The two writes are separate transactions, and deliberately in this order: a crash between them leaves
  * the reason recorded and the issue still in progress, which the next drain's repair can read. The
  * other order would leave an issue that looks untouched with no reason anywhere.
+ *
+ * An experiment ticket's claim is an assignment (`claimByAssignment`), so the failure that gives the
+ * claim back has to clear the assignee too: `giveBackTheClaim` writes the two facts that make the claim
+ * - the status and the name - in one update, so nothing is left claimed.
  */
-export function recordFailedAttempt(store: Store, target: string, id: string, reason: string): void {
+export function recordFailedAttempt(
+  store: Store,
+  target: string,
+  id: string,
+  reason: string,
+  opts: { giveBackTheClaim?: boolean } = {},
+): void {
   const attempt = 1 + recordedFailures(store, target, id).length;
   runStore(store, target, ["comment", id, `attempt ${attempt} failed: ${reason}`]);
-  runStore(store, target, ["update", id, "-s", "open"]);
+  const reopen = ["update", id, "-s", "open"];
+  if (opts.giveBackTheClaim) reopen.push("--assignee", "");
+  runStore(store, target, reopen);
 }

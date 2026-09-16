@@ -1,0 +1,23 @@
+name: beads-dag-experiment-run
+description: |
+  One experiment ticket: claim it by assignment and reserve its run's name before anything executes, so a
+  session that reads the ticket sees a run and not a person, and an experiment cannot exist without a name
+  its record knows. Not a public entry: its issue input is required. Included by `beads-dag-experiment`
+  once per handle its pick offers, so it shares that run's ARTIFACTS_DIR.
+# The per-ticket instances of one experiment run fan out concurrently, so the block has to declare that it
+# does not mutate the checkout; an experiment's bytes are DVC's (temporary workspaces), not the Target's.
+mutates_checkout: false
+inputs:
+  issue:
+    required: true
+    description: Issue handle (feature/NN, as carried on the issue)
+  config:
+    default: .scratch/beads-dag.yaml
+    description: Path to YAML with model, thinkingLevel, concurrency, runner
+nodes:
+  - id: run
+    script: run
+    runtime: bun
+    with:
+      issue: $INPUTS.issue
+      config: $INPUTS.config

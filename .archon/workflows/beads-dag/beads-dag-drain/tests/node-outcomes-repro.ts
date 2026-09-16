@@ -11,8 +11,8 @@
  *                    one that did it
  */
 import { readFileSync } from "node:fs";
-import { EMPTY_PICK, FAILED, NOTHING_TO_REPORT, OPENED, nodeLine } from "../scripts/node-outcomes.ts";
-import { GATE_LABEL, drain, execute, expect, expectEqual, fakePiSdk, publishIssue, runScript, withTarget } from "./target.ts";
+import { EMPTY_PICK, FAILED, NOTHING_TO_REPORT, OPENED, REGISTERED, nodeLine } from "../scripts/node-outcomes.ts";
+import { GATE_LABEL, drain, execute, experiment, expect, expectEqual, fakePiSdk, publishIssue, runScript, withTarget } from "./target.ts";
 
 try {
   // The byte contract itself.
@@ -20,11 +20,16 @@ try {
   expectEqual("nodeLine adds nothing else", nodeLine("x").length, 2);
   expectEqual("the empty pick token is the bracket pair", EMPTY_PICK, "[]");
 
-  // The drain loop's end condition is that token, read out of the YAML the loop is written in.
-  const yaml = readFileSync(drain.yaml, "utf8");
-  const literal = /until_bash:\s*test\s+\$\w+\.output\s*=\s*"([^"]*)"/.exec(yaml)?.[1];
-  expect("the drain loop compares the pick token", literal !== undefined, yaml.slice(0, 200));
-  expectEqual("the loop's literal is EMPTY_PICK", literal, EMPTY_PICK);
+  // Each looping workflow's end condition is that token, read out of the YAML the loop is written in.
+  for (const { name, file } of [
+    { name: "drain", file: drain.yaml },
+    { name: "experiment", file: experiment.yaml },
+  ]) {
+    const yaml = readFileSync(file, "utf8");
+    const literal = /until_bash:\s*test\s+\$\w+\.output\s*=\s*"([^"]*)"/.exec(yaml)?.[1];
+    expect(`the ${name} loop compares the pick token`, literal !== undefined, yaml.slice(0, 200));
+    expectEqual(`the ${name} loop's literal is EMPTY_PICK`, literal, EMPTY_PICK);
+  }
 
   await withTarget(async (root, artifacts) => {
     // A work outcome: the token alone on stdout, and exit 0.
@@ -52,7 +57,7 @@ try {
     expect("the reason names the input", /INPUTS_ISSUE is required/.test(missing.stderr), missing.stderr);
 
     // The vocabulary this slice uses is the one the nodes print, not a second list.
-    for (const token of [OPENED, EMPTY_PICK, FAILED, NOTHING_TO_REPORT]) {
+    for (const token of [OPENED, EMPTY_PICK, FAILED, REGISTERED, NOTHING_TO_REPORT]) {
       expect("a token is non-empty and single-line", token.length > 0 && !token.includes("\n"), token);
     }
   });

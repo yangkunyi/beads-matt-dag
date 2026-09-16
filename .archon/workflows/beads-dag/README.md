@@ -41,7 +41,7 @@ store: /home/me/.local/node-v24.19.0-linux-x64/bin/bd   # optional; unset, bd is
 ```
 
 One module builds every store command for the pack: `beads-dag-drain/scripts/store.ts`. Nothing else in
-either workflow folder names the binary, and the suite asserts that. The store's derived blocked-ness is
+any workflow folder names the binary, and the suite asserts that. The store's derived blocked-ness is
 recomputed at open, so a change made outside the drain cannot leave a stale answer behind — and work a
 killed run left claimed is repaired there too, before pick (`Leftovers are repaired from git`, below).
 Open also refuses the run while the graph lets closure cross domains (`Closure never crosses domains`,
@@ -61,7 +61,9 @@ one Target are not a slower version of one: the second run's opening repair read
 claim as a leftover, and its `pick` can offer an issue the first is implementing right now. So `open`
 takes a Target-level **run lock** before it does anything, and a second drain **refuses** — exit 1, one
 line naming the holder, nothing claimed, nothing written — rather than waiting a run's length for a
-read that would be a run old when it woke.
+read that would be a run old when it woke. The lock is shared: a reading or an experiment run takes the
+same file at its own `open`, because a run that writes the store or Main must not interleave with
+another run of any kind, so one run at a time per Target is the rule for all of them.
 
 The lock is its own file, `beads-dag-run.lock` beside the Main lock `beads-dag.lock` in the Target's git
 directory. It must not be the Main lock's file: a run lock is held by the workflow runner process for
@@ -114,6 +116,36 @@ all-or-nothing), so a claim that fails part-way leaves nothing claimed. Every is
 this step left out is written to `pick-exclusions.json` in the run's artifacts, with the rule that
 excluded it — so a drain that did nothing can say why. The file is rewritten each cycle: it describes the
 cycle that just ran, and the cycles before it are in the store's own history.
+
+## The experiment executor
+
+`beads-dag-experiment` runs what the store says is an experiment. It is the one frontier that selects
+*by* the non-work type instead of excluding it: its `pick` keeps the store's ready answer minus the
+issues that are not type `experiment`, minus the experiment tickets that do not carry the `experiment`
+label, minus the ones this run already tried; what is left is ordered by handle — feature, then number,
+then slug — and truncated to `concurrency`, so several independent experiments are one run. Every issue
+left out is named with its rule in `pick-exclusions.json`. Unlike a drain, `pick` claims nothing: an
+experiment ticket's claim is an **assignment**.
+
+`open` is the drain's opening node's twin: it takes the shared run lock, preflights the store, prints
+the configuration line, and then refuses the half's two premises — the Target must carry its own copy of
+`tools/experiments/` (the peer of the reading pen: copied in, no package) and the machine must carry the
+run tool, `dvc`, resolved `DVC_BIN` first and then PATH. A machine that cannot run an experiment says so
+in one line at the opening node, before anything is claimed. It then repairs leftovers from the store:
+an experiment ticket a killed run left `in_progress` goes back to `open` with an ordinary
+`attempt N failed: leftover in progress…` comment and no assignee, because this domain's landing is a
+store event and a ticket still running is one whose close never happened. An implementation issue or a
+question in progress is left to its owner and named on stderr.
+
+The per-ticket node (`beads-dag-experiment-run/`, an `include:` because Archon supports `fan_out:` on
+include nodes only, sharing this run's artifacts) claims and registers in one act: one store write sets
+`in_progress` **and** the assignee, which is the run's own identity (`beads-dag-experiment/<run-id>`), so
+a session that reads the ticket sees a run and not a person; and the Target's own
+`tools/experiments/register.ts` queues the run under the ticket's name — `<NN>-<slug>`, the record's own
+basename — which reserves that name without executing anything and writes the registration into the
+run's artifacts. A registration that fails gives the claim back and puts the reason on the ticket as an
+ordinary failed attempt, so nothing is left claimed and the run says why. A ticket the run has worked is
+kept out of its own later cycles by `attempted-ids.json`, exactly as in a drain.
 
 ## One issue, one worktree, one brief
 
@@ -421,23 +453,26 @@ per release rather than per change, and never against a Target someone is draini
 beads-dag-drain/     the drain: open, the loop (pick, execute), then the two readers, and backup.ts,
                      the operator's one-command store backup
 beads-dag-execute/   one issue, start to finish. Not a public entry: its issue input is required.
+beads-dag-experiment/      the experiment executor: open, the pick/run loop
+beads-dag-experiment-run/  one experiment ticket: claim and registration. Not a public entry: its issue
+                           input is required, and its fork exists because a fan-out needs an include
 ```
 
 A workflow folder holds its YAML, its `scripts/` (each entry script is a node that folder's YAML declares),
 and, for the drain, its `tests/`. `backup.ts` sits beside the YAML rather than in `scripts/` because it is
-an operator command, not a node. A module may be imported across the two folders; a node body may not,
-because the folder whose YAML declares a node is where that node's script resolves.
+an operator command, not a node. A module may be imported across folders; a node body may not, because
+the folder whose YAML declares a node is where that node's script resolves.
 
-The modules the two workflows share, all in the drain's `scripts/`:
+The modules the workflows share, all in the drain's `scripts/`:
 
 | Module | Owns |
 |---|---|
-| `store.ts` | every store command: the binary, its arguments, its working directory |
+| `store.ts` | every store command: the binary, its arguments, its working directory, and the experiment domain's claim by assignment |
 | `naming.ts` | the one derivation of an issue's branch, worktree and body path |
 | `git.ts` | git plumbing: the two calls the readers and writers share |
 | `worktree.ts` | the issue's worktree: create, resume, bring Main in, and the standing-merge state |
 | `lock.ts` | the Main-write lock: one writer at a time on the Target's branch |
-| `run-lock.ts` | the run lock: one drain at a time per Target, the refusal a second one gets |
+| `run-lock.ts` | the run lock: one run at a time per Target, whatever kind of run it is, and the refusal a second one gets |
 | `main-writes.ts` | every git write to Main: the merge, the ignore line, the removal after a merge |
 | `settle.ts` | the one order: merge then record, or record the failure and reopen |
 | `reconcile.ts` | the repair of a killed run's leftovers: closed from git, or reopened with a reason |
