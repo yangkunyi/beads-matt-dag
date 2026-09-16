@@ -27,7 +27,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { runExperiment } from "../../beads-dag-experiment-run/scripts/run.ts";
-import { clearUnreadMarker, READING_NONE_LABEL } from "../../beads-dag-experiment/scripts/record.ts";
+import { clearUnreadMarker, READING_NONE_LABEL } from "../../beads-dag-experiment-run/scripts/record.ts";
 import type { PackAgentOpts, PackAgentResult } from "../../scripts/agent.ts";
 import { CLOSED, FAILED, nodeLine } from "../../scripts/node-outcomes.ts";
 import { roleSessionFile } from "../../scripts/pi-session.ts";

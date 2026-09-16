@@ -631,18 +631,22 @@ beads-dag-drain/     the drain: open, the loop (pick, execute), then the two rea
                      the operator's one-command store backup
 beads-dag-execute/   one issue, start to finish. Not a public entry: its issue input is required.
 beads-dag-inquiry/   the reading executor: open, the loop (pick, read), then report
-beads-dag-read/      one question, read and landed as a draft answer. Not a public entry: its issue
-                     input is required, and beads-dag-inquiry composes it, one instance per handle.
+beads-dag-read/      one question, read and landed as a draft answer. Owns the reading's labels and
+                     paths. Not a public entry: its issue input is required, and beads-dag-inquiry
+                     composes it, one instance per handle.
 beads-dag-experiment/      the experiment executor: open, the pick/run loop, then report
-beads-dag-experiment-run/  one experiment ticket: claim, registration, record and close. Not a public
-                           entry: its issue input is required, and its fork exists because a fan-out
-                           needs an include
+beads-dag-experiment-run/  one experiment ticket: claim, registration, record and close. Owns the
+                           record, the experiment-issue helper, and tool spawn. Not a public entry:
+                           its issue input is required, and its fork exists because a fan-out needs
+                           an include
 ```
 
 A workflow folder holds its YAML, its `scripts/` (each entry script is a node that folder's YAML declares),
 and, for the drain, its `tests/`. `backup.ts` sits beside the YAML rather than in `scripts/` because it is
 an operator command, not a node. Shared modules live in the pack kernel; a node body may not, because
-the folder whose YAML declares a node is where that node's script resolves.
+the folder whose YAML declares a node is where that node's script resolves. Vocabulary an include needs
+— the reading's labels and paths — lives in a module that include's folder owns, not in the parent and
+not in the kernel.
 
 The three per-ticket folders (`beads-dag-execute`, `beads-dag-read`, `beads-dag-experiment-run`) exist
 for one reason: **only an include or a workflow node can be fanned out over a runtime list**. The drain
@@ -698,3 +702,13 @@ own files to the same branch and neither may merge an issue, so what separates t
 merge and nothing else. Leftover repair stays in each executor (ADR-0002). Closed stays in the domain
 adapter that writes it (ADR-0006). The reading executor is a separate pack folder that imports the kernel,
 never a node in this one: a node here is a claim, a worktree and a merge, and reading has none of the three.
+
+The experiment-run include, in `beads-dag-experiment-run/scripts/` — the record, the experiment-issue
+helper, and tool spawn. The run node imports these from its own folder, not from the experiment parent.
+Parent YAML still includes the child; the folders stay split because Archon fans out include nodes only:
+
+| Module | Owns |
+|---|---|
+| `record.ts` | the experiment record: its path, its completeness check, the unread marker |
+| `ticket.ts` | the experiment-issue helper: the run's name and the run's identity |
+| `run-tool.ts` | tool spawn: the Target's register verb, and the premises that name it |

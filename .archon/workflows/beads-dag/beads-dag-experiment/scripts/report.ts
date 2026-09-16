@@ -37,7 +37,9 @@ import {
   type Store,
   type StoreIssue,
 } from "../../scripts/store.ts";
-import { READING_NONE_LABEL } from "./record.ts";
+
+/** The store label the completeness close stamps: a recorded result nobody has read. */
+const READING_NONE_LABEL = "reading:none";
 
 /** The run's close-out, relative to ARTIFACTS_DIR. */
 export const REPORT_MD_REL = "report.md";

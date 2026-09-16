@@ -33,7 +33,8 @@
 import { mkdirSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { commentIssue, inProgressIssues, recordFailedAttempt, reopenIssue, type Store, type StoreIssue } from "../../scripts/store.ts";
-import { DRAFT_LABEL, READING_LEG_LABEL } from "./inquiry.ts";
+import { DRAFT_LABEL } from "../../beads-dag-read/scripts/reading.ts";
+import { READING_LEG_LABEL } from "./inquiry.ts";
 
 /**
  * What one leftover was resolved to: the reading landed and the status was stale, the reading never
