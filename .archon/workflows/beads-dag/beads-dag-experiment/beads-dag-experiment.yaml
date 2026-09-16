@@ -1,0 +1,49 @@
+name: beads-dag-experiment
+description: |
+  Run experiment tickets on this Target: ask the store for the experiment frontier, claim each ticket by
+  assignment in the same act as its run's registration, and leave the run's own records behind. Install
+  this pack folder as ~/.archon/workflows/beads-dag; a symlink to a checkout is the intended install. The
+  Target does not commit .archon/.
+worktree:
+  enabled: false
+inputs:
+  config:
+    default: .scratch/beads-dag.yaml
+    description: Path to YAML with model, thinkingLevel, concurrency, runner
+nodes:
+  - id: open
+    script: open
+    runtime: bun
+    always_run: true
+    with:
+      config: $INPUTS.config
+  - id: experiments
+    depends_on: [open]
+    loop_group:
+      max_iterations: 500
+      until_bash: test $pick.output = "[]"
+      nodes:
+        - id: pick
+          script: pick
+          runtime: bun
+          with:
+            config: $INPUTS.config
+        # One experiment ticket per instance, over the handles pick offers, truncated to
+        # config.concurrency by pick itself. The per-ticket node is an `include:` rather than a script
+        # node because Archon supports `fan_out:` on workflow/include nodes only; the include shares this
+        # run's ARTIFACTS_DIR, which is where a registration has to land (`beads-dag-experiment-run`).
+        - id: run
+          include: beads-dag-experiment-run
+          depends_on: [pick]
+          with:
+            config: $INPUTS.config
+          fan_out:
+            # The throttle is config.concurrency: pick prints at most that many handles, so this launches
+            # the batch the pool can take, not everything that is startable.
+            items: "$pick.output"
+            as: issue
+            # all_success, deliberately: an instance's own outcome is exit 0 (`registered` and `failed`
+            # are both results), so an instance only fails when a node THREW - a Target whose tool
+            # directory vanished, a store that cannot be read - which has to fail the run rather than be
+            # an archon_failed marker the run reports success over.
+            join: all_success

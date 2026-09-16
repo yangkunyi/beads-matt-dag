@@ -10,7 +10,7 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { drain, execute, expect, inquiry, packDir } from "./target.ts";
+import { drain, execute, experiment, experimentRun, expect, inquiry, packDir } from "./target.ts";
 
 /** Every .ts in the pack outside tests/: both workflow folders' scripts, and the backup command. */
 function packSources(dir: string): string[] {
@@ -61,6 +61,9 @@ try {
     ["backup", join(drain.dir, "backup.ts")],
     ["inquiry open", join(inquiry.dir, "scripts", "open.ts")],
     ["inquiry pick", join(inquiry.dir, "scripts", "pick.ts")],
+    ["experiment open", join(experiment.dir, "scripts", "open.ts")],
+    ["experiment pick", join(experiment.dir, "scripts", "pick.ts")],
+    ["experiment run", join(experimentRun.dir, "scripts", "run.ts")],
   ] as const;
   for (const [name, file] of callers) {
     expect(

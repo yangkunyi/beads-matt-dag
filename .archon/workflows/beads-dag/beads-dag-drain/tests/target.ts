@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /** Shared Target fixture for the repro scripts: a temp git repo, a real store, store helpers, git, expects. */
 import { execFileSync, spawnSync } from "node:child_process";
-import { accessSync, chmodSync, constants, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { accessSync, chmodSync, constants, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { READONLY_ENV } from "../scripts/worker-env.ts";
@@ -26,11 +26,16 @@ delete process.env[READONLY_ENV];
 
 const drainDir = join(import.meta.dir, "..");
 const executeDir = join(import.meta.dir, "../../beads-dag-execute");
+const experimentDir = join(import.meta.dir, "../../beads-dag-experiment");
+const experimentRunDir = join(import.meta.dir, "../../beads-dag-experiment-run");
 const inquiryDir = join(import.meta.dir, "../../beads-dag-inquiry");
 const readDir = join(import.meta.dir, "../../beads-dag-read");
 
-/** The pack root, the folder both workflow folders live in. */
+/** The pack root, the folder the workflow folders live in. */
 export const packDir = join(import.meta.dir, "../..");
+
+/** The repository this pack is designed in: where the Target-side tool directories live. */
+export const repoRoot = join(packDir, "../../..");
 
 /**
  * Where one workflow folder's YAML and scripts are. A test names them the way the YAML does, so a
@@ -46,6 +51,21 @@ export const execute = {
   dir: executeDir,
   yaml: join(executeDir, "beads-dag-execute.yaml"),
   script: (name: string): string => join(executeDir, "scripts", `${name}.ts`),
+};
+
+/** The experiment executor's orchestrator folder: open, the pick/run loop. */
+export const experiment = {
+  dir: experimentDir,
+  yaml: join(experimentDir, "beads-dag-experiment.yaml"),
+  script: (name: string): string => join(experimentDir, "scripts", `${name}.ts`),
+};
+
+/** The per-ticket experiment node the orchestrator includes once per handle: one ticket, claimed and
+ * registered. A separate folder because Archon supports `fan_out:` on include nodes only. */
+export const experimentRun = {
+  dir: experimentRunDir,
+  yaml: join(experimentRunDir, "beads-dag-experiment-run.yaml"),
+  script: (name: string): string => join(experimentRunDir, "scripts", `${name}.ts`),
 };
 
 export const inquiry = {
@@ -71,6 +91,11 @@ export const CONFIG_REL = ".scratch/beads-dag.yaml";
 
 /** The gate label: an issue without it is outside the frontier. */
 export const GATE_LABEL = "ready-for-agent";
+
+/** The experiment domain's type and label, spelled here so the fixture does not agree with the pack by
+ * construction: the pack's own spelling is what a drift in either direction must fail against. */
+export const EXPERIMENT_TYPE = "experiment";
+export const EXPERIMENT_LABEL = "experiment";
 
 export function mkTemp(prefix = "target-"): string {
   return mkdtempSync(join(tmpdir(), prefix));
@@ -330,6 +355,70 @@ export async function expectReject(
   if (error === undefined) throw new Error(`${name}: did not throw`);
   const message = error instanceof Error ? error.message : String(error);
   if (!re.test(message)) throw new Error(`${name}: reason does not match ${re}: ${message}`);
+}
+
+/**
+ * Publish one experiment ticket: type `experiment` and its own label, never the gate label. The type has
+ * to exist in the store before `bd` will create one, so it is registered first (`bd config set
+ * types.custom experiment`) — the one act a Target does itself for the domain.
+ */
+export function publishExperiment(root: string, opts: Omit<PublishOpts, "type" | "labels"> & { labels?: string[] }): PublishedIssue {
+  registerType(root, EXPERIMENT_TYPE);
+  return publishIssue(root, { ...opts, type: EXPERIMENT_TYPE, labels: opts.labels ?? [EXPERIMENT_LABEL] });
+}
+
+/**
+ * Copy the repository's own `tools/experiments/` into a Target, the way a Target gets the tool directory:
+ * copied in, no package. The repro drives the real verbs, so a tool directory that is not there fails this
+ * fixture loudly instead of reporting a green suite.
+ */
+export function installExperimentTools(root: string): string {
+  const from = join(repoRoot, "tools", "experiments");
+  if (!existsSync(join(from, "register.ts"))) {
+    throw new Error(`no ${from}/register.ts: the fixture drives the tool directory in the repository it lives in`);
+  }
+  const to = join(root, "tools", "experiments");
+  mkdirSync(dirname(to), { recursive: true });
+  cpSync(from, to, { recursive: true });
+  return to;
+}
+
+/**
+ * A stub `dvc` on a PATH of the repro's own: the run tool a machine without DVC does not have. What lands
+ * on PATH is a sh wrapper around the runtime this repro is already on, because a script on PATH needs an
+ * interpreter the suite cannot assume.
+ */
+export function writeStubDvc(binDir: string): string {
+  mkdirSync(binDir, { recursive: true });
+  const wrapper = join(binDir, "dvc");
+  writeFileSync(
+    wrapper,
+    `#!/bin/sh\nexec "${process.execPath}" "${join(import.meta.dir, "experiments-stub-dvc.ts")}" "$@"\n`,
+  );
+  chmodSync(wrapper, 0o755);
+  return wrapper;
+}
+
+/** The environment a node runs under with the stub run tool on PATH: the stub first, then the store.
+ * `DVC_BIN` is emptied so an ambient override cannot hide the stub; a caller that needs one sets it. */
+export function envWithRunTool(binDir: string, env: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
+  const path = [binDir, dirname(storeBinary()), process.env.PATH ?? ""].filter(Boolean).join(delimiter);
+  return { DVC_BIN: "", ...env, PATH: path };
+}
+
+/**
+ * The environment as a machine with no run tool: every PATH entry under which an executable `dvc`
+ * resolves is out, so the premise `open` refuses on is real and not a guess about one directory.
+ * The protocol variables go too, like everywhere a fixture builds an environment.
+ */
+export function envWithoutRunTool(): NodeJS.ProcessEnv {
+  const entries = (process.env.PATH ?? "")
+    .split(delimiter)
+    .filter((dir) => dir !== "" && !isExecutable(join(dir, "dvc")));
+  const env = envWithout();
+  env.PATH = entries.join(delimiter);
+  env.DVC_BIN = "";
+  return env;
 }
 
 /**
