@@ -1,9 +1,11 @@
 name: beads-dag-experiment
 description: |
   Run experiment tickets on this Target: ask the store for the experiment frontier, claim each ticket by
-  assignment in the same act as its run's registration, and leave the run's own records behind. Install
-  this pack folder as ~/.archon/workflows/beads-dag; a symlink to a checkout is the intended install. The
-  Target does not commit .archon/.
+  assignment in the same act as its run's registration, and leave the run's own records behind. The run
+  ends by releasing the Target run lock its open took and writing attempted, closed-on-record, and failed
+  from attempted-ids and the store. Closed stays completeness of the record. Install this pack folder as
+  ~/.archon/workflows/beads-dag; a symlink to a checkout is the intended install. The Target does not
+  commit .archon/.
 worktree:
   enabled: false
 inputs:
@@ -47,3 +49,11 @@ nodes:
             # directory vanished, a store that cannot be read - which has to fail the run rather than be
             # an archon_failed marker the run reports success over.
             join: all_success
+  # The run's last node: release the lock open took, and write attempted, closed-on-record, and failed.
+  # Not drain review/summary and not inquiry's draft report; the experiment-run include stays out of it.
+  - id: report
+    script: report
+    runtime: bun
+    depends_on: [experiments]
+    with:
+      config: $INPUTS.config

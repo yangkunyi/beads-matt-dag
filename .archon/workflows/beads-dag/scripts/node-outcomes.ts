@@ -43,8 +43,9 @@ export const NOTHING_TO_REPORT = "nothing";
 
 /**
  * A run's outcome when it wrote the report a human reads afterwards: the drain's summary for the range
- * it merged, and the reading executor's `report` for the batch it read. Both write their artifact
- * unconditionally - a run that did nothing is a run the report has to be able to describe.
+ * it merged, the reading executor's `report` for the batch it read, and the experiment executor's
+ * `report` for attempted, closed-on-record, and failed. Each writes its artifact unconditionally - a
+ * run that did nothing is a run the report has to be able to describe.
  */
 export const REPORTED = "reported";
 

@@ -362,9 +362,10 @@ type StoreComment = { text: string };
  * Every comment the store holds for one issue, oldest first, as plain text.
  *
  * A comment is an event (§10.3): the reason a failed attempt carries, the draft line a landed reading
- * leaves, the release an opening repair writes. Two readers in two domains read them - the drain's
- * failures block and the reading executor's report - so the query and the narrowing of a comment's
- * shape live here, beside every other store command, rather than once per reader.
+ * leaves, the release an opening repair writes. The three executors' reports read them - the drain's
+ * failures block, the reading executor's report, and the experiment executor's close-out - so the query
+ * and the narrowing of a comment's shape live here, beside every other store command, rather than once
+ * per reader.
  */
 export function issueComments(store: Store, target: string, id: string): string[] {
   const command = `comments ${id} --json`;

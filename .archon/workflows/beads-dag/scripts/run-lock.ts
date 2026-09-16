@@ -32,7 +32,8 @@
  * to the processes running against this Target, kept afterwards nowhere.
  *
  * **Release is best effort.** A run that ends normally releases the lock from its last node - the
- * drain's `summary`, the reading executor's `report` - but no node but `open` is guaranteed to run: a
+ * drain's `summary`, the reading executor's `report`, the experiment executor's `report` - but no node
+ * but `open` is guaranteed to run: a
  * run that fails on the way, or is killed, leaves the file behind, and Archon then skips the nodes that
  * would have released it. That is exactly why the holder is a pid: the next run finds a dead one and
  * steals the lock instead of being refused forever. `open` also releases the lock when its own work
@@ -140,9 +141,9 @@ export function takeRunLock(target: string, artifactsDir: string): RunLock {
  * release must never fail the node that calls it, so it never throws.
  *
  * The run id is the lock's identity and the pid is only its liveness check, so the release compares the
- * run - not the pid - and works from any process of the run, `summary` in a real run and a test that
- * calls the reader in its own process included. A lock another run took carries another run id and is
- * left alone.
+ * run - not the pid - and works from any process of the run, `summary` or `report` in a real run and a
+ * test that calls the reader in its own process included. A lock another run took carries another run id
+ * and is left alone.
  */
 export function releaseRunLock(target: string, artifactsDir: string): boolean {
   try {
