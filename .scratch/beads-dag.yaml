@@ -7,8 +7,10 @@
 # no refusal, so four workers sit far below its ceiling. Raise it together with the account's allowance,
 # never one alone.
 #
-# model is deliberately unset: the runner takes its own default, which is micu/deepseek-flash as of
-# 2026-09-15 (the pi settings' defaultProvider/defaultModel).
+# model: operator asked 2026-09-16 to run the experiment-executor drain on grok 4.6 high.
+# Unset, the runner takes its own default (micu/deepseek-flash as of 2026-09-15).
+model: xai/grok-4.6
+thinkingLevel: high
 concurrency: 4
 
 # The Target's post-merge act (pack README, "The post-merge act"): one command this repository runs
