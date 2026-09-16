@@ -1,8 +1,9 @@
 /**
  * The overview as a self-contained HTML page: the DAG, the three filters, and a click-for-detail panel.
  *
- * All data is embedded. There is no socket and no second store — a browser talking to this file is
- * looking at the snapshot `bd` already answered.
+ * All data is embedded. A static snapshot has no socket — a browser talking to that file is looking
+ * at what `bd` already answered. A served page posts an operator reply as `bd comment`; Beads stays
+ * the only comment store.
  */
 
 import type { LiveRun, Overview, OverviewIssue } from "./model";
@@ -64,6 +65,7 @@ const CLIENT = String.raw`
   var issues = overview.issues || [];
   var edges = overview.edges || [];
   var live = overview.live || null;
+  var commentEndpoint = overview.commentEndpoint || null;
   var selected = null;
   var attempted = {};
   if (live && live.attempted) {
@@ -264,7 +266,38 @@ const CLIENT = String.raw`
         html += "</article>";
       }
     }
+    if (commentEndpoint) {
+      html += "<h3>Reply</h3>";
+      html += '<form id="reply-form">';
+      html += '<label class="sr-only" for="reply-text">Reply</label>';
+      html += '<textarea id="reply-text" name="text" rows="4" required></textarea>';
+      html += '<button type="submit">Comment</button>';
+      html += '<p class="muted">Saved as a store comment. Close, reading:, and labels stay with the session.</p>';
+      html += '<p class="muted" id="reply-status"></p>';
+      html += "</form>";
+    }
     panel.innerHTML = html;
+    var form = document.getElementById("reply-form");
+    if (form && commentEndpoint) {
+      form.addEventListener("submit", function (ev) {
+        ev.preventDefault();
+        var box = document.getElementById("reply-text");
+        var status = document.getElementById("reply-status");
+        var text = box ? box.value : "";
+        fetch(commentEndpoint, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ id: issue.id, text: text }),
+        }).then(function (res) {
+          if (!res.ok) {
+            return res.text().then(function (t) { throw new Error(t || String(res.status)); });
+          }
+          location.reload();
+        }).catch(function (err) {
+          if (status) status.textContent = String(err.message || err);
+        });
+      });
+    }
   }
 
   function showLive() {
@@ -355,14 +388,25 @@ g.node text.live-tag { font-size: 10px; font-weight: 700; fill: var(--live); tex
 #detail pre { white-space: pre-wrap; background: var(--bg); padding: 8px; border-radius: 6px; margin: 6px 0 0; font: 12px/1.4 ui-monospace, monospace; }
 #detail article { margin-bottom: 10px; }
 #detail article header { color: var(--muted); font-size: 12px; }
+#reply-form textarea { width: 100%; min-height: 72px; padding: 8px; border: 1px solid var(--line); border-radius: 6px; font: 13px/1.4 ui-sans-serif, system-ui, sans-serif; }
+#reply-form button { margin-top: 8px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
 .muted, .empty { color: var(--muted); }
 @media (max-width: 900px) {
   #layout { grid-template-columns: 1fr; }
 }
 `;
 
-export function renderPage(overview: Overview): string {
-	const data = JSON.stringify(overview).replace(/</g, "\\u003c");
+export type RenderPageOptions = {
+	/** When set, the detail panel posts a reply here as `bd comment`. Absent on a static snapshot. */
+	commentEndpoint?: string;
+};
+
+export function renderPage(overview: Overview, options: RenderPageOptions = {}): string {
+	const data = JSON.stringify({
+		...overview,
+		commentEndpoint: options.commentEndpoint ?? null,
+	}).replace(/</g, "\\u003c");
 	return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -410,6 +454,11 @@ export function pageCarriesDetail(html: string, issue: OverviewIssue): boolean {
 
 export function pageHasFilters(html: string): boolean {
 	return html.includes("<legend>Type</legend>") && html.includes("<legend>Status</legend>") && html.includes("<legend>Label</legend>");
+}
+
+/** A served page posts replies; a static snapshot does not. */
+export function pageOffersReply(html: string): boolean {
+	return html.includes('"commentEndpoint":"/comment"');
 }
 
 /** The page still names all three domains even when a live run of one kind is overlaid. */
