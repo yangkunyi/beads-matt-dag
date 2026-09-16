@@ -13,8 +13,8 @@
  */
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { git, gitOrThrow, revParse } from "./git.ts";
-import type { IssueNames } from "./naming.ts";
+import { git, gitOrThrow, revParse } from "../../scripts/git.ts";
+import type { IssueNames } from "../../scripts/naming.ts";
 
 /**
  * The Target's main branch: what merges land on. The drain runs in the Target's own checkout, so the

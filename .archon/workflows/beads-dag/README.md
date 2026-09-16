@@ -32,7 +32,7 @@ as a draft answer, and never closes a question - the last word is a session's, o
 The Target does not commit `.archon/`. Its config is optional and lives at `.scratch/beads-dag.yaml`; the
 keys are `model`, `thinkingLevel`, `concurrency`, `runner`, `store`, `verify`, `verifyTimeoutMs` and
 `postMerge`, and
-the defaults are in `beads-dag-drain/scripts/config.ts`. The opening node prints the effective
+the defaults are in `scripts/config.ts`. The opening node prints the effective
 configuration on stderr — one line naming each value and whether the Target's file or the built-in
 default supplied it, the store binary's resolution on PATH included — so a run says what it runs even
 when the Target has no file. `verify` is the pre-merge gate (`The pre-merge gate`, below): a shell
@@ -51,7 +51,7 @@ Target's config override first, then from the environment:
 store: /home/me/.local/node-v24.19.0-linux-x64/bin/bd   # optional; unset, bd is looked for on PATH
 ```
 
-One module builds every store command for the pack: `beads-dag-drain/scripts/store.ts`. Nothing else in
+One module builds every store command for the pack: `scripts/store.ts`. Nothing else in
 any workflow folder names the binary, and the suite asserts that. The store's derived blocked-ness is
 recomputed at open, so a change made outside the drain cannot leave a stale answer behind — and work a
 killed run left claimed is repaired there too, before pick (`Leftovers are repaired from git`, below).
@@ -620,6 +620,8 @@ per release rather than per change, and never against a Target someone is draini
 ## Layout
 
 ```
+scripts/             the pack kernel: store, locks, naming, roles, node protocol, agent seam — what
+                     every executor imports. Not a workflow.
 beads-dag-drain/     the drain: open, the loop (pick, execute), then the two readers, and backup.ts,
                      the operator's one-command store backup
 beads-dag-execute/   one issue, start to finish. Not a public entry: its issue input is required.
@@ -634,7 +636,7 @@ beads-dag-experiment-run/  one experiment ticket: claim, registration, record an
 
 A workflow folder holds its YAML, its `scripts/` (each entry script is a node that folder's YAML declares),
 and, for the drain, its `tests/`. `backup.ts` sits beside the YAML rather than in `scripts/` because it is
-an operator command, not a node. A module may be imported across the folders; a node body may not, because
+an operator command, not a node. Shared modules live in the pack kernel; a node body may not, because
 the folder whose YAML declares a node is where that node's script resolves.
 
 The three per-ticket folders (`beads-dag-execute`, `beads-dag-read`, `beads-dag-experiment-run`) exist
@@ -645,7 +647,8 @@ per ticket; a plain script node in those loops would have to be handed a list, n
 not run the batch at the run's `concurrency`. So the per-ticket unit is a composed block whose handle
 input is required, and each of its own nodes is a script that folder declares.
 
-The modules the pack's workflows share, all in the drain's `scripts/`:
+The pack kernel, in `scripts/` — inquiry, experiment, execute, and read import these, and do not reach
+through the drain executor to get them:
 
 | Module | Owns |
 |---|---|
@@ -653,20 +656,14 @@ The modules the pack's workflows share, all in the drain's `scripts/`:
 | `naming.ts` | the one derivation of an issue's branch, worktree and body path |
 | `git.ts` | git plumbing: the two calls the readers and writers share |
 | `doc-commit.ts` | the documents a run lands: one path-scoped commit per ticket, under the Main lock |
-| `worktree.ts` | the issue's worktree: create, resume, bring Main in, and the standing-merge state |
 | `lock.ts` | the Main-write lock: one writer at a time on the Target's branch |
 | `run-lock.ts` | the run lock: one run at a time per Target, whatever kind of run it is, and the refusal a second one gets |
-| `main-writes.ts` | every git write to Main: the merge, the ignore line, the removal after a merge |
-| `settle.ts` | the one order: merge then record, or record the failure and reopen |
-| `verify.ts` | the pre-merge gate: one Target command on the would-be-merged tree, with its clock |
-| `postmerge.ts` | the post-merge act: one Target command in the Target itself, after a merge has landed |
-| `reconcile.ts` | the repair of a killed run's leftovers: closed from git, or reopened with a reason |
 | `domains.ts` | the domain boundary: the non-work types, and the cross-domain graph preflight |
 | `failures.ts` | the failures block: the store's own failure records, and how they read |
-| `report-artifacts.ts` | the drain-end artifacts: the range's base, review.md/summary.md, the skip protocol |
-| `report-node.ts` | the skeleton both drain-end readers ride: the base, the run's range, the agents, the artifact, and the recognition of a range the pack wrote itself |
-| `review-position.ts` | the recorded position: the Target's local ref, how a run opens on it, how a review advances it |
-| `run-record.ts` | the run's own bookkeeping: the Main commits it made, the repairs its open performed, the range section |
+| `attempted.ts` | the run's attempted set: what this run has started, outside the store |
+| `config.ts` | the Target's optional config file, and the built-in defaults |
+| `node-entry.ts` | the node protocol: `INPUTS_*`, config, artifacts |
+| `node-outcomes.ts` | the tokens a node prints |
 | `roles.ts` | the role table: a role's arguments, session key, persona, brief, wall clock |
 | `prompt.ts` | the personas themselves |
 | `agent.ts` | the agent seam: one turn in, one session's report out, and the two runners behind it |
@@ -675,16 +672,24 @@ The modules the pack's workflows share, all in the drain's `scripts/`:
 | `dsh-runtime.ts` | the dsh wire protocol, with no pack nouns |
 | `worker-env.ts` | the environment a worker runs under (the store's read-only mode) |
 
-The table splits along one line: a module whose reason to exist is that a run **merges an issue's work**
-into Main — or reports on one that did — is the drain's alone (`main-writes.ts`, `settle.ts`, `verify.ts`,
-`worktree.ts`, `reconcile.ts`, `review-position.ts`, `run-record.ts`,
-`report-artifacts.ts`, `report-node.ts`). That is the closed rule, not the looser "writes Main": the two
-document-writing executors this pack is growing commit their own files to the same branch and neither may
-merge an issue, so what separates the drain's modules is the merge and nothing else. What a run shares
-with the rest of the flow is everything else: `store.ts`, `naming.ts` (the body path — the branch and
-worktree names are a run's own), `domains.ts`, `doc-commit.ts`, the path-scoped commit every run that
-lands documents uses, `failures.ts`, whose failure records are a store reading either report can make,
-`worker-env.ts`, whose read-only mode is the inquiry domain's AFK leg too, and the
-two locks (`lock.ts`, `run-lock.ts`), which any run that writes Main takes whatever it writes. The
-reading executor is a separate pack folder that imports those, never a node in this one: a node here is a
-claim, a worktree and a merge, and reading has none of the three.
+The drain's own, in `beads-dag-drain/scripts/` — a module whose reason to exist is that a run **merges an issue's work**
+into Main, or reports on one that did:
+
+| Module | Owns |
+|---|---|
+| `worktree.ts` | the issue's worktree: create, resume, bring Main in, and the standing-merge state |
+| `main-writes.ts` | every git write to Main: the merge, the ignore line, the removal after a merge |
+| `settle.ts` | the one order: merge then record, or record the failure and reopen |
+| `verify.ts` | the pre-merge gate: one Target command on the would-be-merged tree, with its clock |
+| `postmerge.ts` | the post-merge act: one Target command in the Target itself, after a merge has landed |
+| `reconcile.ts` | the repair of a killed run's leftovers: closed from git, or reopened with a reason |
+| `report-artifacts.ts` | the drain-end artifacts: the range's base, review.md/summary.md, the skip protocol |
+| `report-node.ts` | the skeleton both drain-end readers ride: the base, the run's range, the agents, the artifact, and the recognition of a range the pack wrote itself |
+| `review-position.ts` | the recorded position: the Target's local ref, how a run opens on it, how a review advances it |
+| `run-record.ts` | the run's own bookkeeping: the Main commits it made, the repairs its open performed, the range section |
+
+That is the closed rule, not the looser "writes Main": the two document-writing executors commit their
+own files to the same branch and neither may merge an issue, so what separates the drain's modules is the
+merge and nothing else. Leftover repair stays in each executor (ADR-0002). Closed stays in the domain
+adapter that writes it (ADR-0006). The reading executor is a separate pack folder that imports the kernel,
+never a node in this one: a node here is a claim, a worktree and a merge, and reading has none of the three.

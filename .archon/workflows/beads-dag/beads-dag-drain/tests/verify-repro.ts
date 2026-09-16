@@ -20,8 +20,8 @@
 import { appendFileSync, chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { executeIssue } from "../../beads-dag-execute/scripts/execute.ts";
-import type { AgentRunner, PackAgentOpts, PackAgentResult } from "../scripts/agent.ts";
-import { FAILED, MERGED, nodeLine } from "../scripts/node-outcomes.ts";
+import type { AgentRunner, PackAgentOpts, PackAgentResult } from "../../scripts/agent.ts";
+import { FAILED, MERGED, nodeLine } from "../../scripts/node-outcomes.ts";
 import { VERIFY_TAIL_CHARS, runVerify } from "../scripts/verify.ts";
 import {
   GATE_LABEL,

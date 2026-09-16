@@ -23,8 +23,8 @@ import {
   loadConfig,
   type ConfigKey,
   type PackConfig,
-} from "../scripts/config.ts";
-import { OPENED, nodeLine } from "../scripts/node-outcomes.ts";
+} from "../../scripts/config.ts";
+import { OPENED, nodeLine } from "../../scripts/node-outcomes.ts";
 import {
   CONFIG_REL,
   drain,

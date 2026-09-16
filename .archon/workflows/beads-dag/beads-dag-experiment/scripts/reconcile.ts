@@ -20,7 +20,7 @@
  * close would release work across a domain boundary the flow keeps closed. Each one the repair left
  * alone is named on stderr rather than silently skipped.
  */
-import { inProgressIssues, recordFailedAttempt, type Store } from "../../beads-dag-drain/scripts/store.ts";
+import { inProgressIssues, recordFailedAttempt, type Store } from "../../scripts/store.ts";
 import { EXPERIMENT_TYPE } from "./ticket.ts";
 
 /** What one leftover was resolved to: a released claim, or a status this executor leaves to its owner. */

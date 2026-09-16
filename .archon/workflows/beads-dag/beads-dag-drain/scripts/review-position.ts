@@ -17,7 +17,7 @@
  * Two writers, both here, both forward-only: the opening node records a position when there is none
  * (nothing has been reviewed yet), and the review node advances it once it has written findings.
  */
-import { git, gitOrThrow, isAncestor, revParse } from "./git.ts";
+import { git, gitOrThrow, isAncestor, revParse } from "../../scripts/git.ts";
 import { mainBranch } from "./worktree.ts";
 
 /** The Target-local ref that holds the position. Not a branch: it is not a line of work, only a place. */

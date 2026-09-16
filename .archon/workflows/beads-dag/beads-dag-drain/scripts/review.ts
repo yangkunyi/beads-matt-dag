@@ -1,6 +1,6 @@
-import { git } from "./git.ts";
-import { nodeLine } from "./node-outcomes.ts";
-import { axisHeading, reviewAxes } from "./prompt.ts";
+import { git } from "../../scripts/git.ts";
+import { nodeLine } from "../../scripts/node-outcomes.ts";
+import { axisHeading, reviewAxes } from "../../scripts/prompt.ts";
 import {
   isReviewError,
   REVIEW_MD_REL,

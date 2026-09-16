@@ -17,10 +17,10 @@
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { addAttempted, readAttempted } from "../../beads-dag-drain/scripts/attempted.ts";
-import { runNode } from "../../beads-dag-drain/scripts/node-entry.ts";
-import { nodeLine } from "../../beads-dag-drain/scripts/node-outcomes.ts";
-import { claimIssues, preflightStore } from "../../beads-dag-drain/scripts/store.ts";
+import { addAttempted, readAttempted } from "../../scripts/attempted.ts";
+import { runNode } from "../../scripts/node-entry.ts";
+import { nodeLine } from "../../scripts/node-outcomes.ts";
+import { claimIssues, preflightStore } from "../../scripts/store.ts";
 import { candidateHandle, readingFrontier, type ExcludedIssue } from "./frontier.ts";
 
 /** What the run keeps of this cycle's frontier: what was claimed, and why each other candidate was not. */

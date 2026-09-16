@@ -23,9 +23,9 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { executeIssue } from "../../beads-dag-execute/scripts/execute.ts";
-import type { PackAgentOpts, PackAgentResult } from "../scripts/agent.ts";
-import { FAILED, OPENED, nodeLine } from "../scripts/node-outcomes.ts";
-import { READONLY_ENV } from "../scripts/worker-env.ts";
+import type { PackAgentOpts, PackAgentResult } from "../../scripts/agent.ts";
+import { FAILED, OPENED, nodeLine } from "../../scripts/node-outcomes.ts";
+import { READONLY_ENV } from "../../scripts/worker-env.ts";
 import {
   GATE_LABEL,
   bd,

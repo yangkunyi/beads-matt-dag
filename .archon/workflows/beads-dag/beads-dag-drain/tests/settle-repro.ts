@@ -18,10 +18,10 @@
 import { existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { executeIssue } from "../../beads-dag-execute/scripts/execute.ts";
-import type { PackAgentResult } from "../scripts/agent.ts";
-import { withMainLock } from "../scripts/lock.ts";
+import type { PackAgentResult } from "../../scripts/agent.ts";
+import { withMainLock } from "../../scripts/lock.ts";
 import { removeMergedWorktree } from "../scripts/main-writes.ts";
-import { FAILED, MERGED, nodeLine } from "../scripts/node-outcomes.ts";
+import { FAILED, MERGED, nodeLine } from "../../scripts/node-outcomes.ts";
 import {
   GATE_LABEL,
   bd,
@@ -382,7 +382,7 @@ try {
     .sort();
   expectEqual("the only module that closes an issue is the settlement", closing, [
     "beads-dag-drain/scripts/settle.ts",
-    "beads-dag-drain/scripts/store.ts",
+    "scripts/store.ts",
   ]);
   const settlement = readFileSync(join(packDir, "beads-dag-drain", "scripts", "settle.ts"), "utf8");
   expect(

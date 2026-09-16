@@ -21,11 +21,11 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { executeIssue } from "../../beads-dag-execute/scripts/execute.ts";
-import type { AgentRunner, PackAgentResult } from "../scripts/agent.ts";
-import { DEFAULT_VERIFY_TIMEOUT_MS, type PackConfig } from "../scripts/config.ts";
+import type { AgentRunner, PackAgentResult } from "../../scripts/agent.ts";
+import { DEFAULT_VERIFY_TIMEOUT_MS, type PackConfig } from "../../scripts/config.ts";
 import { mergeSubject } from "../scripts/main-writes.ts";
-import { issueNames } from "../scripts/naming.ts";
-import { MERGED, NOTHING_TO_REPORT, OPENED, REPORTED, nodeLine } from "../scripts/node-outcomes.ts";
+import { issueNames } from "../../scripts/naming.ts";
+import { MERGED, NOTHING_TO_REPORT, OPENED, REPORTED, nodeLine } from "../../scripts/node-outcomes.ts";
 import {
   isReviewError,
   readReviewBase,
@@ -38,7 +38,7 @@ import {
   SUMMARY_MD_REL,
 } from "../scripts/report-artifacts.ts";
 import { reviewedPosition, advanceReviewed } from "../scripts/review-position.ts";
-import { releaseRunLock } from "../scripts/run-lock.ts";
+import { releaseRunLock } from "../../scripts/run-lock.ts";
 import { reviewDrain } from "../scripts/review.ts";
 import { summarizeDrain } from "../scripts/summary.ts";
 import {

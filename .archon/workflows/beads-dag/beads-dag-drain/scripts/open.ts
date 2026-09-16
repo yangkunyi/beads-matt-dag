@@ -1,12 +1,12 @@
-import { configLine } from "./config.ts";
-import { assertNoCrossDomainEdges } from "./domains.ts";
-import { runNode } from "./node-entry.ts";
-import { nodeLine, OPENED } from "./node-outcomes.ts";
+import { configLine } from "../../scripts/config.ts";
+import { assertNoCrossDomainEdges } from "../../scripts/domains.ts";
+import { runNode } from "../../scripts/node-entry.ts";
+import { nodeLine, OPENED } from "../../scripts/node-outcomes.ts";
 import { reconcileLeftovers } from "./reconcile.ts";
 import { writeReviewBase } from "./report-artifacts.ts";
-import { recordRunLock, releaseRunLock, stoleLine, takeRunLock } from "./run-lock.ts";
+import { recordRunLock, releaseRunLock, stoleLine, takeRunLock } from "../../scripts/run-lock.ts";
 import { writeRepairs } from "./run-record.ts";
-import { preflightStore, recomputeBlocked } from "./store.ts";
+import { preflightStore, recomputeBlocked } from "../../scripts/store.ts";
 
 /**
  * The drain's opening node, and its only always-run node.

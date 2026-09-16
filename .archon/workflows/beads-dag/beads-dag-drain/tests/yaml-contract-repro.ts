@@ -18,12 +18,12 @@
  */
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { DEFAULT_CONFIG_REL, DEFAULT_VERIFY_TIMEOUT_MS } from "../scripts/config.ts";
+import { DEFAULT_CONFIG_REL, DEFAULT_VERIFY_TIMEOUT_MS } from "../../scripts/config.ts";
 import { POST_MERGE_TIMEOUT_MS } from "../scripts/postmerge.ts";
-import { ROLES } from "../scripts/roles.ts";
-import { drain, execute, experiment, experimentRun, expect, expectEqual, inquiry, readBlock } from "./target.ts";
+import { ROLES } from "../../scripts/roles.ts";
+import { drain, execute, experiment, experimentRun, expect, expectEqual, inquiry, kernelDir, readBlock } from "./target.ts";
 
-const nodeEntry = readFileSync(join(drain.dir, "scripts/node-entry.ts"), "utf8");
+const nodeEntry = readFileSync(join(kernelDir, "node-entry.ts"), "utf8");
 
 type YamlNode = {
   id: string;

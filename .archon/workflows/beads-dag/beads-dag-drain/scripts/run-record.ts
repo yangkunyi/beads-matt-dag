@@ -20,7 +20,7 @@
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { git } from "./git.ts";
+import { git } from "../../scripts/git.ts";
 import type { Repair } from "./reconcile.ts";
 
 /** The commits this run added to Main: main-commits.json. */

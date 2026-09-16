@@ -16,7 +16,7 @@
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { nodeLine, EMPTY_PICK } from "../scripts/node-outcomes.ts";
+import { nodeLine, EMPTY_PICK } from "../../scripts/node-outcomes.ts";
 import {
   EXPERIMENT_LABEL,
   GATE_LABEL,

@@ -32,7 +32,7 @@
  */
 import { mkdirSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { commentIssue, inProgressIssues, recordFailedAttempt, reopenIssue, type Store, type StoreIssue } from "../../beads-dag-drain/scripts/store.ts";
+import { commentIssue, inProgressIssues, recordFailedAttempt, reopenIssue, type Store, type StoreIssue } from "../../scripts/store.ts";
 import { DRAFT_LABEL, READING_LEG_LABEL } from "./inquiry.ts";
 
 /**

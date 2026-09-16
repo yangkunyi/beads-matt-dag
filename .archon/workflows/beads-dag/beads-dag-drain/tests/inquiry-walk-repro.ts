@@ -40,8 +40,8 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { readQuestion } from "../../beads-dag-read/scripts/read.ts";
-import type { PackAgentOpts } from "../scripts/agent.ts";
-import { LANDED, OPENED, REPORTED, nodeLine } from "../scripts/node-outcomes.ts";
+import type { PackAgentOpts } from "../../scripts/agent.ts";
+import { LANDED, OPENED, REPORTED, nodeLine } from "../../scripts/node-outcomes.ts";
 import {
   bd,
   expect,

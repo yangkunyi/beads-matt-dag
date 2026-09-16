@@ -30,10 +30,10 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { readQuestion } from "../../beads-dag-read/scripts/read.ts";
-import type { PackAgentOpts, PackAgentResult } from "../scripts/agent.ts";
-import { FAILED, LANDED, nodeLine } from "../scripts/node-outcomes.ts";
-import { roleSessionFile } from "../scripts/pi-session.ts";
-import { READONLY_ENV } from "../scripts/worker-env.ts";
+import type { PackAgentOpts, PackAgentResult } from "../../scripts/agent.ts";
+import { FAILED, LANDED, nodeLine } from "../../scripts/node-outcomes.ts";
+import { roleSessionFile } from "../../scripts/pi-session.ts";
+import { READONLY_ENV } from "../../scripts/worker-env.ts";
 import {
   bd,
   expect,

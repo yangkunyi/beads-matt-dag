@@ -4,7 +4,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { accessSync, chmodSync, constants, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
-import { READONLY_ENV } from "../scripts/worker-env.ts";
+import { READONLY_ENV } from "../../scripts/worker-env.ts";
 
 /**
  * This process stands in for the drain runner, and a runner's environment is not a worker's.
@@ -33,6 +33,9 @@ const readDir = join(import.meta.dir, "../../beads-dag-read");
 
 /** The pack root, the folder the workflow folders live in. */
 export const packDir = join(import.meta.dir, "../..");
+
+/** The pack kernel: shared modules every executor imports. Not a workflow folder. */
+export const kernelDir = join(packDir, "scripts");
 
 /** The repository this pack is designed in: where the Target-side tool directories live. */
 export const repoRoot = join(packDir, "../../..");

@@ -28,23 +28,23 @@
  * in the working tree. The same checkpoint runs before the resume path's integration, so a killed
  * turn's dirty worktree cannot make git refuse the merge and lock the issue out before any agent runs.
  */
-import { defaultAgent, type AgentRunner } from "../../beads-dag-drain/scripts/agent.ts";
-import { loadConfig, type PackConfig } from "../../beads-dag-drain/scripts/config.ts";
-import { isAncestor, revParse } from "../../beads-dag-drain/scripts/git.ts";
-import { withMainLock } from "../../beads-dag-drain/scripts/lock.ts";
+import { defaultAgent, type AgentRunner } from "../../scripts/agent.ts";
+import { loadConfig, type PackConfig } from "../../scripts/config.ts";
+import { isAncestor, revParse } from "../../scripts/git.ts";
+import { withMainLock } from "../../scripts/lock.ts";
 import { ensureWorktreesIgnored } from "../../beads-dag-drain/scripts/main-writes.ts";
-import { bodyPath, issueNames } from "../../beads-dag-drain/scripts/naming.ts";
-import { runNode } from "../../beads-dag-drain/scripts/node-entry.ts";
-import { FAILED, MERGED, nodeLine } from "../../beads-dag-drain/scripts/node-outcomes.ts";
+import { bodyPath, issueNames } from "../../scripts/naming.ts";
+import { runNode } from "../../scripts/node-entry.ts";
+import { FAILED, MERGED, nodeLine } from "../../scripts/node-outcomes.ts";
 import {
   POST_MERGE_TIMEOUT_MS,
   postMergeLogName,
   runPostMerge,
 } from "../../beads-dag-drain/scripts/postmerge.ts";
-import { roleAgent } from "../../beads-dag-drain/scripts/roles.ts";
+import { roleAgent } from "../../scripts/roles.ts";
 import { recordMainCommit } from "../../beads-dag-drain/scripts/run-record.ts";
 import { settleFailed, settleMerged } from "../../beads-dag-drain/scripts/settle.ts";
-import { issueByHandle, preflightStore } from "../../beads-dag-drain/scripts/store.ts";
+import { issueByHandle, preflightStore } from "../../scripts/store.ts";
 import { runVerify } from "../../beads-dag-drain/scripts/verify.ts";
 import {
   abortMerge,

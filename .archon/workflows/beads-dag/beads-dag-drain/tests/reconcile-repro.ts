@@ -16,8 +16,8 @@
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { executeIssue } from "../../beads-dag-execute/scripts/execute.ts";
-import type { PackAgentResult } from "../scripts/agent.ts";
-import { MERGED, OPENED, nodeLine } from "../scripts/node-outcomes.ts";
+import type { PackAgentResult } from "../../scripts/agent.ts";
+import { MERGED, OPENED, nodeLine } from "../../scripts/node-outcomes.ts";
 import {
   GATE_LABEL,
   bd,

@@ -11,12 +11,13 @@
 import { chmodSync, readFileSync, statSync, utimesSync } from "node:fs";
 import { join } from "node:path";
 import { executeIssue } from "../../beads-dag-execute/scripts/execute.ts";
-import type { PackAgentOpts, PackAgentResult } from "../scripts/agent.ts";
-import { FAILED } from "../scripts/node-outcomes.ts";
+import type { PackAgentOpts, PackAgentResult } from "../../scripts/agent.ts";
+import { FAILED } from "../../scripts/node-outcomes.ts";
 import {
   GATE_LABEL,
   drain,
   expect,
+  kernelDir,
   expectEqual,
   publishIssue,
   withTarget,
@@ -97,7 +98,7 @@ try {
   });
 
   // The one module that derives the body's path contains no write at all, and no node writes the brief.
-  const naming = readFileSync(join(drain.dir, "scripts", "naming.ts"), "utf8");
+  const naming = readFileSync(join(kernelDir, "naming.ts"), "utf8");
   expect(
     "the naming rule carries no write of any kind",
     !/writeFileSync|appendFileSync|createWriteStream|cpSync|copyFileSync|renameSync|unlinkSync|rmSync|mkdirSync|chmodSync|utimesSync/.test(naming),

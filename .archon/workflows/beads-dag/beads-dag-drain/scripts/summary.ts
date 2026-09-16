@@ -1,13 +1,13 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { readAttempted } from "./attempted.ts";
-import { failedIssues, failuresBlock } from "./failures.ts";
-import { nodeLine } from "./node-outcomes.ts";
+import { readAttempted } from "../../scripts/attempted.ts";
+import { failedIssues, failuresBlock } from "../../scripts/failures.ts";
+import { nodeLine } from "../../scripts/node-outcomes.ts";
 import { REVIEW_MD_REL, reviewSkipReason, skipLine, SUMMARY_MD_REL } from "./report-artifacts.ts";
 import { reportNodeCli, runReportNode, type ReportNode, type ReportOpts } from "./report-node.ts";
 import { readMainCommits, readRepairs, rangeSection } from "./run-record.ts";
-import { releaseRunLock } from "./run-lock.ts";
-import { preflightStore } from "./store.ts";
+import { releaseRunLock } from "../../scripts/run-lock.ts";
+import { preflightStore } from "../../scripts/store.ts";
 
 /**
  * The second of the drain's two readers: one report over what the first one found, for the human who

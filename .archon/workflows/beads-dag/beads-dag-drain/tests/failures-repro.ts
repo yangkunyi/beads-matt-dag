@@ -17,13 +17,13 @@
  */
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { AgentRunner } from "../scripts/agent.ts";
-import { addAttempted } from "../scripts/attempted.ts";
-import { DEFAULT_VERIFY_TIMEOUT_MS, type PackConfig } from "../scripts/config.ts";
-import { FAILURES_HEADING } from "../scripts/failures.ts";
+import type { AgentRunner } from "../../scripts/agent.ts";
+import { addAttempted } from "../../scripts/attempted.ts";
+import { DEFAULT_VERIFY_TIMEOUT_MS, type PackConfig } from "../../scripts/config.ts";
+import { FAILURES_HEADING } from "../../scripts/failures.ts";
 import { mergeSubject } from "../scripts/main-writes.ts";
-import { issueNames } from "../scripts/naming.ts";
-import { NOTHING_TO_REPORT, OPENED, REPORTED, nodeLine } from "../scripts/node-outcomes.ts";
+import { issueNames } from "../../scripts/naming.ts";
+import { NOTHING_TO_REPORT, OPENED, REPORTED, nodeLine } from "../../scripts/node-outcomes.ts";
 import { REVIEW_BASE_REL, REVIEW_MD_REL, SUMMARY_MD_REL, skipLine, writeArtifact } from "../scripts/report-artifacts.ts";
 import { reviewDrain } from "../scripts/review.ts";
 import { summarizeDrain } from "../scripts/summary.ts";

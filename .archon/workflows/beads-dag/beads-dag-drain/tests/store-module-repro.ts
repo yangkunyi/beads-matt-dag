@@ -3,14 +3,14 @@
  * Repro: the store has exactly one module in the pack.
  *
  * Every store command the pack builds - the binary, its arguments, its working directory - is built by
- * beads-dag-drain/scripts/store.ts and nowhere else. This asserts that over the pack's own sources, as
+ * scripts/store.ts and nowhere else. This asserts that over the pack's own sources, as
  * text: no other module names the store binary, and no other module spawns something called a store
  * binary. The tests are out of the scan on purpose: the fixture builds its own commands so it stays an
  * independent reader of the store.
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { drain, execute, experiment, experimentRun, expect, inquiry, packDir } from "./target.ts";
+import { drain, execute, experiment, experimentRun, expect, inquiry, kernelDir, packDir } from "./target.ts";
 
 /** Every .ts in the pack outside tests/: both workflow folders' scripts, and the backup command. */
 function packSources(dir: string): string[] {
@@ -32,7 +32,7 @@ function withoutComments(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|\s)\/\/[^\n]*/g, "$1");
 }
 
-const storeModule = join(drain.dir, "scripts", "store.ts");
+const storeModule = join(kernelDir, "store.ts");
 const sources = packSources(packDir);
 
 try {

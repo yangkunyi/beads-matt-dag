@@ -16,17 +16,18 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { executeIssue } from "../../beads-dag-execute/scripts/execute.ts";
-import type { PackAgentResult } from "../scripts/agent.ts";
-import { loadConfig } from "../scripts/config.ts";
-import { isMainLockHeld, lockFilePath, withMainLock } from "../scripts/lock.ts";
+import type { PackAgentResult } from "../../scripts/agent.ts";
+import { loadConfig } from "../../scripts/config.ts";
+import { isMainLockHeld, lockFilePath, withMainLock } from "../../scripts/lock.ts";
 import { ensureWorktreesIgnored, mergeIntoMain, removeMergedWorktree } from "../scripts/main-writes.ts";
-import { preflightStore, recordFailedAttempt } from "../scripts/store.ts";
+import { preflightStore, recordFailedAttempt } from "../../scripts/store.ts";
 import {
   GATE_LABEL,
   bd,
   commitFile,
   drain,
   expect,
+  kernelDir,
   expectEqual,
   expectReject,
   gitC,
@@ -179,7 +180,7 @@ try {
     writeFileSync(
       holder,
       [
-        `import { withMainLock } from ${JSON.stringify(join(drain.dir, "scripts", "lock.ts"))};`,
+        `import { withMainLock } from ${JSON.stringify(join(kernelDir, "lock.ts"))};`,
         `await withMainLock(${JSON.stringify(root)}, async () => {`,
         `  process.stdout.write("held\\n");`,
         `  await new Promise((r) => setTimeout(r, 1200));`,

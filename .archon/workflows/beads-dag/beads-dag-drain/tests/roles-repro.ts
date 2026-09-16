@@ -13,12 +13,12 @@
  */
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { DEFAULT_VERIFY_TIMEOUT_MS, type PackConfig } from "../scripts/config.ts";
-import { roleSessionFile } from "../scripts/pi-session.ts";
-import { AGENT_WALL_MS, ROLES, roleAgent, type AgentRole } from "../scripts/roles.ts";
-import { conflictPersona, implementPersona } from "../scripts/prompt.ts";
-import { READONLY_ENV } from "../scripts/worker-env.ts";
-import { drain, execute, experimentRun, expect, expectEqual, readBlock } from "./target.ts";
+import { DEFAULT_VERIFY_TIMEOUT_MS, type PackConfig } from "../../scripts/config.ts";
+import { roleSessionFile } from "../../scripts/pi-session.ts";
+import { AGENT_WALL_MS, ROLES, roleAgent, type AgentRole } from "../../scripts/roles.ts";
+import { conflictPersona, implementPersona } from "../../scripts/prompt.ts";
+import { READONLY_ENV } from "../../scripts/worker-env.ts";
+import { drain, execute, experimentRun, expect, expectEqual, kernelDir, readBlock } from "./target.ts";
 
 /** The roles a node body names, read out of its source: the one call that says which role runs. */
 function rolesInScript(file: string): string[] {
@@ -126,7 +126,7 @@ try {
   expectEqual("the base is not modified", Object.keys(base).sort(), ["PATH"]);
 
   // The role table is data: nothing in it reads a file, an environment or a store.
-  const source = readFileSync(join(drain.dir, "scripts", "roles.ts"), "utf8");
+  const source = readFileSync(join(kernelDir, "roles.ts"), "utf8");
   expect("the role table reads no filesystem", !/node:fs|readFileSync|existsSync|readdirSync/.test(source), source.slice(0, 120));
   expect("the role table writes no store command", !/\bbd\b/.test(source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|\s)\/\/[^\n]*/g, "$1")), source.slice(0, 120));
 

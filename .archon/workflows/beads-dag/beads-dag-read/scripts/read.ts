@@ -41,21 +41,21 @@
  */
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { defaultAgent, type AgentRunner } from "../../beads-dag-drain/scripts/agent.ts";
-import { loadConfig, type PackConfig } from "../../beads-dag-drain/scripts/config.ts";
-import { commitDocuments, documentSubject, uncommittedUnder } from "../../beads-dag-drain/scripts/doc-commit.ts";
-import { revParse } from "../../beads-dag-drain/scripts/git.ts";
-import { bodyPath, issueNames } from "../../beads-dag-drain/scripts/naming.ts";
-import { runNode } from "../../beads-dag-drain/scripts/node-entry.ts";
-import { FAILED, LANDED, nodeLine } from "../../beads-dag-drain/scripts/node-outcomes.ts";
-import { roleAgent } from "../../beads-dag-drain/scripts/roles.ts";
+import { defaultAgent, type AgentRunner } from "../../scripts/agent.ts";
+import { loadConfig, type PackConfig } from "../../scripts/config.ts";
+import { commitDocuments, documentSubject, uncommittedUnder } from "../../scripts/doc-commit.ts";
+import { revParse } from "../../scripts/git.ts";
+import { bodyPath, issueNames } from "../../scripts/naming.ts";
+import { runNode } from "../../scripts/node-entry.ts";
+import { FAILED, LANDED, nodeLine } from "../../scripts/node-outcomes.ts";
+import { roleAgent } from "../../scripts/roles.ts";
 import {
   commentIssue,
   issueByHandle,
   openIssueWithLabel,
   preflightStore,
   recordFailedAttempt,
-} from "../../beads-dag-drain/scripts/store.ts";
+} from "../../scripts/store.ts";
 import { DRAFT_LABEL, draftLine, readingPaths, recordUnnamedPaths } from "../../beads-dag-inquiry/scripts/inquiry.ts";
 
 /** What one reading node needs: where to write, and the runner/seam a test replaces. */

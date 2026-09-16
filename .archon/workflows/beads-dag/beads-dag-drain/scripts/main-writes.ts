@@ -23,9 +23,9 @@
  */
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { branchExists, git, gitOrThrow, isAncestor, revParse } from "./git.ts";
-import { isMainLockHeld } from "./lock.ts";
-import type { IssueNames } from "./naming.ts";
+import { branchExists, git, gitOrThrow, isAncestor, revParse } from "../../scripts/git.ts";
+import { isMainLockHeld } from "../../scripts/lock.ts";
+import type { IssueNames } from "../../scripts/naming.ts";
 import { mainBranch } from "./worktree.ts";
 
 /**
