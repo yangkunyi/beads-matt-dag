@@ -10,7 +10,8 @@
  * It guards Main's git writes only (ADR-0002). The store's writes do not come through it: they have the
  * store's own transaction, and the settlement records an outcome after the merge rather than under the
  * lock. So the lock is taken by the callers of main-writes.ts - a whole compound step around the writes
- * it has to make atomic - and by nothing else.
+ * it has to make atomic - and by the document commit (`doc-commit.ts`), which lands a run's own documents
+ * on the same branch in one path-scoped commit.
  *
  * Re-entrancy: a call made while this process already holds the lock joins the transaction instead of
  * waiting for itself. That is what lets a compound step call one writer after another and still hold one

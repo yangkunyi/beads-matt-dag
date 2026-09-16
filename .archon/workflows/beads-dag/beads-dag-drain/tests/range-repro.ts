@@ -22,7 +22,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { executeIssue } from "../../beads-dag-execute/scripts/execute.ts";
 import type { AgentRunner, PackAgentResult } from "../scripts/agent.ts";
-import type { PackConfig } from "../scripts/config.ts";
+import { DEFAULT_VERIFY_TIMEOUT_MS, type PackConfig } from "../scripts/config.ts";
 import { mergeSubject } from "../scripts/main-writes.ts";
 import { issueNames } from "../scripts/naming.ts";
 import { MERGED, NOTHING_TO_REPORT, OPENED, REPORTED, nodeLine } from "../scripts/node-outcomes.ts";
@@ -116,6 +116,9 @@ const CONFIG: PackConfig = {
   concurrency: 4,
   runner: "pi",
   store: storeBinary(),
+  verify: "",
+  verifyTimeoutMs: DEFAULT_VERIFY_TIMEOUT_MS,
+  postMerge: "",
 };
 
 /** Open one run the way the runner would, and return the base it recorded. */

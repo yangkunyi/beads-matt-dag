@@ -49,7 +49,8 @@ archon workflow run beads-dag-drain --detach
 The drain acts on the Target's Main and its store, and disables Archon's own worktree isolation: each
 issue gets its own under the Target's `worktrees/`. It opens the store — preflight, then repair of a
 killed run's leftovers — loops `pick` (claims up to `concurrency` eligible issues in one transaction)
-and `execute` (one issue per worktree; merge first, record after), then `review` and `summary`; it ends
+and `execute` (one issue per worktree; the Target's `verify` command gates the tree before each merge;
+merge first, record after), then `review` and `summary`; it ends
 when `pick` finds nothing eligible. A blocker's closure inside the run releases its dependent into the
 same run — `pick` asks the store again on every cycle — so holding a dependent for a later drain takes
 the brake, not the edge.
@@ -77,6 +78,9 @@ The Target's config is optional at `.scratch/beads-dag.yaml`:
 | `concurrency` | how many issues one `pick` starts at once |
 | `runner` | which runner spends a turn: `pi` (the default) or `dsh` |
 | `store` | the store binary; the contract's resolution puts this key first, then `bd` on PATH |
+| `verify` | the pre-merge gate: one shell command, run in the issue's worktree on the tree that would be merged, immediately before each merge. Unset means no gate runs and nothing is recorded |
+| `verifyTimeoutMs` | how long one gate run may take before its process group is killed and the attempt fails (default 15 min) |
+| `postMerge` | the post-merge act: one shell command, run **in the Target** after a merge has landed, for keeping something true outside the Target's own git tree (the design repo's own refresh of the machine's installed copies). Unset means no act runs and nothing is recorded |
 
 Absent is fine. The defaults are in
 `~/.archon/workflows/beads-dag/beads-dag-drain/scripts/config.ts`.
@@ -160,7 +164,9 @@ settings for it.
 --json` for each node's state and output, and the run's log at
 `~/.archon/workspaces/_local/<repo>/logs/<run-id>.jsonl` for what a node printed. `open` writes one line
 naming the configuration the run is using — `beads-dag: config: runner=…, model=…, thinkingLevel=…,
-concurrency=…, store=…`, each value followed by its source: `(default)`, the Target's resolved config
+concurrency=…, store=…, verify=…, verifyTimeoutMs=…, postMerge=…`, each value followed by its source:
+`(default)`, the
+Target's resolved config
 file, or `PATH` for a store found there — so what actually ran is read rather than guessed. A refusal —
 no store in the Target, no store binary, a blocking relation across the domains, another drain already
 running against this Target — names the fix. It can arrive at `open`, where it writes nothing at all, or
@@ -179,6 +185,21 @@ never from a wrapper's exit code — `archon workflow wait` prints `Run … fail
 **The store cannot be found.** A machine that drains has the store binary on PATH, or the Target's
 `store:` key pointing at it; preflight names every PATH entry it searched and refuses the run before
 `pick`. The contract owns the resolution order.
+
+**An issue failed at the gate.** If the Target configured `verify`, the reason on the issue says so:
+`attempt N failed: verify failed: …`, followed by the tail of the gate's own output. Nothing merged, so
+nothing closed, and the issue is `open` for the next drain; the full output is in the run's
+`verify-1.log` (the gate after the implementer's turn) or `verify-2.log` (the gate after a conflict turn),
+under the run's artifacts directory. `attempt N failed: verify failed: timed out after Nms: …` means the
+gate outlived `verifyTimeoutMs` and its process group was killed. The command is the Target's own — fix
+the tree or the command, or brake the issue while you do.
+
+**The Target's post-merge act failed.** It is not an issue failure and must not be read as one: the merge
+landed, the issue closed, and the merge stands. The act's failure is on the run's stderr — `merged and
+recorded, but the Target's post-merge command failed: …` — and its whole output is in the run's
+`post-merge-<handle>.log`. What it means is that whatever the Target keeps true outside its git tree
+(the machine's installed copies, in this repository) is now behind Main: `bun tools/flow.ts check` says
+by how much, and `install` fixes it.
 
 **An issue failed twice.** The reason is a comment on the issue and the issue is `open` again, so the
 store's own ready answer — the query the contract's frontier row names — is the whole retry channel, and

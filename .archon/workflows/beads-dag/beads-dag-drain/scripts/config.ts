@@ -24,10 +24,34 @@ export type PackConfig = {
   runner: Runner;
   /** Path to the store binary. Unset, the store module looks for `bd` on PATH. */
   store: string | undefined;
+  /**
+   * The Target's pre-merge gate: one shell command, run with `sh -c` in the issue's worktree, on the
+   * tree that would be merged. Empty (the default) means this Target has not configured one - no
+   * process, no record, no behavior change. It comes from this file and never from an issue body: what
+   * a worker can write must not decide what runs before a merge (verify.ts).
+   */
+  verify: string;
+  /** How long one gate run may take before its process group is killed and the attempt fails. */
+  verifyTimeoutMs: number;
+  /**
+   * The Target's post-merge act: one shell command, run with `sh -c` in the Target itself, after a merge
+   * has landed (postmerge.ts). Empty (the default) means this Target has none - no process, no record.
+   * It is where a Target keeps something outside its own git tree true: refreshing an installed copy of
+   * the flow, regenerating a document, syncing an index. Like `verify`, it comes from this file and never
+   * from an issue body.
+   */
+  postMerge: string;
 };
 
 /** The Target's config, relative to it. The workflow hands this path to every node as INPUTS_CONFIG. */
 export const DEFAULT_CONFIG_REL = ".scratch/beads-dag.yaml";
+
+/**
+ * How long one gate run may take by default. Exported because the execute node's own timeout has to
+ * outlast two gate runs on top of its two agent turns, and the workflow-contract test reads this same
+ * constant when it checks that budget: a later edit here cannot silently make the node too short.
+ */
+export const DEFAULT_VERIFY_TIMEOUT_MS = 15 * 60 * 1000;
 
 const DEFAULTS: PackConfig = {
   model: undefined,
@@ -35,11 +59,23 @@ const DEFAULTS: PackConfig = {
   concurrency: 4,
   runner: "pi",
   store: undefined,
+  verify: "",
+  verifyTimeoutMs: DEFAULT_VERIFY_TIMEOUT_MS,
+  postMerge: "",
 };
 
 /** The keys the pack reads, in the order the configuration line names them; every other top-level key
  * is ignored. */
-export const CONFIG_KEYS = ["runner", "model", "thinkingLevel", "concurrency", "store"] as const;
+export const CONFIG_KEYS = [
+  "runner",
+  "model",
+  "thinkingLevel",
+  "concurrency",
+  "store",
+  "verify",
+  "verifyTimeoutMs",
+  "postMerge",
+] as const;
 export type ConfigKey = (typeof CONFIG_KEYS)[number];
 
 /**
@@ -197,6 +233,35 @@ export function parseConfigText(text: string, file: string): ParsedConfig {
           fromFile.add(key);
         }
         break;
+      case "verify":
+        // A command is a string, empty included: `verify: ""` is the Target saying it has none, which is
+        // the same behavior as the key being absent, but the reading still records the file as its source.
+        // Anything else - a number, a bare `true`, a null - is refused rather than ignored: `config.verify`
+        // being empty means no gate runs, and a Target that meant to configure one must not be left with
+        // silence there.
+        if (typeof value !== "string") {
+          throw new Error(`invalid verify in ${file}: ${JSON.stringify(value)} (expected a shell command string)`);
+        }
+        config.verify = value;
+        fromFile.add(key);
+        break;
+      case "verifyTimeoutMs":
+        if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
+          throw new Error(`invalid verifyTimeoutMs in ${file}: ${String(value)}`);
+        }
+        config.verifyTimeoutMs = value;
+        fromFile.add(key);
+        break;
+      case "postMerge":
+        // The same refusal as `verify`, for the same reason: an empty command means nothing runs after a
+        // merge, so a Target that wrote something that is not a string must hear about it rather than be
+        // left with silence where it meant to keep its machine copies honest.
+        if (typeof value !== "string") {
+          throw new Error(`invalid postMerge in ${file}: ${JSON.stringify(value)} (expected a shell command string)`);
+        }
+        config.postMerge = value;
+        fromFile.add(key);
+        break;
       case "thinkingLevel":
         if (typeof value !== "string" || !isThinkingLevel(value)) {
           throw new Error(`invalid thinkingLevel in ${file}: ${String(value)}`);
@@ -272,6 +337,9 @@ export function configLine(config: PackConfig, provenance: ConfigProvenance, sto
     thinkingLevel: config.thinkingLevel,
     concurrency: String(config.concurrency),
     store: store.binary,
+    verify: config.verify === "" ? "(none)" : config.verify,
+    verifyTimeoutMs: String(config.verifyTimeoutMs),
+    postMerge: config.postMerge === "" ? "(none)" : config.postMerge,
   };
   const sources: Record<ConfigKey, string> = {
     runner: sourceOf("runner"),
@@ -279,6 +347,9 @@ export function configLine(config: PackConfig, provenance: ConfigProvenance, sto
     thinkingLevel: sourceOf("thinkingLevel"),
     concurrency: sourceOf("concurrency"),
     store: store.source === "environment" ? "PATH" : file ?? "config",
+    verify: sourceOf("verify"),
+    verifyTimeoutMs: sourceOf("verifyTimeoutMs"),
+    postMerge: sourceOf("postMerge"),
   };
   return `beads-dag: config: ${CONFIG_KEYS.map((key) => `${key}=${values[key]} (${sources[key]})`).join(", ")}`;
 }

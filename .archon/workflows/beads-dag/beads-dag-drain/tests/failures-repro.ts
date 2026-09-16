@@ -19,7 +19,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { AgentRunner } from "../scripts/agent.ts";
 import { addAttempted } from "../scripts/attempted.ts";
-import type { PackConfig } from "../scripts/config.ts";
+import { DEFAULT_VERIFY_TIMEOUT_MS, type PackConfig } from "../scripts/config.ts";
 import { FAILURES_HEADING } from "../scripts/failures.ts";
 import { mergeSubject } from "../scripts/main-writes.ts";
 import { issueNames } from "../scripts/naming.ts";
@@ -83,6 +83,9 @@ const CONFIG: PackConfig = {
   concurrency: 4,
   runner: "pi",
   store: storeBinary(),
+  verify: "",
+  verifyTimeoutMs: DEFAULT_VERIFY_TIMEOUT_MS,
+  postMerge: "",
 };
 
 /** Run the report pair the way the drain does, over one artifacts dir, and read back both. */

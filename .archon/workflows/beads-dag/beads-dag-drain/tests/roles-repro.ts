@@ -13,12 +13,12 @@
  */
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import type { PackConfig } from "../scripts/config.ts";
+import { DEFAULT_VERIFY_TIMEOUT_MS, type PackConfig } from "../scripts/config.ts";
 import { roleSessionFile } from "../scripts/pi-session.ts";
 import { AGENT_WALL_MS, ROLES, roleAgent, type AgentRole } from "../scripts/roles.ts";
 import { conflictPersona, implementPersona } from "../scripts/prompt.ts";
 import { READONLY_ENV } from "../scripts/worker-env.ts";
-import { drain, execute, expect, expectEqual } from "./target.ts";
+import { drain, execute, expect, expectEqual, readBlock } from "./target.ts";
 
 /** The roles a node body names, read out of its source: the one call that says which role runs. */
 function rolesInScript(file: string): string[] {
@@ -26,9 +26,20 @@ function rolesInScript(file: string): string[] {
 }
 
 /** Every node body this pack has: the workflows' entry scripts, taken from their YAMLs. */
-const nodeBodies = ["open", "pick", "review", "summary"].map((name) => drain.script(name)).concat([execute.script("execute")]);
+const nodeBodies = ["open", "pick", "review", "summary"]
+  .map((name) => drain.script(name))
+  .concat([execute.script("execute"), readBlock.script("read")]);
 
-const CONFIG: PackConfig = { model: "some/model", thinkingLevel: "high", concurrency: 2, runner: "pi", store: undefined };
+const CONFIG: PackConfig = {
+  model: "some/model",
+  thinkingLevel: "high",
+  concurrency: 2,
+  runner: "pi",
+  store: undefined,
+  verify: "",
+  verifyTimeoutMs: DEFAULT_VERIFY_TIMEOUT_MS,
+  postMerge: "",
+};
 
 try {
   // One entry per role, and each entry declares the whole role.

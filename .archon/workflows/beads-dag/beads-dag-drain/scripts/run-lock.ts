@@ -1,12 +1,13 @@
 /**
- * The run lock: one drain at a time per Target.
+ * The run lock: one run at a time per Target, whatever kind of run it is.
  *
- * `lock.ts` serialises the writes that move Main; this serialises whole runs. Two drains against one
+ * `lock.ts` serialises the writes that move Main; this serialises whole runs. Two runs against one
  * Target are not a slower version of one run: the second run's opening repair reads the first run's
- * live claim as a leftover, and its `pick` can offer an issue the first run is implementing right now.
- * So a drain takes this lock before it does anything, and a second drain **refuses** - exit 1, one line
- * naming the holder, nothing claimed and nothing written. It must not wait: the wait would be a run's
- * length, and by the time a waiter woke up the state it meant to read would be a run old.
+ * live claim as a leftover, and its `pick` can offer an issue the first run is implementing right now -
+ * and both a drain and a reading executor commit to Main. So a run takes this lock before it does
+ * anything, and a second run **refuses** - exit 1, one line naming the holder, nothing claimed and
+ * nothing written. It must not wait: the wait would be a run's length, and by the time a waiter woke up
+ * the state it meant to read would be a run old.
  *
  * **Its own file.** The lock is `beads-dag-run.lock` beside the Main lock `beads-dag.lock` in the
  * Target's git directory, never the Main lock's file. The Main lock's pid check would misread a run
@@ -28,13 +29,14 @@
  * cheaply stealable when its holder dies. A store field would be visible to every store reader, backed
  * up and restorable into a state that says "held" with nothing holding it, and it has no pid to check.
  * It is run bookkeeping, like `attempted-ids.json` (ADR-0005): written beside the run, meaningful only
- * to the processes draining this Target, kept afterwards nowhere.
+ * to the processes running against this Target, kept afterwards nowhere.
  *
- * **Release is best effort.** A run that ends normally releases the lock from `summary`, its last node,
- * but no node but `open` is guaranteed to run: a drain that fails on the way - or is killed - leaves the
- * file behind, and Archon then skips the nodes that would have released it. That is exactly why the
- * holder is a pid: the next drain finds a dead one and steals the lock instead of being refused
- * forever. `open` also releases the lock when its own work fails before returning.
+ * **Release is best effort.** A run that ends normally releases the lock from its last node - the
+ * drain's `summary`, the reading executor's `report` - but no node but `open` is guaranteed to run: a
+ * run that fails on the way, or is killed, leaves the file behind, and Archon then skips the nodes that
+ * would have released it. That is exactly why the holder is a pid: the next run finds a dead one and
+ * steals the lock instead of being refused forever. `open` also releases the lock when its own work
+ * fails before returning.
  *
  * The record the run leaves behind (`run-lock.json`, one line in ARTIFACTS_DIR) is the other half: an
  * operator refused by this lock can read the holder run's artifacts and see what held it.
@@ -86,8 +88,8 @@ function holderText(holder: LockHolder): string {
 /** The refusal a live holder earns: one line naming the holder, the lock, and the operator's move. */
 function refusalLine(path: string, holder: LockHolder): string {
   return (
-    `beads-dag: refusing to start: another drain is running (${holderText(holder)}, lock ${path}); ` +
-    `one drain at a time per Target - wait for it to end, or kill it and the next drain steals a dead holder's lock`
+    `beads-dag: refusing to start: another run is running (${holderText(holder)}, lock ${path}); ` +
+    `one run at a time per Target - wait for it to end, or kill it and the next run steals a dead holder's lock`
   );
 }
 

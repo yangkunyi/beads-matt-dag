@@ -18,9 +18,10 @@
  */
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { DEFAULT_CONFIG_REL } from "../scripts/config.ts";
+import { DEFAULT_CONFIG_REL, DEFAULT_VERIFY_TIMEOUT_MS } from "../scripts/config.ts";
+import { POST_MERGE_TIMEOUT_MS } from "../scripts/postmerge.ts";
 import { ROLES } from "../scripts/roles.ts";
-import { drain, execute, experiment, experimentRun, expect, expectEqual } from "./target.ts";
+import { drain, execute, experiment, experimentRun, expect, expectEqual, inquiry, readBlock } from "./target.ts";
 
 const nodeEntry = readFileSync(join(drain.dir, "scripts/node-entry.ts"), "utf8");
 
@@ -47,7 +48,7 @@ const inputsRead = new Set(nodeEntry.match(/INPUTS_[A-Z_]+/g) ?? []);
  * whether it is a CLI entry. The roles are read out of the source (`role: "implement"`), which is the
  * one place a node says which role it runs. */
 const scriptsByDir = new Map<string, Map<string, { entry: boolean; source: string }>>();
-for (const dir of [drain.dir, execute.dir, experiment.dir, experimentRun.dir]) {
+for (const dir of [drain.dir, execute.dir, inquiry.dir, readBlock.dir, experiment.dir, experimentRun.dir]) {
   const byName = new Map<string, { entry: boolean; source: string }>();
   for (const file of readdirSync(join(dir, "scripts"))) {
     if (!file.endsWith(".ts")) continue;
@@ -151,6 +152,8 @@ function requiredInputs(yaml: string): string[] {
 const yamls = [
   { file: "beads-dag-drain.yaml", dir: drain.dir },
   { file: "beads-dag-execute.yaml", dir: execute.dir },
+  { file: "beads-dag-inquiry.yaml", dir: inquiry.dir },
+  { file: "beads-dag-read.yaml", dir: readBlock.dir },
   { file: "beads-dag-experiment.yaml", dir: experiment.dir },
   { file: "beads-dag-experiment-run.yaml", dir: experimentRun.dir },
 ].map((w) => ({ ...w, text: readFileSync(join(w.dir, w.file), "utf8") }));
@@ -237,17 +240,30 @@ try {
 
     // The node's timeout is the runner's side of the role's wall clock: a node names the roles it runs,
     // the role table says how long each may run, and the node's own budget has to cover all of them
-    // (ticket 08 runs two turns in one node, so the sum, not the maximum).
+    // (ticket 08 runs two turns in one node, so the sum, not the maximum). Two things in a node's script
+    // are not roles and cannot be seen in that sum: the pre-merge gate, whose command a node that calls
+    // `runVerify` runs twice - once after the implementer's turn and once after the conflict turn - and
+    // the post-merge act, which a node that calls `runPostMerge` can run once, on the path where the
+    // settlement succeeded (twice is impossible: the executor settles once and returns). Both clocks are
+    // the node's to cover, or a later timeout edit could silently make the node shorter than its own work.
     for (const node of nodes) {
       if (!node.script) continue;
-      const roles = [...(scripts.get(node.script)?.source ?? "").matchAll(/role:\s*"([a-z]+)"/g)].map((m) => m[1]!);
+      const source = scripts.get(node.script)?.source ?? "";
+      const roles = [...source.matchAll(/role:\s*"([a-z]+)"/g)].map((m) => m[1]!);
       for (const role of roles) {
         expect(`${file}: ${node.id} names a declared role`, role in ROLES, role);
       }
-      if (roles.length === 0) continue;
-      const needed = roles.reduce((ms, role) => ms + ROLES[role as keyof typeof ROLES].wallMs, 0);
+      const gates = /runVerify\s*\(/.test(source) ? 2 : 0;
+      const acts = /runPostMerge\s*\(/.test(source) ? 1 : 0;
+      if (roles.length === 0 && gates === 0 && acts === 0) continue;
+      const needed =
+        roles.reduce((ms, role) => ms + ROLES[role as keyof typeof ROLES].wallMs, 0) +
+        gates * DEFAULT_VERIFY_TIMEOUT_MS +
+        acts * POST_MERGE_TIMEOUT_MS;
       expect(
-        `${file}: ${node.id} outlasts the wall clocks of ${roles.join("+")} (${needed}ms)`,
+        `${file}: ${node.id} outlasts the wall clocks of ${roles.join("+")}${
+          gates > 0 ? ` plus ${gates} gate runs` : ""
+        }${acts > 0 ? ` plus ${acts} post-merge act` : ""} (${needed}ms)`,
         node.timeout !== undefined && node.timeout > needed,
         `${node.timeout}ms`,
       );

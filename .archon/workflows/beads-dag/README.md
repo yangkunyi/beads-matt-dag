@@ -20,14 +20,25 @@ because the tracked working tree is what runs. Archon discovers the pack through
 Then, from the Target:
 
 ```
-archon workflow run beads-dag-drain --detach
+archon workflow run beads-dag-drain --detach      # drain implementation issues
+archon workflow run beads-dag-inquiry --detach    # read the questions on the reading frontier
 ```
 
+A drain merges an issue's work into Main and closes it. A reading run merges nothing: it commits each
+question's note and receipts to Main as one path-scoped commit, leaves the reader's own words on the ticket
+as a draft answer, and never closes a question - the last word is a session's, on the operator's word
+(`The reading run's report`, below).
+
 The Target does not commit `.archon/`. Its config is optional and lives at `.scratch/beads-dag.yaml`; the
-keys are `model`, `thinkingLevel`, `concurrency`, `runner` and `store`, and the defaults are in
-`beads-dag-drain/scripts/config.ts`. The opening node prints the effective configuration on stderr — one
-line naming each value and whether the Target's file or the built-in default supplied it, the store
-binary's resolution on PATH included — so a run says what it runs even when the Target has no file.
+keys are `model`, `thinkingLevel`, `concurrency`, `runner`, `store`, `verify`, `verifyTimeoutMs` and
+`postMerge`, and
+the defaults are in `beads-dag-drain/scripts/config.ts`. The opening node prints the effective
+configuration on stderr — one line naming each value and whether the Target's file or the built-in
+default supplied it, the store binary's resolution on PATH included — so a run says what it runs even
+when the Target has no file. `verify` is the pre-merge gate (`The pre-merge gate`, below): a shell
+command, empty by default, run in the issue's worktree on the tree that would be merged. `postMerge` is
+the post-merge act (`The post-merge act`, below): a shell command, empty by default, run in the Target
+after a merge has landed.
 
 ## The store
 
@@ -54,16 +65,20 @@ below), before anything is claimed or repaired — and `pick` makes that same ch
 bun ~/.archon/workflows/beads-dag/beads-dag-drain/backup.ts
 ```
 
-## One drain at a time
+## One run at a time
 
-`lock.ts` serialises the writes that move Main; it does nothing about two runs, and two drains against
+`lock.ts` serialises the writes that move Main; it does nothing about two runs, and two runs against
 one Target are not a slower version of one: the second run's opening repair reads the first run's live
-claim as a leftover, and its `pick` can offer an issue the first is implementing right now. So `open`
-takes a Target-level **run lock** before it does anything, and a second drain **refuses** — exit 1, one
+claim as a leftover, and its `pick` can offer an issue the first is implementing right now. A reading
+run has the same shape — it repairs a killed reading's claim and picks the reading frontier — and it
+commits its documents to the same branch. An experiment run takes the same file at its own `open`,
+because a run that writes the store or Main must not interleave with another run of any kind. So `open`
+takes a Target-level **run lock** before it does anything, and a second run **refuses** — exit 1, one
 line naming the holder, nothing claimed, nothing written — rather than waiting a run's length for a
-read that would be a run old when it woke. The lock is shared: a reading or an experiment run takes the
-same file at its own `open`, because a run that writes the store or Main must not interleave with
-another run of any kind, so one run at a time per Target is the rule for all of them.
+read that would be a run old when it woke. It is one lock and one rule for every executor: a drain
+started while a reading or an experiment run holds it is refused, and a reading or experiment run
+started while a drain holds it is refused the same way, because "one run at a time" is about the Target
+and not about which domain asked.
 
 The lock is its own file, `beads-dag-run.lock` beside the Main lock `beads-dag.lock` in the Target's git
 directory. It must not be the Main lock's file: a run lock is held by the workflow runner process for
@@ -76,9 +91,10 @@ The lock names the run — the basename of the run's artifacts directory, Archon
 workflow runner every node of the run shares. A pid that is gone is a killed run's leftover and is
 stolen exactly as `lock.ts` steals one, with one line saying so; a live one refuses, and the refusal on
 stderr names the holder's run id and pid, so `archon workflow status` finds the run to wait for — or to
-kill. `summary`, the run's last node, releases the lock, and `open` releases it when its own work fails
-before the loop; but no node after `open` is guaranteed to run, so a run killed or failed on the way
-leaves the file behind, which is exactly what the dead-pid steal is for. The run also records the lock it
+kill. The run's last node releases the lock — `summary` for a drain, `report` for a reading run — and
+`open` releases it when its own work fails before the loop; but no node after `open` is guaranteed to
+run, so a run killed or failed on the way leaves the file behind, which is exactly what the dead-pid
+steal is for. The run also records the lock it
 took in its artifacts (`run-lock.json`, one line, saying what it stole when it stole one), so a refusal
 can be checked against the holder's own record.
 
@@ -199,6 +215,102 @@ A merge that is clean starts no conflict turn at all, and an execution runs at m
 turn cannot resolve the merge, the standing merge is rolled back, the reason goes on the issue as a
 comment, and the worktree, its branch and its commits stay for the report; the next drain retries it.
 
+## The pre-merge gate
+
+Nothing checked the work before it landed. The settlement merges the branch into Main and `closed`
+therefore implies "a merge commit exists" — not that anything ran. The drain-end review reads the merged
+range **after** the fact: it is a reader, not a gate, and its findings cannot unmerge anything. So the
+executor runs one command on the tree that would be merged, immediately before each settle:
+
+```
+turn (implement)  ->  checkpoint-if-dirty  ->  verify  ->  settle()          (merge, then record)
+                     +- red ----------------------------->  didNotLand("verify failed: <tail>")
+   ...if that settle's integration conflicts:
+conflict turn  ->  checkpoint-if-dirty  ->  verify  ->  settle()  (again)
+```
+
+The resume path's `bringMainIn` — the one before the implementer — starts no gate: there is no work of
+this attempt in the tree yet, and the gate's second home is the checkpoint instead (below).
+
+**One command, the Target's own.** `verify` in the Target's config is a shell command string, run as
+`sh -c <command>` with cwd set to the issue's worktree. Empty — the default — means the Target has not
+configured one: no process, no record, no behavior change, the same convention Gas Town uses for its rig
+test command. The command is read from the config file and **never from the issue body**: what runs
+before a merge is the Target's decision, not something a worker can write.
+
+**Red is an ordinary failed attempt.** Nothing merges, so nothing closes: the reason becomes a comment —
+`attempt N failed: verify failed: <tail>` — and the issue goes back to `open`, exactly as any other failed
+attempt. The worktree and branch are kept because they hold the attempt, and the full gate output is in
+`ARTIFACTS_DIR/verify-1.log` (the gate after the implementer's turn) or `verify-2.log` (the gate after the
+conflict turn), while only the bounded tail reaches the comment. Green means the settlement proceeds
+unchanged, and it writes no store field and no status: a green gate is implied by the merge that follows
+it (ADR-0005). The gate is not an agent and not a role — no session, no prompt, no model; it is
+deterministic and sits beside the settlement's git work.
+
+**The gated tree is the tree that merges.** The merge carries the branch's commits, never the bytes
+sitting in the working tree, so a dirty worktree is committed first as one
+`wip(beads-dag): <handle> checkpoint <call site>` commit on the issue's branch — excluding the pack's own
+runtime paths (`.beads/`, `worktrees/`). Nothing is discarded, and the gate's subject and the merge's
+subject become the same tree. The same primitive has a second call site on the resume path, immediately
+after the worktree is ensured and before the first `bringMainIn`: git refuses a merge over uncommitted
+changes to files the merge touches, and that refusal is not a conflicted merge — `MERGE_HEAD` is never
+written, so the executor would take the plain failure branch. A turn killed mid-edit, whose worktree is
+still dirty when a later drain finds it, plus a Main that moved over one of those files, would therefore
+lock the issue out permanently, every later attempt failing before an agent runs. The checkpoint removes
+that latch, and the killed turn's half-work becomes visible on the branch and in the review range.
+
+**Timeout.** `verifyTimeoutMs` (default 15 min, `DEFAULT_VERIFY_TIMEOUT_MS`) bounds one gate run; on
+expiry the whole process group is killed and the attempt fails with `verify failed: timed out after
+<ms>ms: …` rather than hanging the node. The gate is not a role, and neither is the post-merge act, so
+the role sum the workflow-contract test checks cannot see either: the execute node's own timeout has to
+outlast `implement + conflict + 2 × verifyTimeoutMs + POST_MERGE_TIMEOUT_MS`, and the contract test adds
+those runs to the role wall clocks for that reason.
+
+**One residual race, stated and not hidden.** The settlement re-integrates Main inside the Main lock, so
+with `concurrency > 1` Main can move between the gate and the merge, and a clean re-merge then produces a
+tree the gate did not test. That window is accepted deliberately: gating inside the lock would serialize
+every merge for the gate's whole duration and undo the reason concurrency exists. The conflict turn's gate
+is the mitigation — a divergence that conflicts is re-tested after resolution — and a post-merge check on
+Main is not part of this flow.
+
+## The post-merge act
+
+`verify` guards the tree on its way **in**. Nothing used to happen after a merge landed, and a Target
+usually keeps something true outside its own git tree: the design repo, which is a Target too, keeps the
+machine's installed copies of its skills and of this pack in step with Main. A merge that changed
+`skills/` left those stale, and what refreshed them was somebody remembering to. On 2026-09-15 that
+failed twice in one afternoon — the implementer of ticket 21 copied a **branch** skill into
+`~/.agents/skills/`, so the machine's copy described a gate Main did not contain until a session ran the
+install by hand, and the copies had sat about a day behind before that.
+
+```
+turn (implement)  ->  checkpoint-if-dirty  ->  verify  ->  settle()  ->  postMerge
+                                                             (merge, then record)
+```
+
+**One command, the Target's own.** `postMerge` in the Target's config is a shell command string, run as
+`sh -c <command>` with cwd set to **the Target** — the branch the merge just landed on, since the issue's
+worktree is removed by then. Empty — the default — means no process and no record, exactly as if the key
+were absent. Like `verify` it is read from the config file and never from an issue body.
+
+**It is not conditioned on which paths merged.** A Target's own refresh is expected to be idempotent and
+cheap (the design repo's is a byte-compare plus a copy), and a path filter would be a second thing to
+declare and to get wrong. Every merge that lands runs it once. The command reads the Target's **working
+tree**, not HEAD: during a drain that tree sits at Main with a clean `skills/`, which is exactly why
+"immediately after a merge" is the right moment for this one; a session editing `skills/` itself installs
+again once the edit is committed.
+
+**Red changes nothing about the issue.** By the time this runs, the work is in Main and the issue is
+closed; reopening it would say its work had not landed, which is false. So a failed act is named on
+stderr — `merged and recorded, but the Target's post-merge command failed: …` — and its whole output is
+left in `ARTIFACTS_DIR/post-merge-<handle>.log`, one log per issue, and that is all. There is no comment
+and no second record: the node still prints `merged` and exits clean.
+
+**The clock is short, on purpose.** `POST_MERGE_TIMEOUT_MS` (2 min) bounds one run, and on expiry the
+whole process group is killed. This is a Target's own small act beside two turns of two hours and two
+gate runs of fifteen minutes, and the workflow-contract test counts it against the execute node's budget
+for that reason.
+
 ## The settlement: merge, then record
 
 An issue's turn ends in one of two settlements, and there is only one order in which either can happen.
@@ -221,7 +333,7 @@ the report.
 **The lock guards git, not the store** (ADR-0002). Every function that writes Main (`main-writes.ts`)
 refuses to run unless the caller holds the Main-write lock; the store write that records an outcome is
 deliberately outside it, under the store's own transaction. The lock is one file in the Target's git
-directory (`beads-dag.lock`; the run lock is a second file beside it, `One drain at a time` above): a
+directory (`beads-dag.lock`; the run lock is a second file beside it, `One run at a time` above): a
 second process waits for it, a call made while this process holds it
 joins the same transaction, and a lock left behind by a killed run (its pid gone) is stolen rather than
 waited for. `main-writes.ts` also writes the `.gitignore` rules that keep the checkout clean - `/worktrees/`
@@ -334,7 +446,8 @@ is reviewed, the pack's own commits and all. So a drain that merged nothing says
 in the same repository reports exactly what the first drain's review left unviewed (its base is the
 recorded position). A reader that wrote a report prints `reported`. The three artifacts live in the
 run's `ARTIFACTS_DIR`, beside `pick-exclusions.json`, `attempted-ids.json`, `run-lock.json`,
-`main-commits.json` and `repairs.json`.
+`main-commits.json`, `repairs.json`, the gate's own `verify-<n>.log` and the post-merge act's
+`post-merge-<handle>.log`.
 
 - **the range section** (at the end of summary.md, above the failures block). The summary node writes it,
   from the run's own record and from git: the range both readers covered, then - when Main gained commits
@@ -375,18 +488,48 @@ Both readers share one wall clock (`REVIEW_WALL_MS`, 30 min) and the same read-o
 worker: the environment the role call carries puts the store in its own read-only mode, so a reader
 cannot move the frontier.
 
+## The reading run's report
+
+A drain leaves two readers' prose; a reading run leaves one document a human reads first, and it is
+written by the node and never by a model. `beads-dag-inquiry`'s last node writes `report.md` in the run's
+`ARTIFACTS_DIR`, from the store and from the run's own record, in the order the question is asked:
+
+- **Read and landed** — the questions this run read, each with the note's path, the commit that carries
+  it (both read out of the draft comment the reading wrote) and the label the landing stamped;
+- **Failed attempts** — the questions this run left failing, in the drain's own failures block: the
+  store's `attempt N failed:` comments, with the ordinal and the count it holds;
+- **Frontier left behind** — the handles still eligible, recomputed with `pick`'s own rules
+  (`frontier.ts`, shared by both nodes) over an empty attempted set, so the report describes what the
+  next run would find and a run that did nothing says so;
+- **Draft answers awaiting the operator** — the handles of the open `decision` issues carrying
+  `answer:draft`, read from the store when the report is written. Nothing keeps that list: it is the
+  query the tracker contract names, and an earlier run's reading appears in it whether or not this run
+  ever saw the question;
+- **Left uncommitted** — the paths the run wrote under the effort that the flow does not name, one line
+  per ticket: a reading's working files (the claims file `note.ts` is handed, a scratch note), left out of
+  the commit on purpose and named here instead of being committed or silently dropped. The store cannot
+  answer this one — the working tree the reading ran in is gone by report time — so the read node records
+  it as it goes (`unnamed-paths.jsonl`, one appended line per ticket, the last line per ticket winning).
+
+The report is run-scoped like `pick-exclusions.json` and `attempted-ids.json`, and never consulted as
+state (ADR-0005): nothing in the pack reads a `report.md` back. It is also the run's last node, so it is
+where a reading run gives its run lock back (`One run at a time`, above).
+
 ## The agent roles
 
 `roles.ts` is the single declaration of each agent role: the arguments it takes, the session key it runs
 under, its persona, the brief its prompt is, and how long it may run. A node names its role and hands it
 the role's own arguments - nothing else about the role is spelled at a call site. The workflow's `timeout`
 is the other half of that agreement and the same test checks it: it must outlast the wall clock of every
-role the node's script names (two turns in one node means the sum).
+role the node's script names (two turns in one node means the sum), and a node whose script runs anything
+that is not a role buys that too - two gate runs of `verifyTimeoutMs` each, and the post-merge act's own
+`POST_MERGE_TIMEOUT_MS`.
 
 | Role | Turn | Wall clock |
 |---|---|---|
 | `implement` | one issue, in its worktree, from the body's path | 2 h |
 | `conflict` | the merge of Main standing in that worktree, from the same body's path | 2 h |
+| `read` | one question, in the Target, from the body's path and under the reading rules the tracker contract states | 1 h |
 | `review` | one axis of the drain-end review, over the range this run merged | 30 min |
 | `summary` | one report over the review, for the human who reads the run afterwards | 30 min |
 
@@ -438,11 +581,31 @@ premise the pack resolves the binary by - so one `run-all` on that PATH is the w
 no second mode in which it is run with the binary hidden. `BEADS_BIN` is the override for an operator who
 keeps the binary somewhere else.
 
+**One process per repro, several at a time.** `run-all.ts` spawns every `*-repro.ts` as its own process -
+the isolation is the contract, since each repro builds its own temp Target with its own store - and runs
+`REPRO_JOBS` of them at once (default 8), each file under its own clock (`REPRO_TIMEOUT_MS`, default
+10 min) so a repro that hangs fails the gate instead of holding it open. That shape is what makes the
+gate affordable rather than expensive: almost all of its cost is process startup - a real `bd init` is
+about 3 s of Dolt startup and every store command about half a second of it - and startup parallelises,
+so the suite takes about 2.5 minutes where running it one after another took 19. While you are working
+on one behaviour, run that one file (`bun .archon/workflows/beads-dag/beads-dag-drain/tests/<name>-repro.ts`):
+seconds, not minutes. The whole suite is the gate you leave behind, not the loop you think in.
+
 The repro suite drives a real store, never a fake one: it resolves the store binary from `BEADS_BIN`,
 then PATH, then `npm prefix -g` plus `/bin/bd`, and fails loudly when it cannot find one — no test skips.
 Install it with `npm i -g @beads/bd@1.2.2`, or point `BEADS_BIN` at one. "There is no store binary" is a
 repro *inside* that one run, not an argument for a second: `store-open-repro.ts` runs the opening node
 against a PATH that cannot resolve a binary and reads the reason it fails with.
+
+**A fixture never speaks the runner's protocol.** `INPUTS_ISSUE`, `INPUTS_CONFIG` and `ARTIFACTS_DIR`
+are Archon's conversation with one node, and a worker's turn has them set to its own run — so a repro
+that inherits or spreads them drives a real node against the live run instead of its own Target. `runScript`
+and the fixture's `envWithout`/`envWithoutStore` helpers drop all three for that reason, and a caller
+naming its own `ARTIFACTS_DIR` must not spread an ambient environment over it. This is not hypothetical:
+the worker of ticket beads-dag/29 ran this suite inside its turn and three repros each overwrote that
+run's `review-base` and `run-lock.json` with a throwaway Target's, so the run's review-base named a commit
+no repository had and its review reported nothing at all. `worker-readonly-repro.ts` pins the rule by
+setting an ambient `ARTIFACTS_DIR` that has to stay empty.
 
 The third gate is the acceptance: a real `archon workflow run` against a throwaway Target. It runs once
 per release rather than per change, and never against a Target someone is draining.
@@ -453,6 +616,9 @@ per release rather than per change, and never against a Target someone is draini
 beads-dag-drain/     the drain: open, the loop (pick, execute), then the two readers, and backup.ts,
                      the operator's one-command store backup
 beads-dag-execute/   one issue, start to finish. Not a public entry: its issue input is required.
+beads-dag-inquiry/   the reading executor: open, the loop (pick, read), then report
+beads-dag-read/      one question, read and landed as a draft answer. Not a public entry: its issue
+                     input is required, and beads-dag-inquiry composes it, one instance per handle.
 beads-dag-experiment/      the experiment executor: open, the pick/run loop
 beads-dag-experiment-run/  one experiment ticket: claim and registration. Not a public entry: its issue
                            input is required, and its fork exists because a fan-out needs an include
@@ -460,24 +626,35 @@ beads-dag-experiment-run/  one experiment ticket: claim and registration. Not a 
 
 A workflow folder holds its YAML, its `scripts/` (each entry script is a node that folder's YAML declares),
 and, for the drain, its `tests/`. `backup.ts` sits beside the YAML rather than in `scripts/` because it is
-an operator command, not a node. A module may be imported across folders; a node body may not, because
+an operator command, not a node. A module may be imported across the folders; a node body may not, because
 the folder whose YAML declares a node is where that node's script resolves.
 
-The modules the workflows share, all in the drain's `scripts/`:
+The three per-ticket folders (`beads-dag-execute`, `beads-dag-read`, `beads-dag-experiment-run`) exist
+for one reason: **only an include or a workflow node can be fanned out over a runtime list**. The drain
+runs one instance of `beads-dag-execute` per issue its pick prints, the reading executor one instance of
+`beads-dag-read` per question, and the experiment executor one instance of `beads-dag-experiment-run`
+per ticket; a plain script node in those loops would have to be handed a list, not an item, and could
+not run the batch at the run's `concurrency`. So the per-ticket unit is a composed block whose handle
+input is required, and each of its own nodes is a script that folder declares.
+
+The modules the pack's workflows share, all in the drain's `scripts/`:
 
 | Module | Owns |
 |---|---|
 | `store.ts` | every store command: the binary, its arguments, its working directory, and the experiment domain's claim by assignment |
 | `naming.ts` | the one derivation of an issue's branch, worktree and body path |
 | `git.ts` | git plumbing: the two calls the readers and writers share |
+| `doc-commit.ts` | the documents a run lands: one path-scoped commit per ticket, under the Main lock |
 | `worktree.ts` | the issue's worktree: create, resume, bring Main in, and the standing-merge state |
 | `lock.ts` | the Main-write lock: one writer at a time on the Target's branch |
 | `run-lock.ts` | the run lock: one run at a time per Target, whatever kind of run it is, and the refusal a second one gets |
 | `main-writes.ts` | every git write to Main: the merge, the ignore line, the removal after a merge |
 | `settle.ts` | the one order: merge then record, or record the failure and reopen |
+| `verify.ts` | the pre-merge gate: one Target command on the would-be-merged tree, with its clock |
+| `postmerge.ts` | the post-merge act: one Target command in the Target itself, after a merge has landed |
 | `reconcile.ts` | the repair of a killed run's leftovers: closed from git, or reopened with a reason |
 | `domains.ts` | the domain boundary: the non-work types, and the cross-domain graph preflight |
-| `failures.ts` | the drain-end failures block: the store's own failure records, and how they read |
+| `failures.ts` | the failures block: the store's own failure records, and how they read |
 | `report-artifacts.ts` | the drain-end artifacts: the range's base, review.md/summary.md, the skip protocol |
 | `report-node.ts` | the skeleton both drain-end readers ride: the base, the run's range, the agents, the artifact, and the recognition of a range the pack wrote itself |
 | `review-position.ts` | the recorded position: the Target's local ref, how a run opens on it, how a review advances it |
@@ -490,11 +667,16 @@ The modules the workflows share, all in the drain's `scripts/`:
 | `dsh-runtime.ts` | the dsh wire protocol, with no pack nouns |
 | `worker-env.ts` | the environment a worker runs under (the store's read-only mode) |
 
-The table splits along one line: a module whose whole reason to exist is that a run **writes Main** — or
-reports on one that did — is the drain's alone (`lock.ts`, `run-lock.ts`, `main-writes.ts`, `settle.ts`,
-`worktree.ts`, `reconcile.ts`, `review-position.ts`, `run-record.ts`, `failures.ts`,
-`report-artifacts.ts`, `report-node.ts`). What a run shares with the rest of the flow is only what
-touches the store's graph and git documents: `store.ts`, `naming.ts` (the body path — the branch and
-worktree names are a run's own), `domains.ts`, and `worker-env.ts`, whose read-only mode is the inquiry
-domain's AFK leg too. A future inquiry workflow is a separate pack folder that imports those, never a node
-in this one: a node here is a claim, a worktree and a merge, and inquiry has none of the three.
+The table splits along one line: a module whose reason to exist is that a run **merges an issue's work**
+into Main — or reports on one that did — is the drain's alone (`main-writes.ts`, `settle.ts`, `verify.ts`,
+`worktree.ts`, `reconcile.ts`, `review-position.ts`, `run-record.ts`,
+`report-artifacts.ts`, `report-node.ts`). That is the closed rule, not the looser "writes Main": the two
+document-writing executors this pack is growing commit their own files to the same branch and neither may
+merge an issue, so what separates the drain's modules is the merge and nothing else. What a run shares
+with the rest of the flow is everything else: `store.ts`, `naming.ts` (the body path — the branch and
+worktree names are a run's own), `domains.ts`, `doc-commit.ts`, the path-scoped commit every run that
+lands documents uses, `failures.ts`, whose failure records are a store reading either report can make,
+`worker-env.ts`, whose read-only mode is the inquiry domain's AFK leg too, and the
+two locks (`lock.ts`, `run-lock.ts`), which any run that writes Main takes whatever it writes. The
+reading executor is a separate pack folder that imports those, never a node in this one: a node here is a
+claim, a worktree and a merge, and reading has none of the three.

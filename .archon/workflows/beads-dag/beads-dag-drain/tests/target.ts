@@ -14,24 +14,22 @@ import { READONLY_ENV } from "../scripts/worker-env.ts";
  * script never runs under it, and a repro that calls one in-process is standing where the node runs. The
  * flag is therefore dropped here rather than inherited, because a worker that runs the pack's own gate
  * from inside a worker is not the situation the pack creates for the code under test: inherited, it makes
- * every repro that publishes an issue die with `operation 'create' is not allowed in read-only mode`.
- * Dropped here, the suite a worker runs is the suite a session runs.
+ * every repro that publishes an issue die with `operation 'create' is not allowed in read-only mode`,
+ * which reads as a broken suite rather than as an environment mismatch - it cost a real worker a
+ * fifteen-minute run on 2026-09-15, before it worked out to re-run under `env -u BD_READONLY`. Dropped
+ * here, the suite a worker runs is the suite a session runs.
  *
  * The read-only rule keeps its own test: the repros that prove a worker cannot write pass an environment
  * the pack itself built (`workerEnv`), and an explicit value still wins wherever a caller sets one.
  */
 delete process.env[READONLY_ENV];
 
-/**
- * The runner's conversation with one node: the three variables Archon sets for a node and nothing else.
- * A fixture never inherits them, in any shape.
- */
-const PROTOCOL_ENV = ["INPUTS_ISSUE", "INPUTS_CONFIG", "ARTIFACTS_DIR"];
-
 const drainDir = join(import.meta.dir, "..");
 const executeDir = join(import.meta.dir, "../../beads-dag-execute");
 const experimentDir = join(import.meta.dir, "../../beads-dag-experiment");
 const experimentRunDir = join(import.meta.dir, "../../beads-dag-experiment-run");
+const inquiryDir = join(import.meta.dir, "../../beads-dag-inquiry");
+const readDir = join(import.meta.dir, "../../beads-dag-read");
 
 /** The pack root, the folder the workflow folders live in. */
 export const packDir = join(import.meta.dir, "../..");
@@ -68,6 +66,24 @@ export const experimentRun = {
   dir: experimentRunDir,
   yaml: join(experimentRunDir, "beads-dag-experiment-run.yaml"),
   script: (name: string): string => join(experimentRunDir, "scripts", `${name}.ts`),
+};
+
+export const inquiry = {
+  dir: inquiryDir,
+  yaml: join(inquiryDir, "beads-dag-inquiry.yaml"),
+  script: (name: string): string => join(inquiryDir, "scripts", `${name}.ts`),
+};
+
+/**
+ * The per-ticket reading block `beads-dag-inquiry` composes, one instance per handle its pick prints. It
+ * is a folder of its own for the same reason `beads-dag-execute` is: only an include or a workflow node
+ * can be fanned out over a runtime list, so the per-question node is a composed block, not a script node
+ * in the loop.
+ */
+export const readBlock = {
+  dir: readDir,
+  yaml: join(readDir, "beads-dag-read.yaml"),
+  script: (name: string): string => join(readDir, "scripts", `${name}.ts`),
 };
 
 /** The drain's config, relative to the Target: what the tests write a store override into. */
@@ -188,6 +204,16 @@ export function initStore(root: string, prefix = "target"): void {
 }
 
 /**
+ * The two Target-side premises a reading run opens on: the reading tools, and an effort area. The fixture
+ * makes both as directories, which is exactly what the opening node tests - the tools are a copy the
+ * Target makes and the pack ships neither, so their contents are not this suite's business.
+ */
+export function initReadingTarget(root: string): void {
+  mkdirSync(join(root, "tools", "inquiry"), { recursive: true });
+  mkdirSync(join(root, ".scratch"), { recursive: true });
+}
+
+/**
  * Register a custom issue type in a Target's store: `bd config set types.custom experiment`. This is the
  * store's own half of adding a domain — bd refuses a type it does not know at `create`, so an
  * experiment ticket cannot silently be created as work — and the drain's half ships with the pack
@@ -218,6 +244,22 @@ export function publishedBodyPath(root: string, handle: string, slug: string): s
   const [feature, number] = handle.split("/");
   if (!feature || !number) throw new Error(`publishedBodyPath: not a <feature>/<NN> handle: ${handle}`);
   return join(root, ".scratch", feature, "issues", `${number}-${slug}.md`);
+}
+
+/**
+ * The effort directory a question's reading writes into, spelled here for the same reason as the body's
+ * path: the rule is the handle's feature, and a test that asked the pack could not catch the pack naming
+ * the wrong effort.
+ */
+export function readingCorpusRel(handle: string): string {
+  const [feature] = handle.split("/");
+  if (!feature) throw new Error(`readingCorpusRel: not a <feature>/<NN> handle: ${handle}`);
+  return join(".scratch", feature);
+}
+
+/** The note a question's reading owns: the effort's `notes/<slug>.md`, the ticket's own slug. */
+export function readingNoteRel(handle: string, slug: string): string {
+  return join(readingCorpusRel(handle), "notes", `${slug}.md`);
 }
 
 /**
@@ -497,10 +539,13 @@ export function commitFile(cwd: string, file: string, content: string, message: 
  * Modes: `answer` writes an assistant row; `none` writes nothing; `hang` never ends until the wall
  * clock aborts it; `throw` rejects; `commit` also commits HELLO.md in the session's cwd, so a node can
  * be driven to a real merge without a model; `commit-cwd` commits a file named after that cwd instead,
- * so a second issue in the same repository has its own content to land. `FAKE_PI_RECORD` names a file
- * the fake leaves the turn's options in, for a test that wants to read them back.
+ * so a second issue in the same repository has its own content to land; `read` writes a receipt and the
+ * note at the paths the brief carries and answers a draft, so a reading can be driven end to end; and
+ * `read-silent` writes nothing and answers nothing, the turn that read and said nothing.
+ * `FAKE_PI_RECORD` names a file the fake leaves the turn's options in, for a test that wants to read them
+ * back.
  */
-export type FakePiMode = "answer" | "none" | "hang" | "throw" | "commit" | "commit-cwd";
+export type FakePiMode = "answer" | "none" | "hang" | "throw" | "commit" | "commit-cwd" | "read" | "read-silent";
 
 export function fakePiSdk(root: string, mode: FakePiMode): string {
   const dir = join(root, `fake-pi-${mode}`);
@@ -521,8 +566,9 @@ export function fakePiSdk(root: string, mode: FakePiMode): string {
 function fakePiSource(mode: string): string {
   // String concatenation, not a template literal: a `${` inside this source would interpolate here.
   return [
-    'import { appendFileSync, writeFileSync } from "node:fs";',
+    'import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";',
     'import { execFileSync } from "node:child_process";',
+    'import { dirname } from "node:path";',
     `const MODE = ${JSON.stringify(mode)};`,
     "const RECORD = process.env.FAKE_PI_RECORD;",
     'const ANSWER = "the session\'s answer";',
@@ -573,7 +619,20 @@ function fakePiSource(mode: string): string {
     '        execFileSync("git", ["-C", cwd, "add", cwdFile]);',
     '        execFileSync("git", ["-C", cwd, "commit", "-m", "hello from the fake session"]);',
     "      }",
-    '      if (MODE !== "none") {',
+    '      if (MODE === "read") {',
+    "        const note = /^Note: (\\S+)$/m.exec(text)?.[1];",
+    "        const corpus = /^Corpus: (\\S+)$/m.exec(text)?.[1];",
+    "        if (note === undefined || corpus === undefined) {",
+    "          throw new Error(\"the fake reader's brief carries no Note/Corpus path\");",
+    "        }",
+    '        const receipt = cwd + "/" + corpus + "/sources/fake-receipt.md";',
+    "        mkdirSync(dirname(receipt), { recursive: true });",
+    '        writeFileSync(receipt, "SOURCE-URL: https://example.invalid/fake\\nthe fake source says one thing\\n");',
+    '        const notePath = cwd + "/" + note;',
+    "        mkdirSync(dirname(notePath), { recursive: true });",
+    '        writeFileSync(notePath, "# a fake note\\n\\n## Claims\\n\\n- **c1** the fake source says one thing\\n");',
+    "      }",
+    '      if (MODE !== "none" && MODE !== "read-silent") {',,
     '        appendFileSync(file, JSON.stringify({ type: "message", message: { role: "assistant", content: [',
     '          { type: "thinking", text: "THINKING-LEAK" },',
     '          { type: "text", text: ANSWER },',
@@ -590,6 +649,12 @@ function fakePiSource(mode: string): string {
   ].join("\n");
 }
 
+/**
+ * The runner's conversation with one node: the three variables Archon sets for a node and nothing else.
+ * A fixture never inherits them, in any shape.
+ */
+const PROTOCOL_ENV = ["INPUTS_ISSUE", "INPUTS_CONFIG", "ARTIFACTS_DIR"];
+
 export function envWithout(...names: string[]): NodeJS.ProcessEnv {
   const env = { ...process.env };
   for (const name of [...PROTOCOL_ENV, ...names]) delete env[name];
@@ -600,6 +665,8 @@ export function envWithout(...names: string[]): NodeJS.ProcessEnv {
  * The environment as a Target that cannot find the store: every PATH entry under which an executable
  * `bd` resolves is out, not only the one `storeBinary()` happened to pick. A second install earlier or
  * later on PATH would otherwise leave the binary findable, and the premise is what the repros assert.
+ *
+ * The protocol variables go too, like everywhere a fixture builds an environment.
  */
 export function envWithoutStore(): NodeJS.ProcessEnv {
   const entries = (process.env.PATH ?? "")
@@ -615,6 +682,20 @@ export function envWithoutStore(): NodeJS.ProcessEnv {
  * the environment, nothing else — except that the store binary's directory joins PATH, as it would in
  * an operator's shell, so the node resolves the store the way the design says it may. `process.execPath`
  * is bun here, which is the runtime the YAMLs declare, so a test drives the same process the runner does.
+ *
+ * **The node protocol's own variables never come from this process.** `INPUTS_ISSUE`, `INPUTS_CONFIG` and
+ * `ARTIFACTS_DIR` are the runner's conversation with one node, and a repro's caller builds that
+ * conversation itself - the third argument, and nothing else. Inherited, they are a worker's own inputs:
+ * the implementer of a beads-dag ticket runs this suite with `INPUTS_ISSUE` set to its own handle and its
+ * own `ARTIFACTS_DIR`, and three repros then read the ambient run instead of their Target (measured
+ * 2026-09-15: `node-outcomes` and `worktree` published a handle no store carried, and `pick` found a run
+ * directory nobody passed it). That is the same worker-versus-session split the read-only flag gets at the
+ * top of this file, and it is dropped the same way: inherited, they make a green suite mean something
+ * different inside a worker than in a session, and the suite a worker runs has to be the suite a session
+ * runs. `envWithout` and `envWithoutStore` drop them for the same reason - a caller that spreads one of
+ * them *after* naming its own `ARTIFACTS_DIR` would otherwise hand the node the ambient directory, which
+ * is how the worker of ticket beads-dag/29 overwrote its own run's `review-base` and `run-lock.json` with
+ * a temp Target's, leaving that run's review with a base commit no repository had.
  */
 export function runScript(
   script: string,

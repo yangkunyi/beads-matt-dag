@@ -13,6 +13,13 @@ export const EMPTY_PICK = "[]";
 /** An issue's outcome: its work is in Main, so the drain may close it. */
 export const MERGED = "merged";
 
+/**
+ * A reading's outcome: its note landed, its draft answer is on the question, and the question stays
+ * `open` - the last word is a session's. The reading executor's counterpart of the drain's `merged`, and
+ * like it a result rather than an error: the run goes on to the next question in the batch.
+ */
+export const LANDED = "landed";
+
 /** Its work is not in Main. The reason is on stderr, and the drain goes on. */
 export const FAILED = "failed";
 
@@ -26,7 +33,11 @@ export const REGISTERED = "registered";
 /** A drain-end reader's outcome when the run merged nothing: there is no range to report on. */
 export const NOTHING_TO_REPORT = "nothing";
 
-/** A drain-end reader's outcome when it wrote the report for the range this run merged. */
+/**
+ * A run's outcome when it wrote the report a human reads afterwards: the drain's summary for the range
+ * it merged, and the reading executor's `report` for the batch it read. Both write their artifact
+ * unconditionally - a run that did nothing is a run the report has to be able to describe.
+ */
 export const REPORTED = "reported";
 
 /** The token convention: a handler returns the token plus one newline, and node-entry writes it. */

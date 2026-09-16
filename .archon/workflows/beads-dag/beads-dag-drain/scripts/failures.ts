@@ -1,5 +1,5 @@
 /**
- * The drain-end failures block: what the store records about the attempts this run left failing.
+ * The failures block: what the store records about the attempts a run left failing.
  *
  * A failure is an **event, not a status** (§10.3, ADR-0003): the reason is a comment and the issue goes
  * back to `open`, so "what failed here, and how many times has this issue burned" is a *reading* of the
@@ -7,6 +7,11 @@
  * this pack keeps. Nothing new is written for it: no file, no store field, no artifact of its own. The
  * one thing the store cannot answer on its own is *which run* attempted an issue, and that is bookkeeping
  * the run already has (`attempted-ids.json`, the same file pick composes the frontier from).
+ *
+ * Two reports read it. The drain's summary narrows the rows with `failedIssues` below, whose repairs are
+ * git facts; the reading executor's report (`beads-dag-inquiry/scripts/report.ts`) builds that half
+ * itself, because a reading's repair is a store fact, and reads `failuresBlock` for the shape — one
+ * format for one fact, whichever domain is reporting.
  *
  * The block is written by the node, never by a model: the numbers a reader sees are exactly the store's
  * answers, and the report's prose is left where it was, above the block.
@@ -66,8 +71,8 @@ function isRepairReopen(target: string, issue: StoreIssue, failure: RecordedFail
 }
 
 /**
- * The issues the report names: what the store holds `open` with a failure record, narrowed to the ones
- * this run touched - the ones it attempted, and the ones an opening repair reopened.
+ * The issues the drain's report names: what the store holds `open` with a failure record, narrowed to the
+ * ones this run touched - the ones it attempted, and the ones an opening repair reopened.
  *
  * One store query for the issues and one per issue that carries any comment at all (`commentCount` is
  * the store's own cheap prefilter; only a commented issue can carry a failure). Everything else is out: a

@@ -13,7 +13,7 @@
  */
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { git, gitOrThrow } from "./git.ts";
+import { git, gitOrThrow, revParse } from "./git.ts";
 import type { IssueNames } from "./naming.ts";
 
 /**
@@ -92,4 +92,40 @@ export function mergeUnderway(worktree: string): boolean {
 export function abortMerge(worktree: string): void {
   if (!mergeUnderway(worktree)) return;
   gitOrThrow(worktree, ["merge", "--abort"]);
+}
+
+/**
+ * The checkpoint: one commit on the issue's branch holding whatever the worktree has uncommitted, so
+ * the tree a gate tests and the tree a merge carries are the same tree, and a killed turn's half-work
+ * cannot stand between a later attempt and the agent it would run.
+ *
+ * The merge carries the branch's commits, never the bytes sitting in the working tree. Two things
+ * follow. Before a gate, an uncommitted tree would mean gating something the merge will not carry - so
+ * the checkpoint makes the subject of both the same commit. And before the resume path's integration,
+ * git refuses a merge over uncommitted changes to files the merge touches; that refusal is not a
+ * conflicted merge (MERGE_HEAD is never written, so `mergeUnderway` is false and the executor records a
+ * plain failure), which would lock an issue out permanently: every later attempt failing at the same
+ * line before any agent runs, and only a human able to unstick it. Committing the tree first is what
+ * removes that latch.
+ *
+ * Nothing is discarded, and the pack's own runtime paths are never part of the commit: `.beads/` and
+ * `worktrees/` are excluded from the add, the same paths `main-writes.ts` ignores on Main (a store or a
+ * second worktree that appears inside this one is not this issue's work). An already-clean worktree
+ * gains no commit - the answer is undefined - and so does one whose only changes are those excluded
+ * paths. A merge standing in the worktree gains none either: its unmerged paths are the conflict turn's
+ * inbox, not a tree to commit, and `bringMainIn`/the executor's own rollback own that state.
+ *
+ * `callSite` names what the checkpoint precedes (`before verify`, `before integration`), so the commit
+ * subject says which call made it: a checkpoint is visible on the branch and in the review range, and a
+ * reader can tell the two homes apart.
+ */
+export function checkpointWorktree(worktree: string, handle: string, callSite: string): string | undefined {
+  if (mergeUnderway(worktree)) return undefined;
+  const dirty = git(worktree, ["status", "--porcelain"]);
+  if (!dirty.ok || dirty.out.trim() === "") return undefined;
+  gitOrThrow(worktree, ["add", "-A", "--", ".", ":(exclude).beads", ":(exclude)worktrees"]);
+  // Everything dirty was an excluded path: nothing staged, so there is no checkpoint to make.
+  if (git(worktree, ["diff", "--cached", "--quiet"]).ok) return undefined;
+  gitOrThrow(worktree, ["commit", "-m", `wip(beads-dag): ${handle} checkpoint ${callSite}`]);
+  return revParse(worktree, "HEAD");
 }
