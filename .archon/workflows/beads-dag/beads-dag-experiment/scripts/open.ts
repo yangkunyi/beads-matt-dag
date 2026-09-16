@@ -16,11 +16,11 @@
  * nothing. The lock is released when the node fails before those refusals, exactly as the drain's open
  * does; a run killed later leaves the file behind, and the next open steals a dead holder's lock.
  */
-import { configLine } from "../../beads-dag-drain/scripts/config.ts";
-import { runNode } from "../../beads-dag-drain/scripts/node-entry.ts";
-import { nodeLine, OPENED } from "../../beads-dag-drain/scripts/node-outcomes.ts";
-import { recordRunLock, releaseRunLock, stoleLine, takeRunLock } from "../../beads-dag-drain/scripts/run-lock.ts";
-import { preflightStore, recomputeBlocked } from "../../beads-dag-drain/scripts/store.ts";
+import { configLine } from "../../scripts/config.ts";
+import { runNode } from "../../scripts/node-entry.ts";
+import { nodeLine, OPENED } from "../../scripts/node-outcomes.ts";
+import { recordRunLock, releaseRunLock, stoleLine, takeRunLock } from "../../scripts/run-lock.ts";
+import { preflightStore, recomputeBlocked } from "../../scripts/store.ts";
 import { reconcileExperiments } from "./reconcile.ts";
 import { requireExperimentTools, resolveRunTool } from "./run-tool.ts";
 

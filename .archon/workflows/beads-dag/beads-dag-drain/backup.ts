@@ -10,8 +10,8 @@
  * override, then PATH — so a machine where the binary is not on PATH still backs up. A push that cannot
  * happen prints why, on stderr, and exits non-zero; it never reports success it did not achieve.
  */
-import { loadConfig } from "./scripts/config.ts";
-import { preflightStore, pushStore } from "./scripts/store.ts";
+import { loadConfig } from "../scripts/config.ts";
+import { preflightStore, pushStore } from "../scripts/store.ts";
 
 const target = process.cwd();
 try {

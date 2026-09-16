@@ -18,7 +18,7 @@
  */
 import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import type { IssueNames } from "../../beads-dag-drain/scripts/naming.ts";
+import type { IssueNames } from "../../scripts/naming.ts";
 
 /**
  * The leg label that gates this executor's frontier, the role `ready-for-agent` plays for the drain: a

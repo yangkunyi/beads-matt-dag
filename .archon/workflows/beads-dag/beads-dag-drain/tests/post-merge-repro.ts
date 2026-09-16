@@ -20,8 +20,8 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, wr
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { executeIssue } from "../../beads-dag-execute/scripts/execute.ts";
-import type { AgentRunner, PackAgentOpts, PackAgentResult } from "../scripts/agent.ts";
-import { MERGED, nodeLine } from "../scripts/node-outcomes.ts";
+import type { AgentRunner, PackAgentOpts, PackAgentResult } from "../../scripts/agent.ts";
+import { MERGED, nodeLine } from "../../scripts/node-outcomes.ts";
 import { POST_MERGE_TIMEOUT_MS, postMergeLogName, runPostMerge } from "../scripts/postmerge.ts";
 import {
   GATE_LABEL,

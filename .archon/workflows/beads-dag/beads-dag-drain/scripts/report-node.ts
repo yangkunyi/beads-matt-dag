@@ -20,14 +20,14 @@
  */
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { defaultAgent, type AgentRunner } from "./agent.ts";
-import { loadConfig, type PackConfig } from "./config.ts";
-import { git } from "./git.ts";
+import { defaultAgent, type AgentRunner } from "../../scripts/agent.ts";
+import { loadConfig, type PackConfig } from "../../scripts/config.ts";
+import { git } from "../../scripts/git.ts";
 import { PACK_BOOKKEEPING_PATHS, PACK_BOOKKEEPING_SUBJECTS } from "./main-writes.ts";
-import { runNode } from "./node-entry.ts";
-import { NOTHING_TO_REPORT, REPORTED } from "./node-outcomes.ts";
+import { runNode } from "../../scripts/node-entry.ts";
+import { NOTHING_TO_REPORT, REPORTED } from "../../scripts/node-outcomes.ts";
 import { readReviewBase, writeArtifact } from "./report-artifacts.ts";
-import { roleAgent, type AgentRole, type RoleShape } from "./roles.ts";
+import { roleAgent, type AgentRole, type RoleShape } from "../../scripts/roles.ts";
 import { mainBranch } from "./worktree.ts";
 
 /** What a reader node is called with: where to write, and the runner/seam a test replaces. */

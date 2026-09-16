@@ -23,11 +23,11 @@
  * same Main lock as the merge: the report has no other way to tell this run's commits from an earlier
  * run's, and the lock is what keeps two concurrent settlements from losing each other's record.
  */
-import { withMainLock } from "./lock.ts";
+import { withMainLock } from "../../scripts/lock.ts";
 import { mergeIntoMain, removeMergedWorktree } from "./main-writes.ts";
-import type { IssueNames } from "./naming.ts";
+import type { IssueNames } from "../../scripts/naming.ts";
 import { recordMainCommit } from "./run-record.ts";
-import { closeIssue, recordFailedAttempt, type Store, type StoreIssue } from "./store.ts";
+import { closeIssue, recordFailedAttempt, type Store, type StoreIssue } from "../../scripts/store.ts";
 
 /**
  * An attempt that did not land: the reason as a comment, the issue back to `open`, nothing closed. No

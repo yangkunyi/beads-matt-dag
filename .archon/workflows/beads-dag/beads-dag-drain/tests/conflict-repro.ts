@@ -17,8 +17,8 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { executeIssue } from "../../beads-dag-execute/scripts/execute.ts";
-import type { AgentRunner, PackAgentOpts, PackAgentResult } from "../scripts/agent.ts";
-import { FAILED, MERGED } from "../scripts/node-outcomes.ts";
+import type { AgentRunner, PackAgentOpts, PackAgentResult } from "../../scripts/agent.ts";
+import { FAILED, MERGED } from "../../scripts/node-outcomes.ts";
 import {
   GATE_LABEL,
   bd,

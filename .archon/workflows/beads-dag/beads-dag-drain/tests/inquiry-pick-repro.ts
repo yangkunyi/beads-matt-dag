@@ -15,7 +15,7 @@
  */
 import { chmodSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { EMPTY_PICK, nodeLine } from "../scripts/node-outcomes.ts";
+import { EMPTY_PICK, nodeLine } from "../../scripts/node-outcomes.ts";
 import {
   bd,
   expect,

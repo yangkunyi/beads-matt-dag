@@ -11,7 +11,7 @@
  * What this cannot check is the graph itself — that the loop ends and no issue instance is started — so
  * the real run against a throwaway Target stays the acceptance for that (README, gates).
  */
-import { EMPTY_PICK, NOTHING_TO_REPORT, OPENED, nodeLine } from "../scripts/node-outcomes.ts";
+import { EMPTY_PICK, NOTHING_TO_REPORT, OPENED, nodeLine } from "../../scripts/node-outcomes.ts";
 import { drain, expect, expectEqual, runScript, withTarget } from "./target.ts";
 
 try {

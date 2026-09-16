@@ -17,12 +17,12 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
-import type { AgentRunner, PackAgentOpts } from "../scripts/agent.ts";
-import { DEFAULT_VERIFY_TIMEOUT_MS } from "../scripts/config.ts";
+import type { AgentRunner, PackAgentOpts } from "../../scripts/agent.ts";
+import { DEFAULT_VERIFY_TIMEOUT_MS } from "../../scripts/config.ts";
 import { mergeSubject } from "../scripts/main-writes.ts";
-import { issueNames } from "../scripts/naming.ts";
-import { MERGED, NOTHING_TO_REPORT, OPENED, REPORTED, nodeLine } from "../scripts/node-outcomes.ts";
-import { REVIEW_AXES } from "../scripts/prompt.ts";
+import { issueNames } from "../../scripts/naming.ts";
+import { MERGED, NOTHING_TO_REPORT, OPENED, REPORTED, nodeLine } from "../../scripts/node-outcomes.ts";
+import { REVIEW_AXES } from "../../scripts/prompt.ts";
 import {
   readReviewBase,
   REVIEW_BASE_REL,
@@ -33,7 +33,7 @@ import {
 import { reviewDrain } from "../scripts/review.ts";
 import { reviewedPosition } from "../scripts/review-position.ts";
 import { summarizeDrain } from "../scripts/summary.ts";
-import { READONLY_ENV } from "../scripts/worker-env.ts";
+import { READONLY_ENV } from "../../scripts/worker-env.ts";
 import { mainBranch } from "../scripts/worktree.ts";
 import {
   GATE_LABEL,

@@ -39,12 +39,12 @@
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
-import { readAttempted } from "../../beads-dag-drain/scripts/attempted.ts";
-import { loadConfig, type PackConfig } from "../../beads-dag-drain/scripts/config.ts";
-import { failuresBlock, type FailedIssue } from "../../beads-dag-drain/scripts/failures.ts";
-import { runNode } from "../../beads-dag-drain/scripts/node-entry.ts";
-import { nodeLine, REPORTED } from "../../beads-dag-drain/scripts/node-outcomes.ts";
-import { releaseRunLock } from "../../beads-dag-drain/scripts/run-lock.ts";
+import { readAttempted } from "../../scripts/attempted.ts";
+import { loadConfig, type PackConfig } from "../../scripts/config.ts";
+import { failuresBlock, type FailedIssue } from "../../scripts/failures.ts";
+import { runNode } from "../../scripts/node-entry.ts";
+import { nodeLine, REPORTED } from "../../scripts/node-outcomes.ts";
+import { releaseRunLock } from "../../scripts/run-lock.ts";
 import {
   allIssues,
   issueComments,
@@ -52,7 +52,7 @@ import {
   recordedFailures,
   type Store,
   type StoreIssue,
-} from "../../beads-dag-drain/scripts/store.ts";
+} from "../../scripts/store.ts";
 import { compareHandles, handleOrId, readingFrontier } from "./frontier.ts";
 import { DRAFT_LABEL, landedDraft, readUnnamedPaths, type UnnamedPaths } from "./inquiry.ts";
 import { readReadingRepairs, type ReadingRepair } from "./leftovers.ts";

@@ -15,7 +15,7 @@
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
-import { RUN_LOCK_FILE, runLockFilePath } from "../scripts/run-lock.ts";
+import { RUN_LOCK_FILE, runLockFilePath } from "../../scripts/run-lock.ts";
 import {
   drain,
   expect,

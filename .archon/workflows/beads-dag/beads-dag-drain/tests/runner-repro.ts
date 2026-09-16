@@ -21,18 +21,19 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { executeIssue } from "../../beads-dag-execute/scripts/execute.ts";
-import { defaultAgent, packAnswer, RunnerUnavailable, type PackAgentOpts } from "../scripts/agent.ts";
-import { dshAgent } from "../scripts/dsh-agent.ts";
-import { MERGED } from "../scripts/node-outcomes.ts";
-import { loadPiSdk, piBashTool, piSdkCandidates, readPiSession, roleSessionFile } from "../scripts/pi-session.ts";
-import { AGENT_WALL_MS } from "../scripts/roles.ts";
-import { READONLY_ENV, workerEnv } from "../scripts/worker-env.ts";
+import { defaultAgent, packAnswer, RunnerUnavailable, type PackAgentOpts } from "../../scripts/agent.ts";
+import { dshAgent } from "../../scripts/dsh-agent.ts";
+import { MERGED } from "../../scripts/node-outcomes.ts";
+import { loadPiSdk, piBashTool, piSdkCandidates, readPiSession, roleSessionFile } from "../../scripts/pi-session.ts";
+import { AGENT_WALL_MS } from "../../scripts/roles.ts";
+import { READONLY_ENV, workerEnv } from "../../scripts/worker-env.ts";
 import {
   GATE_LABEL,
   bd,
   drain,
   execute,
   expect,
+  kernelDir,
   expectEqual,
   fakePiSdk,
   gitC,
@@ -526,17 +527,17 @@ try {
   );
 
   // ---- The seam's own rules, at the source: no static runner, one answer channel. -------------------
-  const seam = readFileSync(join(drain.dir, "scripts", "agent.ts"), "utf8");
+  const seam = readFileSync(join(kernelDir, "agent.ts"), "utf8");
   const staticImports = seam.split("\n").filter((line) => /^import\b/.test(line));
   expect(
     "the seam statically imports no runner",
     staticImports.every((line) => !/from "\.\/(?:pi-session|dsh-agent|dsh-runtime)\.ts"/.test(line)),
     staticImports,
   );
-  const pi = readFileSync(join(drain.dir, "scripts", "pi-session.ts"), "utf8");
+  const pi = readFileSync(join(kernelDir, "pi-session.ts"), "utf8");
   expect("the pi runner never reads the prompt call's return", !/=\s*await\s+pi\.session\.prompt\(/.test(pi));
   expect("its answer is its session reader", /piTurn\(/.test(pi) && /readPiSession\(/.test(pi));
-  const wire = readFileSync(join(drain.dir, "scripts", "dsh-runtime.ts"), "utf8");
+  const wire = readFileSync(join(kernelDir, "dsh-runtime.ts"), "utf8");
   expect("the dsh protocol reads no log file", !/readFileSync|createReadStream/.test(wire));
 
   console.log(JSON.stringify({ ok: true }));

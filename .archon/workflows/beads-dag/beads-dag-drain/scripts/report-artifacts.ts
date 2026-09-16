@@ -19,7 +19,7 @@
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { nodeLine } from "./node-outcomes.ts";
+import { nodeLine } from "../../scripts/node-outcomes.ts";
 import { positionToOpenOn } from "./review-position.ts";
 
 /** The drain-end artifacts, relative to ARTIFACTS_DIR. */

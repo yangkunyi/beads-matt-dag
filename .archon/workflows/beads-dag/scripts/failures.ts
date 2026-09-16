@@ -31,9 +31,9 @@
  * row could be honest. That half belongs to the range's report (a merge this run did not make), not here.
  */
 import { issueNames } from "./naming.ts";
-import { leftoverReason } from "./reconcile.ts";
+import { leftoverReason } from "../beads-dag-drain/scripts/reconcile.ts";
 import { allIssues, recordedFailures, type RecordedFailure, type Store, type StoreIssue } from "./store.ts";
-import { mainBranch } from "./worktree.ts";
+import { mainBranch } from "../beads-dag-drain/scripts/worktree.ts";
 
 /** The heading the block carries in the artifact: one name, so the report and its readers agree. */
 export const FAILURES_HEADING = "## Failed attempts";

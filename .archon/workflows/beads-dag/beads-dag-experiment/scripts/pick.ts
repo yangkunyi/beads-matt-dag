@@ -20,10 +20,10 @@
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { readAttempted } from "../../beads-dag-drain/scripts/attempted.ts";
-import { runNode } from "../../beads-dag-drain/scripts/node-entry.ts";
-import { nodeLine } from "../../beads-dag-drain/scripts/node-outcomes.ts";
-import { preflightStore, readyIssues, type StoreIssue } from "../../beads-dag-drain/scripts/store.ts";
+import { readAttempted } from "../../scripts/attempted.ts";
+import { runNode } from "../../scripts/node-entry.ts";
+import { nodeLine } from "../../scripts/node-outcomes.ts";
+import { preflightStore, readyIssues, type StoreIssue } from "../../scripts/store.ts";
 import { EXPERIMENT_LABEL, EXPERIMENT_TYPE } from "./ticket.ts";
 
 /**

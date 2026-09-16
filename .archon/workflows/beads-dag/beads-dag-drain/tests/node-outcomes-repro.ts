@@ -11,7 +11,7 @@
  *                    one that did it
  */
 import { readFileSync } from "node:fs";
-import { CLOSED, EMPTY_PICK, FAILED, NOTHING_TO_REPORT, OPENED, REGISTERED, nodeLine } from "../scripts/node-outcomes.ts";
+import { CLOSED, EMPTY_PICK, FAILED, NOTHING_TO_REPORT, OPENED, REGISTERED, nodeLine } from "../../scripts/node-outcomes.ts";
 import { GATE_LABEL, drain, execute, experiment, expect, expectEqual, fakePiSdk, inquiry, publishIssue, runScript, withTarget } from "./target.ts";
 
 try {

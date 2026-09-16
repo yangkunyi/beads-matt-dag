@@ -14,9 +14,9 @@
  */
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { loadConfig, type PackConfig } from "../../beads-dag-drain/scripts/config.ts";
-import type { IssueNames } from "../../beads-dag-drain/scripts/naming.ts";
-import { commentIssue, preflightStore, removeLabel } from "../../beads-dag-drain/scripts/store.ts";
+import { loadConfig, type PackConfig } from "../../scripts/config.ts";
+import type { IssueNames } from "../../scripts/naming.ts";
+import { commentIssue, preflightStore, removeLabel } from "../../scripts/store.ts";
 
 /** The four closing-line labels. The document's shape and the check are this list. */
 export const RECORD_CLOSING_LABELS = ["measured:", "reference:", "covered:", "reading:"] as const;

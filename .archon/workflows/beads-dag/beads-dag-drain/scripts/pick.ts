@@ -1,10 +1,10 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { addAttempted, readAttempted } from "./attempted.ts";
-import { assertNoCrossDomainEdges, NON_WORK_TYPES } from "./domains.ts";
-import { runNode } from "./node-entry.ts";
-import { nodeLine } from "./node-outcomes.ts";
-import { claimIssues, preflightStore, readyIssues, type StoreIssue } from "./store.ts";
+import { addAttempted, readAttempted } from "../../scripts/attempted.ts";
+import { assertNoCrossDomainEdges, NON_WORK_TYPES } from "../../scripts/domains.ts";
+import { runNode } from "../../scripts/node-entry.ts";
+import { nodeLine } from "../../scripts/node-outcomes.ts";
+import { claimIssues, preflightStore, readyIssues, type StoreIssue } from "../../scripts/store.ts";
 
 /**
  * The frontier: what this drain may start, in one token — a JSON array of issue handles, so the same

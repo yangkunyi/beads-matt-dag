@@ -14,12 +14,13 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { commitDocuments, documentSubject } from "../scripts/doc-commit.ts";
-import { isMainLockHeld, lockFilePath, withMainLock } from "../scripts/lock.ts";
+import { commitDocuments, documentSubject } from "../../scripts/doc-commit.ts";
+import { isMainLockHeld, lockFilePath, withMainLock } from "../../scripts/lock.ts";
 import {
   GATE_LABEL,
   drain,
   expect,
+  kernelDir,
   expectEqual,
   expectReject,
   gitC,
@@ -157,7 +158,7 @@ try {
     writeFileSync(
       childScript,
       [
-        `import { commitDocuments } from ${JSON.stringify(join(drain.dir, "scripts", "doc-commit.ts"))};`,
+        `import { commitDocuments } from ${JSON.stringify(join(kernelDir, "doc-commit.ts"))};`,
         `process.stdout.write("started\\n");`,
         `const r = await commitDocuments(${JSON.stringify(root)}, { subject: "read: feat/09 the-locked-doc", paths: [${JSON.stringify(doc)}] });`,
         `process.stdout.write("done " + r.committed + "\\n");`,

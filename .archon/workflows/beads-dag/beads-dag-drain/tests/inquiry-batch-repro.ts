@@ -26,8 +26,8 @@
  */
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { EMPTY_PICK, FAILED, LANDED, OPENED, REPORTED, nodeLine } from "../scripts/node-outcomes.ts";
-import { runLockFilePath } from "../scripts/run-lock.ts";
+import { EMPTY_PICK, FAILED, LANDED, OPENED, REPORTED, nodeLine } from "../../scripts/node-outcomes.ts";
+import { runLockFilePath } from "../../scripts/run-lock.ts";
 import {
   bd,
   expect,

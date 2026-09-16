@@ -20,13 +20,13 @@
  * the report hands in the empty set, because it describes what a next run would find rather than what
  * this one remembers.
  */
-import { issueNames } from "../../beads-dag-drain/scripts/naming.ts";
+import { issueNames } from "../../scripts/naming.ts";
 import {
   inProgressIssues,
   readyIssues,
   type Store,
   type StoreIssue,
-} from "../../beads-dag-drain/scripts/store.ts";
+} from "../../scripts/store.ts";
 import { DRAFT_LABEL, MAP_LABEL, READING_LEG_LABEL } from "./inquiry.ts";
 
 /**

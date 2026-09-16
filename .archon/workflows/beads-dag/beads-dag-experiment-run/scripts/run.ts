@@ -33,15 +33,15 @@
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { defaultAgent, type AgentRunner } from "../../beads-dag-drain/scripts/agent.ts";
-import { addAttempted } from "../../beads-dag-drain/scripts/attempted.ts";
-import { loadConfig, type PackConfig } from "../../beads-dag-drain/scripts/config.ts";
-import { commitDocuments, documentSubject } from "../../beads-dag-drain/scripts/doc-commit.ts";
-import { revParse } from "../../beads-dag-drain/scripts/git.ts";
-import { bodyPath, issueNames } from "../../beads-dag-drain/scripts/naming.ts";
-import { runNode } from "../../beads-dag-drain/scripts/node-entry.ts";
-import { CLOSED, FAILED, nodeLine, REGISTERED } from "../../beads-dag-drain/scripts/node-outcomes.ts";
-import { roleAgent } from "../../beads-dag-drain/scripts/roles.ts";
+import { defaultAgent, type AgentRunner } from "../../scripts/agent.ts";
+import { addAttempted } from "../../scripts/attempted.ts";
+import { loadConfig, type PackConfig } from "../../scripts/config.ts";
+import { commitDocuments, documentSubject } from "../../scripts/doc-commit.ts";
+import { revParse } from "../../scripts/git.ts";
+import { bodyPath, issueNames } from "../../scripts/naming.ts";
+import { runNode } from "../../scripts/node-entry.ts";
+import { CLOSED, FAILED, nodeLine, REGISTERED } from "../../scripts/node-outcomes.ts";
+import { roleAgent } from "../../scripts/roles.ts";
 import {
   claimByAssignment,
   closeIssueWithLabel,
@@ -49,7 +49,7 @@ import {
   issueByHandle,
   preflightStore,
   recordFailedAttempt,
-} from "../../beads-dag-drain/scripts/store.ts";
+} from "../../scripts/store.ts";
 import {
   experimentRecordRel,
   inspectRecord,

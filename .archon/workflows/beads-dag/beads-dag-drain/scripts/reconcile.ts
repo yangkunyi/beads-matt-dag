@@ -30,11 +30,11 @@
  * release implementation work across a domain boundary that ADR-0004 exists to keep closed. The repair
  * reports each one it left alone instead.
  */
-import { NON_WORK_TYPES } from "./domains.ts";
+import { NON_WORK_TYPES } from "../../scripts/domains.ts";
 import { mergedOnMain } from "./main-writes.ts";
-import { issueNames, type IssueNames } from "./naming.ts";
+import { issueNames, type IssueNames } from "../../scripts/naming.ts";
 import { settleFailed, settleMerged } from "./settle.ts";
-import { inProgressIssues, type Store, type StoreIssue } from "./store.ts";
+import { inProgressIssues, type Store, type StoreIssue } from "../../scripts/store.ts";
 import { mainBranch } from "./worktree.ts";
 
 /** What one leftover was resolved to: a close a merge had already earned, a recorded failure, or a

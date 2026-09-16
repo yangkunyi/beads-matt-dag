@@ -22,11 +22,11 @@
  * act on the operator's word, and this executor's writes are documents, claims and draft answers.
  */
 import { basename } from "node:path";
-import { configLine } from "../../beads-dag-drain/scripts/config.ts";
-import { runNode } from "../../beads-dag-drain/scripts/node-entry.ts";
-import { nodeLine, OPENED } from "../../beads-dag-drain/scripts/node-outcomes.ts";
-import { recordRunLock, releaseRunLock, stoleLine, takeRunLock } from "../../beads-dag-drain/scripts/run-lock.ts";
-import { preflightStore, recomputeBlocked } from "../../beads-dag-drain/scripts/store.ts";
+import { configLine } from "../../scripts/config.ts";
+import { runNode } from "../../scripts/node-entry.ts";
+import { nodeLine, OPENED } from "../../scripts/node-outcomes.ts";
+import { recordRunLock, releaseRunLock, stoleLine, takeRunLock } from "../../scripts/run-lock.ts";
+import { preflightStore, recomputeBlocked } from "../../scripts/store.ts";
 import { preflightReading } from "./inquiry.ts";
 import { repairReadingLeftovers, writeReadingRepairs } from "./leftovers.ts";
 

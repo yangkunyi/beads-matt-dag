@@ -20,8 +20,8 @@
  */
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
-import { LOCK_NAME, lockFilePath, withMainLock } from "../scripts/lock.ts";
-import { RUN_LOCK_FILE, RUN_LOCK_NAME, runLockFilePath } from "../scripts/run-lock.ts";
+import { LOCK_NAME, lockFilePath, withMainLock } from "../../scripts/lock.ts";
+import { RUN_LOCK_FILE, RUN_LOCK_NAME, runLockFilePath } from "../../scripts/run-lock.ts";
 import {
   GATE_LABEL,
   drain,
