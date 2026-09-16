@@ -55,9 +55,9 @@ import {
   inspectRecord,
   READING_NONE_LABEL,
   recordedLine,
-} from "../../beads-dag-experiment/scripts/record.ts";
-import { REGISTER_TOOL_REL } from "../../beads-dag-experiment/scripts/run-tool.ts";
-import { runIdentity, runName } from "../../beads-dag-experiment/scripts/ticket.ts";
+} from "./record.ts";
+import { REGISTER_TOOL_REL } from "./run-tool.ts";
+import { runIdentity, runName } from "./ticket.ts";
 
 /** One run in the registration: the name the queue reserved, and the parameters it resolved. */
 type RegisteredRun = { name: string; params: Record<string, unknown> };
