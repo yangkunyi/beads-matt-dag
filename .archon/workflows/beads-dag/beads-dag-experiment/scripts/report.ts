@@ -32,14 +32,18 @@ import { nodeLine, REPORTED } from "../../scripts/node-outcomes.ts";
 import { releaseRunLock } from "../../scripts/run-lock.ts";
 import {
   allIssues,
+  issueState,
   preflightStore,
   recordedFailures,
   type Store,
   type StoreIssue,
 } from "../../scripts/store.ts";
 
-/** The store label the completeness close stamps: a recorded result nobody has read. */
-const READING_NONE_LABEL = "reading:none";
+/** The store dimension the completeness close stamps, read back through `bd state`, never the label. */
+const READING_DIMENSION = "reading";
+
+/** The unread value on that dimension. */
+const READING_UNREAD = "none";
 
 /** The run's close-out, relative to ARTIFACTS_DIR. */
 export const REPORT_MD_REL = "report.md";
@@ -149,11 +153,11 @@ function ticketLine(ticket: NamedTicket): string {
 }
 
 /**
- * One closed-on-record ticket: the store's close, and the unread marker the completeness close
- * stamps in the same act, when it is still on the ticket.
+ * One closed-on-record ticket: the store's close, and the unread reading the completeness close
+ * stamped, when `bd state <id> reading` still answers the unread value.
  */
-function closedLine(issue: StoreIssue): string {
-  const unread = issue.labels.includes(READING_NONE_LABEL) ? `; label ${READING_NONE_LABEL}` : "";
+function closedLine(issue: StoreIssue, reading: string | undefined): string {
+  const unread = reading === READING_UNREAD ? `; reading ${READING_UNREAD}` : "";
   return `- ${handleOrId(issue)} [${issue.id}] — closed${unread}`;
 }
 
@@ -162,7 +166,11 @@ function closedLine(issue: StoreIssue): string {
  * sections are attempted, closed-on-record, and failed, in that order. An empty section says so
  * rather than being left out, so a run that did nothing is readable as a run that did nothing.
  */
-function reportBody(facts: ReportFacts, closedIssues: readonly StoreIssue[]): string {
+function reportBody(
+  facts: ReportFacts,
+  closedIssues: readonly StoreIssue[],
+  readings: ReadonlyMap<string, string | undefined>,
+): string {
   const headline =
     `${facts.attempted.length} attempted, ${facts.closedOnRecord.length} closed on record, ` +
     `${facts.failed.length} failed.`;
@@ -180,7 +188,7 @@ function reportBody(facts: ReportFacts, closedIssues: readonly StoreIssue[]): st
         : facts.closedOnRecord
             .map((ticket) => {
               const issue = closedById.get(ticket.id);
-              return issue === undefined ? ticketLine(ticket) : closedLine(issue);
+              return issue === undefined ? ticketLine(ticket) : closedLine(issue, readings.get(ticket.id));
             })
             .join("\n"),
     ),
@@ -208,6 +216,9 @@ export function reportExperimentRun(target: string, opts: ExperimentReportOpts):
   const attempted = readAttempted(opts.artifactsDir);
   const closed = closedOnRecord(issues, attempted);
   const closedIssues = issues.filter((issue) => closed.some((row) => row.id === issue.id));
+  const readings = new Map(
+    closedIssues.map((issue) => [issue.id, issueState(store, target, issue.id, READING_DIMENSION)]),
+  );
   const body = reportBody(
     {
       runId: basename(opts.artifactsDir),
@@ -216,6 +227,7 @@ export function reportExperimentRun(target: string, opts: ExperimentReportOpts):
       failed: failedAttempts(store, target, issues, attempted),
     },
     closedIssues,
+    readings,
   );
   mkdirSync(opts.artifactsDir, { recursive: true });
   writeFileSync(join(opts.artifactsDir, REPORT_MD_REL), body.endsWith("\n") ? body : `${body}\n`);

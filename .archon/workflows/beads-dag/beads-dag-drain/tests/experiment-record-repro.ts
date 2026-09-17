@@ -10,13 +10,13 @@
  *
  * What is pinned here:
  *
- *   - a complete record closes the ticket, stamps `reading:none` in the same act, and is committed as
- *     one path-scoped commit; the record's `reading:` line and the label are written together;
+ *   - a complete record closes the ticket, stamps `reading=none` through `bd set-state`, and is committed
+ *     as one path-scoped commit; the record's `reading:` line and the dimension are written together;
  *   - an incomplete record leaves the ticket open with `attempt N failed: record incomplete — <what is
  *     missing>` - one case each for a missing file, a missing row and a missing label - and nothing
- *     else happens (no close, no label, no commit);
+ *     else happens (no close, no reading dimension, no commit);
  *   - the session's sweep (`bd list -t experiment -s closed -l reading:none`) finds exactly the tickets
- *     closed this way, and clearing the marker is one act that also changes the record's marker line;
+ *     closed this way, and clearing the marker is the same `set-state` verb with a new value;
  *   - the run turn is the `experiment` role, with the store read-only, and the executor writes no code
  *     (its commit is the record; the record names the commit the run was on).
  *
@@ -27,7 +27,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { runExperiment } from "../../beads-dag-experiment-run/scripts/run.ts";
-import { clearUnreadMarker, READING_NONE_LABEL } from "../../beads-dag-experiment-run/scripts/record.ts";
+import { clearUnreadMarker, READING_NONE_LABEL, READING_UNREAD } from "../../beads-dag-experiment-run/scripts/record.ts";
 import type { PackAgentOpts, PackAgentResult } from "../../scripts/agent.ts";
 import { CLOSED, FAILED, nodeLine } from "../../scripts/node-outcomes.ts";
 import { roleSessionFile } from "../../scripts/pi-session.ts";
@@ -47,12 +47,21 @@ import {
   storeBinary,
   storeComments,
   storeIssue,
+  storeState,
   withTarget,
   writeStoreConfig,
   writeStubDvc,
 } from "./target.ts";
 
 const UNREAD = READING_NONE_LABEL;
+const READING = "reading";
+
+/** Event beads the store holds for one issue's `reading` dimension, oldest first. */
+function readingEvents(root: string, id: string): { created_by?: string; description?: string; title?: string }[] {
+  const parsed: unknown = JSON.parse(bd(root, "list", "-t", "event", "--all", "--json", "--limit", "0"));
+  if (!Array.isArray(parsed)) throw new Error(`reading events: not a list: ${JSON.stringify(parsed)}`);
+  return parsed.filter((row: { parent?: string; title?: string }) => row.parent === id && /reading/.test(row.title ?? ""));
+}
 
 /** The environment variables this file sets; restored in full at the end, whatever happens. */
 const TOUCHED_ENV = ["PI_SDK_PATH", "FAKE_PI_RECORD"];
@@ -147,8 +156,13 @@ try {
 
       expectEqual("a complete record closes", outcome, CLOSED);
       expectEqual("the ticket is closed", storeIssue(root, ticket.id).status, "closed");
-      expectEqual("carrying the unread marker", storeIssue(root, ticket.id).labels.includes(UNREAD), true);
+      expectEqual("carrying the unread reading", storeState(root, ticket.id, READING), READING_UNREAD);
       expect("and still the experiment label", storeIssue(root, ticket.id).labels.includes("experiment"), storeIssue(root, ticket.id).labels);
+      const who = `beads-dag-experiment/${artifacts.split("/").pop()}`;
+      const events = readingEvents(root, ticket.id);
+      expectEqual("one event bead records the unread write", events.length, 1);
+      expectEqual("the actor is the run's own identity", events[0]!.created_by, who);
+      expect("the reason is the close", /Reason: record closed/.test(events[0]!.description ?? ""), events[0]!.description);
 
       const commit = gitC(root, "rev-parse", "main");
       const comments = storeComments(root, ticket.id);
@@ -232,7 +246,7 @@ try {
         });
         expectEqual(`a missing ${kind} fails`, outcome, FAILED);
         expectEqual("the ticket stays open", storeIssue(root, ticket.id).status, "open");
-        expectEqual("with no unread marker", storeIssue(root, ticket.id).labels.includes(UNREAD), false);
+        expectEqual("with no reading dimension", storeState(root, ticket.id, READING), undefined);
         expectEqual(
           "naming exactly what is missing",
           storeComments(root, ticket.id)[0]!.text,
@@ -275,17 +289,25 @@ try {
 
       expectEqual("the sweep finds exactly the ticket closed this way", unreadSweep(root), [closed.id]);
       expectEqual("the hand-closed ticket is closed without the marker", storeIssue(root, other.id).status, "closed");
-      expectEqual("and is not in the sweep", storeIssue(root, other.id).labels.includes(UNREAD), false);
+      expectEqual("and has no reading dimension", storeState(root, other.id, READING), undefined);
 
-      clearUnreadMarker(root, closed.id, recordRel, "declined — not useful");
+      clearUnreadMarker(root, closed.id, recordRel, "declined — not useful", {
+        reason: "operator declined",
+        actor: "session/test",
+      });
       expectEqual("clearing empties the sweep", unreadSweep(root), []);
-      expectEqual("the label is off", storeIssue(root, closed.id).labels.includes(UNREAD), false);
+      expectEqual("the dimension now holds the reading", storeState(root, closed.id, READING), "declined — not useful");
       expectEqual("the ticket stays closed", storeIssue(root, closed.id).status, "closed");
       const record = readFileSync(join(root, recordRel), "utf8");
       expect("the record's marker line changed", record.includes("reading: declined — not useful"), record);
       expect("and no longer says none yet", !/^reading: none yet$/m.test(record), record);
       const comments = storeComments(root, closed.id).map((c) => c.text);
-      expect("a comment was appended", comments.some((text) => text === "reading: declined — not useful"), comments);
+      expect("no comment restates the reading", !comments.some((text) => text.includes("declined — not useful")), comments);
+      const events = readingEvents(root, closed.id);
+      expect("a second event bead records the clear", events.length >= 2, events.length);
+      const declined = events.find((event) => /Reason: operator declined/.test(event.description ?? ""));
+      expect("the clear's event is on the ticket", declined !== undefined, events);
+      expectEqual("the actor is the session's own", declined!.created_by, "session/test");
     } finally {
       process.env.PATH = prevPath;
       if (prevDvc === undefined) delete process.env.DVC_BIN;
@@ -310,7 +332,7 @@ try {
       const outcome = await runExperiment(root, "exp/07", { artifactsDir: artifacts });
       expectEqual("the fake session's record closes", outcome, CLOSED);
       expectEqual("the ticket is closed with the unread marker", storeIssue(root, ticket.id).status, "closed");
-      expectEqual("carrying the label", storeIssue(root, ticket.id).labels.includes(UNREAD), true);
+      expectEqual("carrying the unread reading", storeState(root, ticket.id, READING), READING_UNREAD);
       expect("the record came off the session", existsSync(join(root, recordRel)), recordRel);
       expect("the record is in Main", gitC(root, "show", `main:${recordRel}`).includes("reading: none yet"), recordRel);
       const sessionFile = roleSessionFile(artifacts, "exp/07", "experiment");
@@ -327,7 +349,7 @@ try {
       expectEqual("an incomplete fake record does not close", silentOutcome, FAILED);
       expect("the attempt names a missing label", /record incomplete — /.test(storeComments(root, silent.id)[0]!.text ?? ""), storeComments(root, silent.id)[0]?.text);
       expectEqual("back to open", storeIssue(root, silent.id).status, "open");
-      expectEqual("no unread marker", storeIssue(root, silent.id).labels.includes(UNREAD), false);
+      expectEqual("no reading dimension", storeState(root, silent.id, READING), undefined);
       expectEqual("and nothing was committed", gitC(root, "rev-parse", "main"), before);
     } finally {
       process.env.PATH = prevPath;
@@ -355,7 +377,7 @@ try {
     expectEqual("the run node prints its token and nothing else", r.stdout, nodeLine(CLOSED));
     expectEqual("as a result, not an error", r.status, 0);
     expectEqual("the ticket is closed", storeIssue(root, ticket.id).status, "closed");
-    expectEqual("with the unread marker", storeIssue(root, ticket.id).labels.includes(UNREAD), true);
+    expectEqual("with the unread reading", storeState(root, ticket.id, READING), READING_UNREAD);
   });
 
   // ---- The tracker contract and the experiment-domain document carry the four literal labels. ----

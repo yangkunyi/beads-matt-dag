@@ -39,6 +39,7 @@ import {
   runScript,
   storeComments,
   storeIssue,
+  storeState,
   withTarget,
   writeStoreConfig,
   writeStubDvc,
@@ -47,7 +48,8 @@ import {
 } from "./target.ts";
 
 const REPORT = "report.md";
-const UNREAD = "reading:none";
+const READING = "reading";
+const READING_UNREAD = "none";
 
 /** The close-out artifact, read whole. */
 function report(artifacts: string): string {
@@ -194,11 +196,11 @@ try {
     expectEqual("closed-on-record names exactly that ticket", closed.length, 1);
     expect("with the handle", closed[0]!.includes("exp/01"), closed[0]);
     expect("as closed", closed[0]!.includes("closed"), closed[0]);
-    expect("and the unread marker the completeness close stamped", closed[0]!.includes(`label ${UNREAD}`), closed[0]);
+    expect("and the unread reading the completeness close stamped", closed[0]!.includes(`reading ${READING_UNREAD}`), closed[0]);
     expectEqual("failed says none", section(text, "Failed attempts"), ["none this run"]);
 
     expectEqual("the ticket stays closed: the last node did not reopen it", storeIssue(root, one.id).status, "closed");
-    expectEqual("still carrying the unread marker", storeIssue(root, one.id).labels.includes(UNREAD), true);
+    expectEqual("still carrying the unread reading", storeState(root, one.id, READING), READING_UNREAD);
     expectEqual("the last node gave the run lock back", existsSync(runLockFilePath(root)), false);
   });
 
@@ -220,7 +222,7 @@ try {
     expectEqual("closed-on-record says none", section(text, "Closed on record"), ["none this run"]);
 
     expectEqual("the ticket stays open: closed is completeness of record", storeIssue(root, one.id).status, "open");
-    expectEqual("with no unread marker", storeIssue(root, one.id).labels.includes(UNREAD), false);
+    expectEqual("with no reading dimension", storeState(root, one.id, READING), undefined);
     expectEqual(
       "and the store holds its attempt, ordinal included",
       storeComments(root, one.id).map((c) => c.text),

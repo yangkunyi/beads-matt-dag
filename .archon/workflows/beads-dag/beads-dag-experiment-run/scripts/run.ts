@@ -24,9 +24,9 @@
  * hold an attempts-table row, and hold the four labelled closing lines (`measured:`, `reference:`,
  * `covered:`, `reading:`). Missing anything leaves the ticket open with
  * `attempt N failed: record incomplete — <what is missing>` and nothing else happens. Only a complete
- * record closes the ticket: the close, the `reading:none` label and the comment are one act, and the
- * record (plus `dvc.lock` when the collection wrote it) is committed as one path-scoped commit under the
- * Main lock.
+ * record closes the ticket: the close, then `set-state reading=none` for the unread marker (event bead
+ * as source of truth, cache label as lookup; ADR-0005: both in the store), and the record (plus
+ * `dvc.lock` when the collection wrote it) is committed as one path-scoped commit under the Main lock.
  *
  * The run's *name* is the ticket's own: `<NN>-<slug>` (`ticket.ts`), the record's basename.
  */
@@ -44,7 +44,7 @@ import { CLOSED, FAILED, nodeLine, REGISTERED } from "../../scripts/node-outcome
 import { roleAgent } from "../../scripts/roles.ts";
 import {
   claimByAssignment,
-  closeIssueWithLabel,
+  closeRecordedIssue,
   commentIssue,
   issueByHandle,
   preflightStore,
@@ -53,8 +53,8 @@ import {
 import {
   experimentRecordRel,
   inspectRecord,
-  READING_NONE_LABEL,
   recordedLine,
+  stampUnreadReading,
 } from "./record.ts";
 import { REGISTER_TOOL_REL } from "./run-tool.ts";
 import { runIdentity, runName } from "./ticket.ts";
@@ -216,10 +216,14 @@ export async function runExperiment(target: string, issueHandle: string, opts: R
   }
 
   commentIssue(store, target, issue.id, recordedLine(recordRel, commit));
-  // One store command, and it is this node's last act for the ticket: the close and the unread marker
-  // land together. The record's `reading:` line is already in the committed document; the label is the
-  // same fact in the store.
-  closeIssueWithLabel(store, target, issue.id, READING_NONE_LABEL);
+  closeRecordedIssue(store, target, issue.id);
+  // The unread reading is its own write: one `set-state`, with this run as actor. The event bead and
+  // the cache label are both in the store (ADR-0005); the record's `reading:` line is already in the
+  // committed document.
+  stampUnreadReading(store, target, issue.id, {
+    reason: "record closed",
+    actor: runIdentity(opts.artifactsDir),
+  });
   console.error(`${names.handle}: record closed (${recordRel} at ${commit})`);
   return CLOSED;
 }

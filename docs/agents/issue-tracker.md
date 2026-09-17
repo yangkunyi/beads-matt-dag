@@ -382,8 +382,9 @@ instead of a story told afterwards. Freezing it is what the claim buys.
 
 **Who does what.** Writing the script, running it, collecting the numbers and writing the record may all
 run AFK. The operator appears twice: agreeing the plan, and — later, optionally — saying what the result
-means. The executor writes the store for this domain: the close, the `reading:none` label and the comment
-are one act once the record is complete. Git documents are the AFK leg's.
+means. The executor writes the store for this domain: the close, then `bd set-state <id> reading=none`
+for the unread marker — the event bead is the source of truth and `reading:none` is the lookup cache
+(ADR-0005: both in the store, so no non-store copy of the fact appears). Git documents are the AFK leg's.
 
 **The record** is one document per ticket at `.scratch/<effort>/results/<NN>-<slug>.md`, holding an
 attempts table — one row per run — and closed by these four labelled lines (the document's shape and the
@@ -401,15 +402,18 @@ target-side script registers the run's identity before it starts and collects af
 closes when the record holds all of that — no signature**: `closed` here means the result is recorded,
 which is bookkeeping, not a judgement. The operator's judgement is deliberately not a field of the record;
 it leaves the ticket as an idea or a work ticket, linked back with `discovered-from` (*Closure never crosses
-domains*, above) — and when he speaks later, the session comments it and the `reading:` line changes.
+domains*, above) — and when he speaks later, the session writes the `reading` dimension and the `reading:`
+line changes.
 
 **The review surface.** A recorded result nobody has read blocks nothing — no chain waits on it, and the
 ticket it might justify does not exist until the operator wants it — so nothing acts on it. It is made
 *visible* instead, and the fact lives in **one place**, the store:
 
-- **The marker is the record's own `reading:` line**, plus a `reading:none` label stamped **in the same
-  act** as the close — the same rule as an idea's state label. That makes the sweep one query, run at the
-  start of a working session beside the frontier:
+- **The marker is the record's own `reading:` line**, plus the store's `reading` dimension stamped with
+  the completeness close — `bd set-state <id> reading=none --reason "record closed"`. The event bead is
+  the source of truth and `reading:none` is the lookup cache (ADR-0005: both in the store). Read the
+  value with `bd state <id> reading`, never by parsing the label. That makes the sweep one query, run at
+  the start of a working session beside the frontier:
 
   ```bash
   bd list -t experiment -s closed -l reading:none
@@ -419,10 +423,11 @@ ticket it might justify does not exist until the operator wants it — so nothin
   whoever wants the list runs the query. A page repeating it is a second thing that can be wrong.
 
 Writing the reading is what clears it, in one act: the `reading:` line takes the operator's words and
-names whatever it spawned (`discovered-from`), the label comes off (`bd label remove <id> reading:none`),
-and a comment is appended — documents hold the picture, comments hold the history. **Unread is not a
-debt**: a result the operator decides not to read is written down as such — `reading: declined — <why>` —
-and clears exactly the same way.
+names whatever it spawned (`discovered-from`), and the same verb replaces the dimension
+(`bd set-state <id> reading=<value> --reason "<the act>"`). The store has no empty dimension, so a clear
+is another value, not a label edit. The actor is the session's own. **Unread is not a debt**: a result
+the operator decides not to read is written down as such — `reading: declined — <why>` — and clears
+exactly the same way.
 
 **One act looks like an amendment and is not**: changing the deciding metric opens a *new* ticket — the old
 one closes with `wontfix`, a comment naming its successor and a `relates-to` link — because changing what
