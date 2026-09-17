@@ -1,3 +1,4 @@
+import "./styles.css";
 import { createElement } from "react";
 import { hydrateRoot } from "react-dom/client";
 import { App, type PageOverview } from "./App.tsx";

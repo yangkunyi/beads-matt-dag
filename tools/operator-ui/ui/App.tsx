@@ -7,7 +7,8 @@
  * `discovered-from`, and one of the five triage labels replacing the rest of the family.
  */
 
-import { useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
 import { postComment } from "../client-comment.ts";
 import { postCreate } from "../client-create.ts";
 import { postStart } from "../client-start.ts";
@@ -18,7 +19,11 @@ import { planStart } from "../start.ts";
 import { Graph } from "./Graph.tsx";
 import { Button, Input, Label, Select, Textarea } from "./kit.tsx";
 
-export type PageOverview = Overview & { commentEndpoint: string | null };
+export type PageOverview = Overview & {
+	commentEndpoint: string | null;
+	/** Where a write re-reads the snapshot. Null on a static page, which has nothing to re-read. */
+	overviewEndpoint: string | null;
+};
 
 function initialFilter(issues: OverviewIssue[]) {
 	const choices = filterChoices(issues);
@@ -34,6 +39,25 @@ function toggle(set: Set<string>, value: string): Set<string> {
 	if (next.has(value)) next.delete(value);
 	else next.add(value);
 	return next;
+}
+
+/** `current` plus anything the store has since grown; the same set back when nothing is new. */
+function withNewValues(current: Set<string>, values: ReadonlyArray<string>): Set<string> {
+	if (values.every((value) => current.has(value))) return current;
+	const next = new Set(current);
+	for (const value of values) next.add(value);
+	return next;
+}
+
+/**
+ * After a write: re-read the store instead of reloading the page. The canvas keeps the coordinates
+ * the operator dragged, so a write reads as a write rather than a reset.
+ */
+function useWritten(): () => void {
+	const client = useQueryClient();
+	return useCallback(() => {
+		void client.invalidateQueries({ queryKey: ["overview"] });
+	}, [client]);
 }
 
 function Filters(props: {
@@ -128,13 +152,14 @@ function StartBar(props: {
 	selected: string[];
 }) {
 	const [status, setStatus] = useState("");
+	const onWritten = useWritten();
 	const plan = planStart(props.selected, props.overview.issues, props.overview.live !== null);
 	const label = plan.ok ? `Start ${plan.kind}` : "Start selection";
 	function onClick() {
 		setStatus("");
 		void postStart(props.endpoint, props.selected)
 			.then(() => {
-				location.reload();
+				onWritten();
 			})
 			.catch((error: unknown) => {
 				setStatus(error instanceof Error ? error.message : String(error));
@@ -231,11 +256,12 @@ function currentTriage(labels: string[]): TriageLabel | undefined {
 
 function TriageForm(props: { endpoint: string; id: string; current: TriageLabel | undefined }) {
 	const [status, setStatus] = useState("");
+	const onWritten = useWritten();
 	function apply(label: TriageLabel) {
 		setStatus("");
 		void postTriage(props.endpoint, props.id, label)
 			.then(() => {
-				location.reload();
+				onWritten();
 			})
 			.catch((error: unknown) => {
 				setStatus(error instanceof Error ? error.message : String(error));
@@ -270,12 +296,13 @@ function TriageForm(props: { endpoint: string; id: string; current: TriageLabel 
 function ReplyForm(props: { endpoint: string; id: string }) {
 	const [text, setText] = useState("");
 	const [status, setStatus] = useState("");
+	const onWritten = useWritten();
 	function onSubmit(event: FormEvent) {
 		event.preventDefault();
 		setStatus("");
 		void postComment(props.endpoint, props.id, text)
 			.then(() => {
-				location.reload();
+				onWritten();
 			})
 			.catch((error: unknown) => {
 				setStatus(error instanceof Error ? error.message : String(error));
@@ -322,12 +349,13 @@ function CreateForm({ endpoint }: { endpoint: string }) {
 	const [title, setTitle] = useState("");
 	const [prose, setProse] = useState("");
 	const [status, setStatus] = useState("");
+	const onWritten = useWritten();
 	function onSubmit(event: FormEvent) {
 		event.preventDefault();
 		setStatus("");
 		void postCreate(endpoint, { type, feature, title, prose })
 			.then(() => {
-				location.reload();
+				onWritten();
 			})
 			.catch((error: unknown) => {
 				setStatus(error instanceof Error ? error.message : String(error));
@@ -398,10 +426,49 @@ function CreateForm({ endpoint }: { endpoint: string }) {
 }
 
 export function App({ overview }: { overview: PageOverview }) {
+	// One client per render: the server renders this again for every request, and a shared cache
+	// would hand a fresh page the previous request's snapshot.
+	const [client] = useState(
+		() =>
+			new QueryClient({
+				defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
+			}),
+	);
+	return (
+		<QueryClientProvider client={client}>
+			<Surface snapshot={overview} />
+		</QueryClientProvider>
+	);
+}
+
+function Surface({ snapshot }: { snapshot: PageOverview }) {
+	const refresh = snapshot.overviewEndpoint;
+	const query = useQuery({
+		queryKey: ["overview"],
+		initialData: snapshot,
+		enabled: refresh !== null,
+		queryFn: async (): Promise<PageOverview> => {
+			const res = await fetch(refresh ?? "");
+			if (!res.ok) throw new Error(`overview ${res.status}`);
+			return (await res.json()) as PageOverview;
+		},
+		// A run that is moving is worth watching; a still page is not worth polling.
+		refetchInterval: (q) => (q.state.data?.live ? 5000 : false),
+	});
+	const overview = query.data;
+	const onWritten = useWritten();
 	const [selected, setSelected] = useState<string[]>([]);
 	const [types, setTypes] = useState(() => initialFilter(overview.issues).types);
 	const [statuses, setStatuses] = useState(() => initialFilter(overview.issues).statuses);
 	const [labels, setLabels] = useState(() => initialFilter(overview.issues).labels);
+	// A re-read can bring a type, status or label the filters have never seen. Add it, so an issue
+	// the operator has just created is not hidden by a filter set that predates it.
+	useEffect(() => {
+		const choices = filterChoices(overview.issues);
+		setTypes((current) => withNewValues(current, choices.types));
+		setStatuses((current) => withNewValues(current, choices.statuses));
+		setLabels((current) => withNewValues(current, choices.labels.map((entry) => entry.value)));
+	}, [overview.issues]);
 	const shown = useMemo(
 		() => filterOverview(overview, { types, statuses, labels }),
 		[overview, types, statuses, labels],
@@ -439,6 +506,7 @@ export function App({ overview }: { overview: PageOverview }) {
 					selected={selected}
 					onSelect={setSelected}
 					writeEndpoint={overview.commentEndpoint}
+					onWritten={onWritten}
 				/>
 				<Detail overview={overview} selected={selected} />
 			</div>

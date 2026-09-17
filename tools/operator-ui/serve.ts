@@ -21,7 +21,7 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { applyOperatorAction, OperatorActionRefused, type OperatorIssue } from "./actions";
 import { documentsFor } from "./documents";
-import { assembleOverview } from "./model";
+import { assembleOverview, type Overview } from "./model";
 import { fetchLive, makeArchonRunner, resolveArchon, targetRunHeld } from "./overlay";
 import { renderPage } from "./page";
 import { launchWithArchon, type RunLauncher } from "./start";
@@ -80,6 +80,8 @@ function unknownFlags(argv: string[], known: string[]): string[] {
 export type OverviewHandler = {
 	write: BdWriteRunner;
 	page: () => string;
+	/** The same overview the page embeds, as JSON: what a write re-reads instead of reloading. Absent when nothing can produce one, and then /overview is a 404 like any other unknown path. */
+	overview?: () => string;
 	/** Target root. Create writes the body file here. */
 	dir?: string;
 	launchRun?: RunLauncher;
@@ -94,8 +96,9 @@ export type OverviewResponse = {
 };
 
 /**
- * One request: GET / is the page, POST /comment is the tagged write door. A comment intent is
- * `bd comment`. A create intent writes the body and `bd create`. A start intent launches that
+ * One request: GET / is the page, GET /overview is the same snapshot as JSON so a write can re-read
+ * the store instead of reloading the page, POST /comment is the tagged write door. A comment intent
+ * is `bd comment`. A create intent writes the body and `bd create`. A start intent launches that
  * domain's existing run with the selected ids as the allow-list. Edge intents are store deps.
  * A triage intent moves one of the five labels, replacing the rest of the family. `closed`,
  * `reading:`, non-triage labels, unknown intents, cross-domain `blocks`, and `parent-child`
@@ -113,6 +116,13 @@ export async function handleOverviewRequest(
 			status: 200,
 			headers: { "content-type": "text/html; charset=utf-8" },
 			body: method === "HEAD" ? "" : handler.page(),
+		};
+	}
+	if (method === "GET" && path === "/overview" && handler.overview !== undefined) {
+		return {
+			status: 200,
+			headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
+			body: handler.overview(),
 		};
 	}
 	if (method === "POST" && path === "/comment") {
@@ -143,21 +153,31 @@ export type ServeOptions = {
 	archon?: string;
 	write?: BdWriteRunner;
 	page?: () => string;
+	overview?: () => string;
 	launchRun?: RunLauncher;
 	issues?: () => ReadonlyArray<OperatorIssue>;
 	targetHeld?: () => boolean;
 };
 
-function buildPage(dir: string, store: string, archon?: string): string {
+function buildOverview(dir: string, store: string, archon?: string): Overview {
 	const fetched = fetchStore(makeRunner(store, dir));
 	const live = fetchLive(dir, { archon });
-	const overview = assembleOverview(
-		fetched.issues,
-		fetched.commentsById,
-		(issue) => documentsFor(issue, dir),
-		live,
-	);
-	return renderPage(overview, { commentEndpoint: "/comment" });
+	return assembleOverview(fetched.issues, fetched.commentsById, (issue) => documentsFor(issue, dir), live);
+}
+
+function buildPage(dir: string, store: string, archon?: string): string {
+	return renderPage(buildOverview(dir, store, archon), {
+		commentEndpoint: "/comment",
+		overviewEndpoint: "/overview",
+	});
+}
+
+function buildOverviewJson(dir: string, store: string, archon?: string): string {
+	return JSON.stringify({
+		...buildOverview(dir, store, archon),
+		commentEndpoint: "/comment",
+		overviewEndpoint: "/overview",
+	});
 }
 
 function defaultLaunchRun(dir: string, archon?: string): RunLauncher {
@@ -171,6 +191,7 @@ function defaultLaunchRun(dir: string, archon?: string): RunLauncher {
 export function createOverviewServer(options: ServeOptions): http.Server {
 	const write = options.write ?? makeWriteRunner(options.store, options.dir);
 	const page = options.page ?? (() => buildPage(options.dir, options.store, options.archon));
+	const overviewJson = options.overview ?? (() => buildOverviewJson(options.dir, options.store, options.archon));
 	const dir = options.dir;
 	const issues = options.issues ?? (() => fetchStore(makeRunner(options.store, options.dir)).issues);
 	const targetHeld = options.targetHeld ?? (() => targetRunHeld(options.dir));
@@ -185,6 +206,7 @@ export function createOverviewServer(options: ServeOptions): http.Server {
 			void handleOverviewRequest({ method: req.method, url: req.url }, raw, {
 				write,
 				page,
+				overview: overviewJson,
 				dir,
 				launchRun,
 				issues,

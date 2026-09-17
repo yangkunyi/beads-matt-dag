@@ -6,6 +6,7 @@
  * it is not itself a store write.
  */
 
+import { dagre } from "d3-dag";
 import type { Overview, OverviewDomain, OverviewEdge, OverviewIssue } from "./model";
 
 export type ViewNodeData = {
@@ -39,6 +40,7 @@ const NODE_W = 200;
 const NODE_H = 52;
 const GAP_X = 80;
 const GAP_Y = 18;
+const MARGIN = 24;
 
 function unique(values: string[]): string[] {
 	return [...new Set(values)].sort();
@@ -62,8 +64,13 @@ export function filterChoices(issues: ReadonlyArray<OverviewIssue>): {
 }
 
 /**
- * Layered positions from `blocks` edges only. Relates-to / discovered-from do not pull a node into
- * a later column. The numbers live in the view; they are never written back.
+ * Layered positions from `blocks` edges only, via d3-dag's dagre-compatible sugiyama layout, which
+ * minimises edge crossings. Relates-to / discovered-from do not pull a node into a later column.
+ * The numbers live in the view; they are never written back.
+ *
+ * d3-dag refuses a cyclic graph and a node it was given no size for, so a snapshot it will not take
+ * falls back to a plain column rather than taking the page down: this is a view, and one that
+ * declines to draw is worse than one drawn crudely.
  */
 export function layoutPositions(
 	issues: ReadonlyArray<{ id: string }>,
@@ -71,51 +78,36 @@ export function layoutPositions(
 ): Map<string, { x: number; y: number }> {
 	const ids = issues.map((issue) => issue.id);
 	const idSet = new Set(ids);
-	const incoming = new Map<string, string[]>();
-	for (const id of ids) incoming.set(id, []);
-	for (const edge of edges) {
-		if (edge.type !== "blocks") continue;
-		if (!idSet.has(edge.from) || !idSet.has(edge.to)) continue;
-		const deps = incoming.get(edge.to);
-		if (deps) deps.push(edge.from);
-	}
-	const layer = new Map<string, number>();
-	let changed = true;
-	let guard = 0;
-	while (changed && guard++ < ids.length + 2) {
-		changed = false;
+	try {
+		const grf = new dagre.graphlib.Graph();
+		grf.setGraph({ rankdir: "LR", nodesep: GAP_Y, ranksep: GAP_X });
+		grf.setDefaultEdgeLabel(() => ({}));
+		for (const id of ids) grf.setNode(id, { width: NODE_W, height: NODE_H });
+		for (const edge of edges) {
+			if (edge.type !== "blocks") continue;
+			if (!idSet.has(edge.from) || !idSet.has(edge.to)) continue;
+			grf.setEdge(edge.from, edge.to);
+		}
+		dagre.layout(grf);
+		const positions = new Map<string, { x: number; y: number }>();
 		for (const id of ids) {
-			const deps = incoming.get(id) ?? [];
-			if (deps.some((dep) => layer.get(dep) === undefined)) continue;
-			let next = 0;
-			for (const dep of deps) {
-				const depLayer = layer.get(dep);
-				if (depLayer !== undefined && depLayer + 1 > next) next = depLayer + 1;
-			}
-			if (layer.get(id) !== next) {
-				layer.set(id, next);
-				changed = true;
-			}
+			const node = grf.node(id) as { x: number; y: number } | undefined;
+			if (node === undefined) continue;
+			// dagre reports centres; a React Flow node is positioned by its top-left corner.
+			positions.set(id, { x: MARGIN + node.x - NODE_W / 2, y: MARGIN + node.y - NODE_H / 2 });
 		}
+		return positions;
+	} catch {
+		return columnPositions(ids);
 	}
-	for (const id of ids) {
-		if (layer.get(id) === undefined) layer.set(id, 0);
-	}
-	const columns = new Map<number, string[]>();
-	for (const id of ids) {
-		const L = layer.get(id) ?? 0;
-		const column = columns.get(L);
-		if (column) column.push(id);
-		else columns.set(L, [id]);
-	}
+}
+
+/** The fallback for a snapshot d3-dag would not accept: one column, store order. */
+function columnPositions(ids: ReadonlyArray<string>): Map<string, { x: number; y: number }> {
 	const positions = new Map<string, { x: number; y: number }>();
-	for (const [L, column] of columns) {
-		for (let row = 0; row < column.length; row++) {
-			const id = column[row];
-			if (id === undefined) continue;
-			positions.set(id, { x: 24 + L * (NODE_W + GAP_X), y: 24 + row * (NODE_H + GAP_Y) });
-		}
-	}
+	ids.forEach((id, row) => {
+		positions.set(id, { x: MARGIN, y: MARGIN + row * (NODE_H + GAP_Y) });
+	});
 	return positions;
 }
 

@@ -1,3 +1,47 @@
+/*
+ * Tailwind v4 is the utility layer for the surface's markup. The sheet below is the same component
+ * sheet that was here before Tailwind and is left unlayered on purpose, so nothing already on the
+ * page moves. The tokens are re-exported into Tailwind's theme namespace, so a utility and a rule
+ * below resolve to the very same value.
+ *
+ * Preflight is not imported: this sheet already resets what it needs, and preflight would restyle
+ * the existing page for no gain. The layer order is declared anyway, so the sheet can move into
+ * `components` later without utilities losing to it.
+ */
+@layer theme, base, components, utilities;
+
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities) source(none);
+
+/*
+ * Automatic source detection is switched off: left on, it walks the whole repository and mints a
+ * utility for every class-shaped word in every note under `.scratch/`, which is neither the page nor
+ * a promise anyone is keeping. The surface's own components are the only markup that renders.
+ */
+@source "./*.tsx";
+
+@theme inline {
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-ring: hsl(var(--ring));
+  --color-inquiry: hsl(var(--inquiry));
+  --color-experiment: hsl(var(--experiment));
+  --color-development: hsl(var(--development));
+  --color-live: hsl(var(--live));
+  --color-warning: hsl(var(--warning));
+  --color-warning-border: hsl(var(--warning-border));
+  --radius-lg: var(--radius);
+}
+
 :root {
   color-scheme: light;
   --background: 0 0% 100%;

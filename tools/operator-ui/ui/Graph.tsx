@@ -1,9 +1,9 @@
 /**
  * React Flow as a view of the store graph. Positions live in this component. onConnect proposes
  * into the write door — same-domain `blocks`, cross-domain a pick of `relates-to` or
- * `discovered-from` — and never lands an edge on React state. A successful write reloads from
- * the store; a refusal leaves the view unchanged. Shift-click adds to the selection so start
- * can take more than one id.
+ * `discovered-from` — and never lands an edge on React state. A successful write re-reads the store
+ * and the canvas keeps the coordinates already dragged; a refusal leaves the view unchanged.
+ * Shift-click adds to the selection so start can take more than one id.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
@@ -81,8 +81,9 @@ function GraphCanvas(props: {
 	selected: string[];
 	onSelect: (ids: string[]) => void;
 	writeEndpoint: string | null;
+	onWritten: () => void;
 }) {
-	const { overview, selected, onSelect, writeEndpoint } = props;
+	const { overview, selected, onSelect, writeEndpoint, onWritten } = props;
 	const dragged = useRef<Record<string, { x: number; y: number }>>({});
 	const projected = useMemo(() => toFlow(overview, selected), [overview, selected]);
 	const [nodes, setNodes] = useState<IssueNode[]>(projected.nodes);
@@ -120,14 +121,14 @@ function GraphCanvas(props: {
 			setStatus("");
 			void postEdge(writeEndpoint, intent, from, to, type)
 				.then(() => {
-					location.reload();
+					onWritten();
 				})
 				.catch((error: unknown) => {
 					setPick(null);
 					setStatus(error instanceof Error ? error.message : String(error));
 				});
 		},
-		[writeEndpoint],
+		[writeEndpoint, onWritten],
 	);
 
 	const onConnect = useCallback(
@@ -233,6 +234,7 @@ export function Graph(props: {
 	selected: string[];
 	onSelect: (ids: string[]) => void;
 	writeEndpoint: string | null;
+	onWritten: () => void;
 }) {
 	const [ready, setReady] = useState(false);
 	useEffect(() => {

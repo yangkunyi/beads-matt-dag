@@ -23,51 +23,57 @@ import { App, type PageOverview } from "./ui/App.tsx";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
-const KIT_CSS = readFileSync(join(here, "ui", "styles.css"), "utf8");
 const FLOW_CSS = readFileSync(require.resolve("@xyflow/react/dist/style.css"), "utf8");
 
-let cachedClient: string | undefined;
+let cachedClient: { js: string; css: string } | undefined;
 
-function clientScript(): string {
+/**
+ * `main.js` and the Tailwind sheet `main.tsx` imports, built once per process. `bun build` on the
+ * command line takes no plugins, so the build lives in `ui/build.ts` and this spawns it.
+ */
+function clientBundle(): { js: string; css: string } {
 	if (cachedClient !== undefined) return cachedClient;
 	const outDir = mkdtempSync(join(tmpdir(), "operator-ui-client-"));
-	const result = spawnSync(
-		process.execPath,
-		["build", join(here, "ui", "main.tsx"), "--outdir", outDir, "--target", "browser", "--minify"],
-		{ encoding: "utf8" },
-	);
+	const result = spawnSync(process.execPath, [join(here, "ui", "build.ts"), outDir], { encoding: "utf8" });
 	if (result.status !== 0) {
 		throw new Error(`operator-ui client build failed: ${result.stderr || result.stdout}`);
 	}
-	cachedClient = readFileSync(join(outDir, "main.js"), "utf8").replace(/<\/script/gi, "<\\/script");
+	cachedClient = {
+		js: readFileSync(join(outDir, "main.js"), "utf8").replace(/<\/script/gi, "<\\/script"),
+		css: readFileSync(join(outDir, "main.css"), "utf8"),
+	};
 	return cachedClient;
 }
 
 export type RenderPageOptions = {
 	/** When set, the page posts tagged comment, create, triage, and start intents here. Absent on a static snapshot. */
 	commentEndpoint?: string;
+	/** When set, a write re-reads this for a fresh snapshot instead of reloading the page. Absent on a static snapshot. */
+	overviewEndpoint?: string;
 };
 
 export function renderPage(overview: Overview, options: RenderPageOptions = {}): string {
 	const data: PageOverview = {
 		...overview,
 		commentEndpoint: options.commentEndpoint ?? null,
+		overviewEndpoint: options.overviewEndpoint ?? null,
 	};
 	const app = renderToString(createElement(App, { overview: data }));
 	const json = JSON.stringify(data).replace(/</g, "\\u003c");
+	const client = clientBundle();
 	return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Target beads graph</title>
-<style>${KIT_CSS}
+<style>${client.css}
 ${FLOW_CSS}</style>
 </head>
 <body>
 <div id="root" data-app="react" data-kit="shadcn">${app}</div>
 <script type="application/json" id="overview">${json}</script>
-<script type="module">${clientScript()}</script>
+<script type="module">${client.js}</script>
 </body>
 </html>
 `;
@@ -93,6 +99,11 @@ export function pageHasFilters(html: string): boolean {
 /** A served page posts replies; a static snapshot does not. */
 export function pageOffersReply(html: string): boolean {
 	return html.includes('"commentEndpoint":"/comment"');
+}
+
+/** A served page re-reads the store after a write; a static snapshot has nothing to re-read. */
+export function pageOffersRefresh(html: string): boolean {
+	return html.includes('"overviewEndpoint":"/overview"');
 }
 
 /** A served page offers create; a static snapshot does not. */

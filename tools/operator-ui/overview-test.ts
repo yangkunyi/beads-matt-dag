@@ -52,6 +52,7 @@ import {
 	pageIsReactApp,
 	pageClientIsModule,
 	pageOffersCreate,
+	pageOffersRefresh,
 	pageOffersReply,
 	pageOffersStart,
 	renderPage,
@@ -221,6 +222,7 @@ expectEqual(
 const html = renderPage(overview);
 expect("page has type/status/label filters", pageHasFilters(html));
 expect("static snapshot does not offer a reply endpoint", !pageOffersReply(html));
+expect("static snapshot does not offer a refresh endpoint", !pageOffersRefresh(html));
 expect("static snapshot does not offer create", !pageOffersCreate(html));
 expect("static snapshot does not offer start", !pageOffersStart(html));
 expect("page is a React app with a shadcn-style kit", pageIsReactApp(html));
@@ -1142,8 +1144,9 @@ const fileAllocMeta = JSON.parse(flagAfter(createArgs(), "--metadata") ?? "{}") 
 expectEqual("create skips a body file's NN", fileAllocMeta.handle, "lab/04");
 listStdout = "[]";
 
-const servedHtml = renderPage(overview, { commentEndpoint: "/comment" });
+const servedHtml = renderPage(overview, { commentEndpoint: "/comment", overviewEndpoint: "/overview" });
 expect("served page offers a reply endpoint", pageOffersReply(servedHtml));
+expect("served page offers a refresh endpoint", pageOffersRefresh(servedHtml));
 expect("served page offers create", pageOffersCreate(servedHtml));
 expect("create form requires a type", servedHtml.includes('id="create-type"') && servedHtml.includes("Select a type"));
 expect("served page offers start", pageOffersStart(servedHtml));
@@ -1186,12 +1189,23 @@ const graphSrc = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "ui"
 expect("graph uses React Flow", graphSrc.includes("@xyflow/react"));
 expect("graph connect does not addEdge as the record", !/\baddEdge\b/.test(graphSrc));
 expect("graph connect proposes into operator-actions", graphSrc.includes("proposeConnect"));
-expect("a successful edge write reloads from the store", graphSrc.includes("location.reload"));
+expect(
+	"a successful edge write re-reads the store instead of reloading",
+	graphSrc.includes("onWritten()") && !graphSrc.includes("location.reload"),
+);
+const appSrc = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "ui", "App.tsx"), "utf8");
+expect(
+	"a write invalidates the overview query rather than reloading the page",
+	appSrc.includes("invalidateQueries") && !appSrc.includes("location.reload"),
+);
+expect(
+	"the page polls only while a run is live",
+	appSrc.includes("refetchInterval") && appSrc.includes("state.data?.live"),
+);
 expect(
 	"a refused remove is not applied onto React edges",
 	graphSrc.includes('change.type !== "remove"') && graphSrc.includes("writeEdge(\"remove-edge\""),
 );
-const appSrc = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "ui", "App.tsx"), "utf8");
 expect("surface has a triage form", appSrc.includes('id="triage-form"'));
 expect("surface posts triage through the write door", appSrc.includes("postTriage"));
 expect("surface offers the five triage labels", appSrc.includes("TRIAGE_LABELS"));
@@ -1210,12 +1224,21 @@ const handler = {
 		doorWrites.push({ args, stdin });
 		return "";
 	}) satisfies BdWriteRunner,
-	page: () => renderPage(overview, { commentEndpoint: "/comment" }),
+	page: () => renderPage(overview, { commentEndpoint: "/comment", overviewEndpoint: "/overview" }),
+	overview: () => JSON.stringify({ ...overview, commentEndpoint: "/comment", overviewEndpoint: "/overview" }),
 };
 const getPage = await handleOverviewRequest({ method: "GET", url: "/" }, "", handler);
 expectEqual("GET / is 200", getPage.status, 200);
 expect("GET / offers a reply endpoint", pageOffersReply(getPage.body));
 expect("GET / offers create", pageOffersCreate(getPage.body));
+const getOverview = await handleOverviewRequest({ method: "GET", url: "/overview" }, "", handler);
+expectEqual("GET /overview is 200", getOverview.status, 200);
+expect("GET /overview is the snapshot, not the page", getOverview.body.includes('"commentEndpoint"'));
+expect("GET /overview carries the store's issues", getOverview.body.includes("the drain work"));
+expect(
+	"GET /overview is not cacheable: it is what a write re-reads",
+	getOverview.headers["cache-control"] === "no-store",
+);
 const posted = await handleOverviewRequest(
 	{ method: "POST", url: "/comment" },
 	JSON.stringify({ intent: "comment", id: "from-bd", text: "operator reply" }),

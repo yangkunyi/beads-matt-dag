@@ -11,8 +11,9 @@
 // spends real requests, and the experiment verbs are pinned in the pack's suite against a stub rather than
 // the real DVC, so a stale caller can sit there for a long time unnoticed.
 //
-// `types: ["node"]` is spelled out for the same reason as in tsconfig.pack.json: a `node:` specifier does
-// not resolve without the node declarations in the program.
+// `types: ["node", "bun"]` is spelled out for the same reason as in tsconfig.pack.json: a `node:`
+// specifier does not resolve without the node declarations in the program, and the operator-ui client
+// build calls `Bun.build` because the command line takes no plugins (Tailwind is one).
 {
   "compilerOptions": {
     "target": "ES2022",
@@ -25,7 +26,7 @@
     "allowImportingTsExtensions": true,
     "jsx": "react-jsx",
     "lib": ["ES2022", "DOM"],
-    "types": ["node"]
+    "types": ["node", "bun"]
   },
   "include": ["tools/**/*.ts", "tools/**/*.tsx"]
 }
