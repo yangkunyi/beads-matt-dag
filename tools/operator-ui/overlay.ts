@@ -243,6 +243,11 @@ function lockFromTarget(target: string): LiveLock | undefined {
 	return holder;
 }
 
+/** The Target run lock is held by a live process — the same mutex a second CLI start hits. */
+export function targetRunHeld(target: string): boolean {
+	return lockFromTarget(target) !== undefined;
+}
+
 /**
  * The live overlay for one Target, or null when nothing is in progress.
  *
