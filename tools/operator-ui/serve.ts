@@ -6,7 +6,9 @@
  *   bun tools/operator-ui/serve.ts [--dir <target>] [--store <bd>] [--archon <bin>] [--port <n>] [--host <addr>]
  *
  * The graph is `bd list` / `bd show`, never `.beads/issues.jsonl`. The page is a React app with a
- * shadcn-style kit; React Flow projects the store. Writes go through one tagged door: a comment is
+ * shadcn-style kit; React Flow projects the store. The client is two cached assets (`/app.js`,
+ * `/app.css`) rather than 1.2 MB inlined into every response, so a second request costs the snapshot
+ * JSON and nothing else. Writes go through one tagged door: a comment is
  * `bd comment`; create requires a type (the domain) and lands as `needs-triage` without the gate;
  * start launches drain, inquiry, or experiment with those ids as the allow-list and does not claim,
  * merge, or stamp `closed`. Mixed-domain, empty, and a held Target are refused. Same-domain `blocks`
@@ -23,7 +25,7 @@ import { applyOperatorAction, OperatorActionRefused, type OperatorIssue } from "
 import { documentsFor } from "./documents";
 import { assembleOverview, type Overview } from "./model";
 import { fetchLive, makeArchonRunner, resolveArchon, targetRunHeld } from "./overlay";
-import { renderPage } from "./page";
+import { clientAssets, renderPage, type ClientAssets } from "./page";
 import { launchWithArchon, type RunLauncher } from "./start";
 import { fetchStore, makeRunner, makeWriteRunner, resolveBd, type BdWriteRunner } from "./store";
 
@@ -36,7 +38,8 @@ const USAGE = `usage: bun tools/operator-ui/serve.ts [--dir <target>] [--store <
   --host <addr>     listen address (default: 127.0.0.1)
 
 Routes: GET / is the page, GET /overview is the same snapshot as JSON — what a write re-reads
-instead of reloading the page — and POST /comment is the tagged write door.
+instead of reloading the page — GET /app.js and /app.css are the client the page links (cacheable,
+revalidated by ETag), and POST /comment is the tagged write door.
 
 The graph is read via bd, not the jsonl export. Writes go through one tagged door. An operator
 reply is bd comment on the selected issue. Create requires a type (the domain), writes a body of
@@ -85,12 +88,25 @@ export type OverviewHandler = {
 	page: () => string;
 	/** The same overview the page embeds, as JSON: what a write re-reads instead of reloading. Absent when nothing can produce one, and then /overview is a 404 like any other unknown path. */
 	overview?: () => string;
+	/** The client the page links. Absent when the page carries it instead, and then /app.js is a 404. */
+	assets?: () => ClientAssets;
 	/** Target root. Create writes the body file here. */
 	dir?: string;
 	launchRun?: RunLauncher;
 	issues?: () => ReadonlyArray<OperatorIssue>;
 	targetHeld?: () => boolean;
 };
+
+/**
+ * `no-cache` is not "do not cache": it is "revalidate before you use it". The client is rebuilt
+ * whenever the server starts, so a copy from a previous start must not be reused blind, and an
+ * unchanged build must not be re-sent either.
+ */
+function etagMatches(header: string | string[] | undefined, etag: string): boolean {
+	const value = Array.isArray(header) ? header.join(",") : header;
+	if (value === undefined) return false;
+	return value.split(",").some((candidate) => candidate.trim() === etag);
+}
 
 export type OverviewResponse = {
 	status: number;
@@ -108,7 +124,7 @@ export type OverviewResponse = {
  * are refused and do not write.
  */
 export async function handleOverviewRequest(
-	req: { method?: string; url?: string },
+	req: { method?: string; url?: string; headers?: Record<string, string | string[] | undefined> },
 	body: string,
 	handler: OverviewHandler,
 ): Promise<OverviewResponse> {
@@ -127,6 +143,21 @@ export async function handleOverviewRequest(
 			headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
 			body: handler.overview(),
 		};
+	}
+	if ((method === "GET" || method === "HEAD") && handler.assets !== undefined) {
+		const assets = handler.assets();
+		for (const asset of [assets.js, assets.css]) {
+			if (path !== asset.path) continue;
+			const headers = { "cache-control": "no-cache", etag: asset.etag };
+			if (etagMatches(req.headers?.["if-none-match"], asset.etag)) {
+				return { status: 304, headers, body: "" };
+			}
+			return {
+				status: 200,
+				headers: { ...headers, "content-type": asset.contentType },
+				body: method === "HEAD" ? "" : asset.body,
+			};
+		}
 	}
 	if (method === "POST" && path === "/comment") {
 		try {
@@ -157,6 +188,7 @@ export type ServeOptions = {
 	write?: BdWriteRunner;
 	page?: () => string;
 	overview?: () => string;
+	assets?: () => ClientAssets;
 	launchRun?: RunLauncher;
 	issues?: () => ReadonlyArray<OperatorIssue>;
 	targetHeld?: () => boolean;
@@ -172,6 +204,7 @@ function buildPage(dir: string, store: string, archon?: string): string {
 	return renderPage(buildOverview(dir, store, archon), {
 		commentEndpoint: "/comment",
 		overviewEndpoint: "/overview",
+		cacheClient: true,
 	});
 }
 
@@ -195,6 +228,7 @@ export function createOverviewServer(options: ServeOptions): http.Server {
 	const write = options.write ?? makeWriteRunner(options.store, options.dir);
 	const page = options.page ?? (() => buildPage(options.dir, options.store, options.archon));
 	const overviewJson = options.overview ?? (() => buildOverviewJson(options.dir, options.store, options.archon));
+	const assets = options.assets ?? (() => clientAssets());
 	const dir = options.dir;
 	const issues = options.issues ?? (() => fetchStore(makeRunner(options.store, options.dir)).issues);
 	const targetHeld = options.targetHeld ?? (() => targetRunHeld(options.dir));
@@ -206,10 +240,11 @@ export function createOverviewServer(options: ServeOptions): http.Server {
 		});
 		req.on("end", () => {
 			const raw = Buffer.concat(chunks).toString("utf8");
-			void handleOverviewRequest({ method: req.method, url: req.url }, raw, {
+			void handleOverviewRequest({ method: req.method, url: req.url, headers: req.headers }, raw, {
 				write,
 				page,
 				overview: overviewJson,
+				assets,
 				dir,
 				launchRun,
 				issues,

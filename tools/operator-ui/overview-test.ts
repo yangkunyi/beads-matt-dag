@@ -44,6 +44,9 @@ import { triageWriteBody } from "./client-triage";
 import { addComment, parseCommentBody } from "./comment";
 import { projectGraph, proposeConnect } from "./graph-view";
 import {
+	CLIENT_ASSETS,
+	clientAssets,
+	pageCachesClient,
 	pageCarriesDetail,
 	pageCarriesList,
 	pageCarriesLive,
@@ -232,6 +235,7 @@ expect("static snapshot does not offer a refresh endpoint", !pageOffersRefresh(h
 expect("static snapshot does not offer create", !pageOffersCreate(html));
 expect("static snapshot does not offer the palette", !pageOffersPalette(html));
 expect("static snapshot does not offer start", !pageOffersStart(html));
+expect("static snapshot carries its client, so the file stands alone", !pageCachesClient(html));
 expect("page is a React app with a shadcn-style kit", pageIsReactApp(html));
 expect("client script is type=module so bun's ESM hydrate runs", pageClientIsModule(html));
 expect("graph is React Flow", pageGraphIsReactFlow(html));
@@ -1300,13 +1304,51 @@ const handler = {
 		doorWrites.push({ args, stdin });
 		return "";
 	}) satisfies BdWriteRunner,
-	page: () => renderPage(overview, { commentEndpoint: "/comment", overviewEndpoint: "/overview" }),
+	page: () =>
+		renderPage(overview, { commentEndpoint: "/comment", overviewEndpoint: "/overview", cacheClient: true }),
 	overview: () => JSON.stringify({ ...overview, commentEndpoint: "/comment", overviewEndpoint: "/overview" }),
+	assets: () => clientAssets(),
 };
 const getPage = await handleOverviewRequest({ method: "GET", url: "/" }, "", handler);
 expectEqual("GET / is 200", getPage.status, 200);
 expect("GET / offers a reply endpoint", pageOffersReply(getPage.body));
 expect("GET / offers create", pageOffersCreate(getPage.body));
+expect("GET / links its client instead of carrying 1.2 MB of it", pageCachesClient(getPage.body));
+expect("GET / is still a module script, now fetched", pageClientIsModule(getPage.body));
+const getJs = await handleOverviewRequest({ method: "GET", url: CLIENT_ASSETS.js }, "", handler);
+expectEqual("GET /app.js is 200", getJs.status, 200);
+expect(
+	"the client is served as JavaScript, not as HTML",
+	getJs.headers["content-type"] === "text/javascript; charset=utf-8",
+);
+expect("the client is revalidated, not trusted blind", getJs.headers["cache-control"] === "no-cache");
+expect("the client carries a strong validator", (getJs.headers["etag"] ?? "").startsWith('"'));
+expect("the served script is the built module, not a stub", getJs.body.includes("createElement"));
+const getCss = await handleOverviewRequest({ method: "GET", url: CLIENT_ASSETS.css }, "", handler);
+expectEqual("GET /app.css is 200", getCss.status, 200);
+expect("the sheet is served as CSS", getCss.headers["content-type"] === "text/css; charset=utf-8");
+expect(
+	"the sheet carries the legacy components and React Flow's own",
+	getCss.body.includes("issue-node") && getCss.body.includes("react-flow"),
+);
+const revalidated = await handleOverviewRequest(
+	{ method: "GET", url: CLIENT_ASSETS.js, headers: { "if-none-match": getJs.headers["etag"] ?? "" } },
+	"",
+	handler,
+);
+expectEqual("an unchanged client is 304, not a second 1.2 MB", revalidated.status, 304);
+expectEqual("a 304 carries no body", revalidated.body, "");
+const staleJs = await handleOverviewRequest(
+	{ method: "GET", url: CLIENT_ASSETS.js, headers: { "if-none-match": '"a-different-build"' } },
+	"",
+	handler,
+);
+expectEqual("a stale validator gets the client again", staleJs.status, 200);
+const inlined = await handleOverviewRequest({ method: "GET", url: CLIENT_ASSETS.js }, "", {
+	write: handler.write,
+	page: handler.page,
+});
+expectEqual("a server that inlines its client has no /app.js", inlined.status, 404);
 const getOverview = await handleOverviewRequest({ method: "GET", url: "/overview" }, "", handler);
 expectEqual("GET /overview is 200", getOverview.status, 200);
 expect("GET /overview is the snapshot, not the page", getOverview.body.includes('"commentEndpoint"'));

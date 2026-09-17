@@ -3,14 +3,17 @@
  * the DAG, the three filters, live overlay, and a click-for-detail panel.
  *
  * All data is embedded. A static snapshot has no socket — a browser talking to that file is looking
- * at what `bd` already answered. A served page posts tagged intents through the write door: a
- * comment as `bd comment`, create (type is the domain; needs-triage; no gate), start (that domain's
- * existing run with the selected ids as the allow-list), store deps, or one of the five triage
- * labels replacing the rest of the family. Beads stays the only graph and the only comment store.
- * Coordinates stay in the view. A refused connect does not land on the canvas.
+ * at what `bd` already answered, and the client is inlined so the file stands alone. A served page
+ * fetches that same client from `CLIENT_ASSETS` instead, so one 1.2 MB script is cached and
+ * revalidated rather than re-sent with every response. A served page posts tagged intents through the
+ * write door: a comment as `bd comment`, create (type is the domain; needs-triage; no gate), start
+ * (that domain's existing run with the selected ids as the allow-list), store deps, or one of the five
+ * triage labels replacing the rest of the family. Beads stays the only graph and the only comment
+ * store. Coordinates stay in the view. A refused connect does not land on the canvas.
  */
 
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
@@ -25,24 +28,56 @@ const here = dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
 const FLOW_CSS = readFileSync(require.resolve("@xyflow/react/dist/style.css"), "utf8");
 
-let cachedClient: { js: string; css: string } | undefined;
+let cachedAssets: ClientAssets | undefined;
+
+/** Where a served page fetches its client. Two files a browser can hold on to. */
+export const CLIENT_ASSETS = { js: "/app.js", css: "/app.css" } as const;
+
+export type ClientAsset = {
+	/** The request path this answers. */
+	path: string;
+	body: string;
+	contentType: string;
+	/** Strong validator: the client is rebuilt whenever the server starts, so a cached copy is revalidated, not trusted. */
+	etag: string;
+};
+
+export type ClientAssets = { js: ClientAsset; css: ClientAsset };
 
 /**
- * `main.js` and the Tailwind sheet `main.tsx` imports, built once per process. `bun build` on the
- * command line takes no plugins, so the build lives in `ui/build.ts` and this spawns it.
+ * The built client, once per process: `main.js` and one sheet holding the Tailwind build of
+ * `main.tsx`'s import, the legacy component sheet, and React Flow's own, concatenated so a page
+ * needs a single link. `bun build` on the command line takes no plugins, so the build lives in
+ * `ui/build.ts` and this spawns it.
  */
-function clientBundle(): { js: string; css: string } {
-	if (cachedClient !== undefined) return cachedClient;
+export function clientAssets(): ClientAssets {
+	if (cachedAssets !== undefined) return cachedAssets;
 	const outDir = mkdtempSync(join(tmpdir(), "operator-ui-client-"));
 	const result = spawnSync(process.execPath, [join(here, "ui", "build.ts"), outDir], { encoding: "utf8" });
 	if (result.status !== 0) {
 		throw new Error(`operator-ui client build failed: ${result.stderr || result.stdout}`);
 	}
-	cachedClient = {
-		js: readFileSync(join(outDir, "main.js"), "utf8").replace(/<\/script/gi, "<\\/script"),
-		css: readFileSync(join(outDir, "main.css"), "utf8"),
+	const js = readFileSync(join(outDir, "main.js"), "utf8");
+	const css = `${readFileSync(join(outDir, "main.css"), "utf8")}\n${FLOW_CSS}`;
+	cachedAssets = {
+		js: { path: CLIENT_ASSETS.js, body: js, contentType: "text/javascript; charset=utf-8", etag: etagOf(js) },
+		css: { path: CLIENT_ASSETS.css, body: css, contentType: "text/css; charset=utf-8", etag: etagOf(css) },
 	};
-	return cachedClient;
+	return cachedAssets;
+}
+
+/** Content-derived, so the same build answers the same validator and a rebuild answers a new one. */
+function etagOf(body: string): string {
+	return `"${createHash("sha1").update(body).digest("hex")}"`;
+}
+
+/** The client inline, script-close escaped: what a snapshot needs to stand alone in one file. */
+function clientBundle(): ClientAssets {
+	const assets = clientAssets();
+	return {
+		js: { ...assets.js, body: assets.js.body.replace(/<\/script/gi, "<\\/script") },
+		css: assets.css,
+	};
 }
 
 export type RenderPageOptions = {
@@ -50,6 +85,12 @@ export type RenderPageOptions = {
 	commentEndpoint?: string;
 	/** When set, a write re-reads this for a fresh snapshot instead of reloading the page. Absent on a static snapshot. */
 	overviewEndpoint?: string;
+	/**
+	 * Fetch the client from `CLIENT_ASSETS` rather than inlining it. A served page wants this: the
+	 * client is the same bytes for every issue and every request. A snapshot does not, because it is
+	 * one file someone will open from disk.
+	 */
+	cacheClient?: boolean;
 };
 
 export function renderPage(overview: Overview, options: RenderPageOptions = {}): string {
@@ -60,20 +101,29 @@ export function renderPage(overview: Overview, options: RenderPageOptions = {}):
 	};
 	const app = renderToString(createElement(App, { overview: data }));
 	const json = JSON.stringify(data).replace(/</g, "\\u003c");
-	const client = clientBundle();
+	// The client is linked, not inlined, on a served page; its sheet would otherwise be 7 KB of every
+	// response and its script 1.2 MB. Data stays embedded either way: it is what this request read.
+	const client = options.cacheClient === true ? undefined : clientBundle();
+	const head =
+		client === undefined
+			? `<link rel="stylesheet" href="${CLIENT_ASSETS.css}">`
+			: `<style>${client.css.body}</style>`;
+	const tail =
+		client === undefined
+			? `<script type="module" src="${CLIENT_ASSETS.js}"></script>`
+			: `<script type="module">${client.js.body}</script>`;
 	return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Target beads graph</title>
-<style>${client.css}
-${FLOW_CSS}</style>
+${head}
 </head>
 <body>
 <div id="root" data-app="react" data-kit="shadcn">${app}</div>
 <script type="application/json" id="overview">${json}</script>
-<script type="module">${client.js}</script>
+${tail}
 </body>
 </html>
 `;
@@ -154,9 +204,21 @@ export function pageIsReactApp(html: string): boolean {
 	return html.includes('data-app="react"') && html.includes('data-kit="shadcn"');
 }
 
-/** bun build emits ESM; a classic script would SyntaxError on import/export. */
+/** bun build emits ESM; a classic script would SyntaxError on import/export. Linked or inline. */
 export function pageClientIsModule(html: string): boolean {
-	return html.includes('<script type="module">');
+	return html.includes('<script type="module"');
+}
+
+/**
+ * A served page fetches its client instead of carrying it: the same bytes for every issue and every
+ * request. A snapshot inlines it, so this must be false for one.
+ */
+export function pageCachesClient(html: string): boolean {
+	return (
+		html.includes(`<script type="module" src="${CLIENT_ASSETS.js}"></script>`) &&
+		html.includes(`<link rel="stylesheet" href="${CLIENT_ASSETS.css}">`) &&
+		!html.includes('<script type="module">')
+	);
 }
 
 export function pageGraphIsReactFlow(html: string): boolean {
