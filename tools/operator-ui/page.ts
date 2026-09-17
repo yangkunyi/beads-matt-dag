@@ -5,8 +5,9 @@
  * All data is embedded. A static snapshot has no socket — a browser talking to that file is looking
  * at what `bd` already answered. A served page posts tagged intents through the write door: a
  * comment as `bd comment`, create (type is the domain; needs-triage; no gate), start (that domain's
- * existing run with the selected ids as the allow-list), or one of the five triage labels replacing
- * the rest of the family. Beads stays the only comment store. Coordinates stay in the view.
+ * existing run with the selected ids as the allow-list), store deps, or one of the five triage
+ * labels replacing the rest of the family. Beads stays the only graph and the only comment store.
+ * Coordinates stay in the view. A refused connect does not land on the canvas.
  */
 
 import { spawnSync } from "node:child_process";

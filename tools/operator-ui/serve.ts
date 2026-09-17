@@ -6,19 +6,20 @@
  *   bun tools/operator-ui/serve.ts [--dir <target>] [--store <bd>] [--archon <bin>] [--port <n>] [--host <addr>]
  *
  * The graph is `bd list` / `bd show`, never `.beads/issues.jsonl`. The page is a React app with a
- * shadcn-style kit; React Flow projects the store and does not write an edge on connect. Writes go
- * through one tagged door: a comment is `bd comment`; create requires a type (the domain) and lands
- * as `needs-triage` without the gate; start launches drain, inquiry, or experiment with those ids
- * as the allow-list and does not claim, merge, or stamp `closed`. Mixed-domain, empty, and a held
- * Target are refused. Triage moves one of the five labels, replacing the rest of the family.
- * `wontfix` is a label, not a close. `closed`, `reading:`, non-triage labels, and unknown intents
- * are refused. Close, `reading:`, and other domain labels stay the session's.
+ * shadcn-style kit; React Flow projects the store. Writes go through one tagged door: a comment is
+ * `bd comment`; create requires a type (the domain) and lands as `needs-triage` without the gate;
+ * start launches drain, inquiry, or experiment with those ids as the allow-list and does not claim,
+ * merge, or stamp `closed`. Mixed-domain, empty, and a held Target are refused. Same-domain `blocks`
+ * and crossing `relates-to` / `discovered-from` are store deps; triage moves one of the five labels,
+ * replacing the rest of the family; `closed`, `reading:`, non-triage labels, unknown intents,
+ * cross-domain `blocks`, and `parent-child` are refused. `wontfix` is a label, not a close. Close,
+ * `reading:`, and other domain labels stay the session's.
  */
 
 import http from "node:http";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { applyOperatorAction, OperatorActionRefused } from "./actions";
+import { applyOperatorAction, OperatorActionRefused, type OperatorIssue } from "./actions";
 import { documentsFor } from "./documents";
 import { assembleOverview } from "./model";
 import { fetchLive, makeArchonRunner, resolveArchon, targetRunHeld } from "./overlay";
@@ -38,10 +39,11 @@ The graph is read via bd, not the jsonl export. Writes go through one tagged doo
 reply is bd comment on the selected issue. Create requires a type (the domain), writes a body of
 handle and prose, and lands as needs-triage without the gate. A same-domain selection starts that
 domain's existing run with those ids as the allow-list. Mixed-domain, empty, and a held Target
-are refused. Start does not claim, merge, or stamp closed. Triage moves one of the five labels,
-replacing the rest of the family. wontfix is a label, not a close. closed, reading:, non-triage
-labels, and unknown intents are refused. Close, reading:, and other domain labels stay the
-session's. Beads is the only comment store.`;
+are refused. Start does not claim, merge, or stamp closed. Same-domain blocks and crossing relates-to /
+discovered-from are store deps. Triage moves one of the five labels, replacing the rest of the
+family. wontfix is a label, not a close. closed, reading:, non-triage labels, unknown intents,
+cross-domain blocks, and parent-child are refused. Close, reading:, and other domain labels stay
+the session's. Beads is the only graph and the only comment store.`;
 
 class UsageError extends Error {}
 
@@ -81,7 +83,7 @@ export type OverviewHandler = {
 	/** Target root. Create writes the body file here. */
 	dir?: string;
 	launchRun?: RunLauncher;
-	issues?: () => ReadonlyArray<{ id: string; type: string }>;
+	issues?: () => ReadonlyArray<OperatorIssue>;
 	targetHeld?: () => boolean;
 };
 
@@ -94,9 +96,10 @@ export type OverviewResponse = {
 /**
  * One request: GET / is the page, POST /comment is the tagged write door. A comment intent is
  * `bd comment`. A create intent writes the body and `bd create`. A start intent launches that
- * domain's existing run with the selected ids as the allow-list. A triage intent moves one of
- * the five labels, replacing the rest of the family. `closed`, `reading:`, non-triage labels,
- * and unknown intents are refused and do not write.
+ * domain's existing run with the selected ids as the allow-list. Edge intents are store deps.
+ * A triage intent moves one of the five labels, replacing the rest of the family. `closed`,
+ * `reading:`, non-triage labels, unknown intents, cross-domain `blocks`, and `parent-child`
+ * are refused and do not write.
  */
 export async function handleOverviewRequest(
 	req: { method?: string; url?: string },
@@ -141,7 +144,7 @@ export type ServeOptions = {
 	write?: BdWriteRunner;
 	page?: () => string;
 	launchRun?: RunLauncher;
-	issues?: () => ReadonlyArray<{ id: string; type: string }>;
+	issues?: () => ReadonlyArray<OperatorIssue>;
 	targetHeld?: () => boolean;
 };
 
@@ -169,9 +172,7 @@ export function createOverviewServer(options: ServeOptions): http.Server {
 	const write = options.write ?? makeWriteRunner(options.store, options.dir);
 	const page = options.page ?? (() => buildPage(options.dir, options.store, options.archon));
 	const dir = options.dir;
-	const issues =
-		options.issues ??
-		(() => fetchStore(makeRunner(options.store, options.dir)).issues.map((issue) => ({ id: issue.id, type: issue.type })));
+	const issues = options.issues ?? (() => fetchStore(makeRunner(options.store, options.dir)).issues);
 	const targetHeld = options.targetHeld ?? (() => targetRunHeld(options.dir));
 	const launchRun = options.launchRun ?? defaultLaunchRun(options.dir, options.archon);
 	return http.createServer((req, res) => {

@@ -2,7 +2,8 @@
  * The operator graph as a view of the store.
  *
  * Nodes and edges here are a projection of beads issues and dependencies. Coordinates are computed
- * for the canvas and are not a store field. A connect gesture does not write (issue 07 will).
+ * for the canvas and are not a store field. A connect gesture proposes an edge into the write door;
+ * it is not itself a store write.
  */
 
 import type { Overview, OverviewDomain, OverviewEdge, OverviewIssue } from "./model";
@@ -148,10 +149,25 @@ export function projectGraph(overview: Overview): GraphProjection {
 	return { nodes, edges };
 }
 
+export type CrossingKind = "relates-to" | "discovered-from";
+
+/** Same-domain connect proposes `blocks`. Cross-domain connect does not default. */
+export type ConnectProposal =
+	| { from: string; to: string; type: "blocks" }
+	| { from: string; to: string; pick: readonly CrossingKind[] };
+
 /**
- * A canvas connect is a view gesture. This issue does not write an edge; the store stays as it is.
- * Issue 07 is the write.
+ * A canvas connect is a proposal, never a store write. Same domain → `blocks`. Across domains the
+ * operator must pick `relates-to` or `discovered-from`.
  */
-export function writeForConnect(_source: string, _target: string): null {
-	return null;
+export function proposeConnect(
+	source: string,
+	target: string,
+	sourceDomain: OverviewDomain,
+	targetDomain: OverviewDomain,
+): ConnectProposal {
+	if (sourceDomain === targetDomain) {
+		return { from: source, to: target, type: "blocks" };
+	}
+	return { from: source, to: target, pick: ["relates-to", "discovered-from"] };
 }
