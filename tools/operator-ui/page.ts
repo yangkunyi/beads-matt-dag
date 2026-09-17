@@ -3,8 +3,9 @@
  * the DAG, the three filters, live overlay, and a click-for-detail panel.
  *
  * All data is embedded. A static snapshot has no socket — a browser talking to that file is looking
- * at what `bd` already answered. A served page posts tagged intents through the write door: a comment
- * is `bd comment`; start launches that domain's existing run with the selected ids as the allow-list.
+ * at what `bd` already answered. A served page posts tagged intents through the write door: a
+ * comment as `bd comment`; start launches that domain's existing run with the selected ids as
+ * the allow-list; triage applies one of the five labels replacing the rest of the family.
  * Beads stays the only comment store. Coordinates stay in the view.
  */
 
@@ -42,7 +43,7 @@ function clientScript(): string {
 }
 
 export type RenderPageOptions = {
-	/** When set, the detail panel posts a tagged comment intent here as `bd comment`. Absent on a static snapshot. */
+	/** When set, the page posts tagged comment, triage, and start intents here. Absent on a static snapshot. */
 	commentEndpoint?: string;
 };
 

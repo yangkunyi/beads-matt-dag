@@ -9,8 +9,10 @@
  * shadcn-style kit; React Flow projects the store and does not write an edge on connect. Writes go
  * through one tagged door: a comment is `bd comment` on the selected issue; start launches drain,
  * inquiry, or experiment with those ids as the allow-list and does not claim, merge, or stamp
- * `closed`. Mixed-domain, empty, and a held Target are refused. `closed`, `reading:`, and unknown
- * intents are refused. Close, `reading:`, and domain labels stay the session's.
+ * `closed`. Mixed-domain, empty, and a held Target are refused. Triage moves one of the five
+ * labels, replacing the rest of the family; `wontfix` is a label, not a close. `closed`,
+ * `reading:`, non-triage labels, and unknown intents are refused. Close, `reading:`, and other
+ * domain labels stay the session's.
  */
 
 import http from "node:http";
@@ -35,8 +37,10 @@ const USAGE = `usage: bun tools/operator-ui/serve.ts [--dir <target>] [--store <
 The graph is read via bd, not the jsonl export. Writes go through one tagged door. An operator
 reply is bd comment on the selected issue. A same-domain selection starts that domain's existing
 run with those ids as the allow-list. Mixed-domain, empty, and a held Target are refused. Start
-does not claim, merge, or stamp closed. closed, reading:, and unknown intents are refused.
-Close, reading:, and domain labels stay the session's. Beads is the only comment store.`;
+does not claim, merge, or stamp closed. Triage moves one of the five labels, replacing the
+rest of the family. wontfix is a label, not a close. closed, reading:, non-triage labels, and
+unknown intents are refused. Close, reading:, and other domain labels stay the session's.
+Beads is the only comment store.`;
 
 class UsageError extends Error {}
 
@@ -87,7 +91,8 @@ export type OverviewResponse = {
 /**
  * One request: GET / is the page, POST /comment is the tagged write door. A comment intent is
  * `bd comment`. A start intent launches that domain's existing run with the selected ids as
- * the allow-list. `closed`, `reading:`, and unknown intents are refused and do not write.
+ * the allow-list. A triage intent moves one of the five labels, replacing the rest of the family.
+ * `closed`, `reading:`, non-triage labels, and unknown intents are refused and do not write.
  */
 export async function handleOverviewRequest(
 	req: { method?: string; url?: string },

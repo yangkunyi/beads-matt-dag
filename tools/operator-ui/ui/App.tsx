@@ -1,14 +1,15 @@
 /**
- * The operator page: filters, live overlay, issue detail, comment, start, and the React Flow graph.
+ * The operator page: filters, live overlay, issue detail, comment, triage, start, and the React Flow graph.
  *
  * All of it is a view of the store snapshot embedded in the page. Writes go through the tagged
  * door: a comment is `bd comment`; start launches that domain's existing run with the selected
- * ids as the allow-list.
+ * ids as the allow-list; triage applies one of the five labels replacing the rest of the family.
  */
 
 import { useMemo, useState, type FormEvent } from "react";
 import { postComment } from "../client-comment.ts";
 import { postStart } from "../client-start.ts";
+import { postTriage, TRIAGE_LABELS, type TriageLabel } from "../client-triage.ts";
 import { filterChoices } from "../graph-view.ts";
 import { filterOverview, issueDetail, type Overview, type OverviewIssue } from "../model.ts";
 import { planStart } from "../start.ts";
@@ -214,8 +215,53 @@ function Detail(props: {
 					</article>
 				))
 			)}
+			{props.overview.commentEndpoint ? (
+				<TriageForm endpoint={props.overview.commentEndpoint} id={issue.id} current={currentTriage(issue.labels)} />
+			) : null}
 			{props.overview.commentEndpoint ? <ReplyForm endpoint={props.overview.commentEndpoint} id={issue.id} /> : null}
 		</aside>
+	);
+}
+
+function currentTriage(labels: string[]): TriageLabel | undefined {
+	return TRIAGE_LABELS.find((label) => labels.includes(label));
+}
+
+function TriageForm(props: { endpoint: string; id: string; current: TriageLabel | undefined }) {
+	const [status, setStatus] = useState("");
+	function apply(label: TriageLabel) {
+		setStatus("");
+		void postTriage(props.endpoint, props.id, label)
+			.then(() => {
+				location.reload();
+			})
+			.catch((error: unknown) => {
+				setStatus(error instanceof Error ? error.message : String(error));
+			});
+	}
+	return (
+		<>
+			<h3>Triage</h3>
+			<form id="triage-form" onSubmit={(event) => event.preventDefault()}>
+				<div className="triage-actions">
+					{TRIAGE_LABELS.map((label) => (
+						<Button
+							key={label}
+							name="triage"
+							value={label}
+							aria-pressed={props.current === label}
+							onClick={() => apply(label)}
+						>
+							{label}
+						</Button>
+					))}
+				</div>
+				<p className="muted">One of five; applying one takes the others off. wontfix is a label, not a close.</p>
+				<p className="muted" id="triage-status">
+					{status}
+				</p>
+			</form>
+		</>
 	);
 }
 
@@ -249,7 +295,7 @@ function ReplyForm(props: { endpoint: string; id: string }) {
 					onChange={(event) => setText(event.target.value)}
 				/>
 				<Button type="submit">Comment</Button>
-				<p className="muted">Saved as a store comment. Close, reading:, and labels stay with the session.</p>
+				<p className="muted">Saved as a store comment. Close, reading:, and other domain labels stay with the session.</p>
 				<p className="muted" id="reply-status">
 					{status}
 				</p>
