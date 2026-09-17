@@ -7,8 +7,9 @@
  * The graph is `bd list` / `bd show`, never `.beads/issues.jsonl`. The page is a React app with a
  * shadcn-style kit; React Flow projects the store and does not write an edge on connect. Writes go
  * through one tagged door: a comment is `bd comment`; create requires a type (the domain) and lands
- * as `needs-triage` without the gate. `closed`, `reading:`, and unknown intents are refused. Close,
- * `reading:`, and domain labels stay the session's.
+ * as `needs-triage` without the gate; triage moves one of the five labels, replacing the rest of
+ * the family. `closed`, `reading:`, non-triage labels, and unknown intents are refused. `wontfix`
+ * is a label, not a close. Close, `reading:`, and other domain labels stay the session's.
  */
 
 import http from "node:http";
@@ -31,9 +32,10 @@ const USAGE = `usage: bun tools/operator-ui/serve.ts [--dir <target>] [--store <
 
 The graph is read via bd, not the jsonl export. Writes go through one tagged door. An operator
 reply is bd comment on the selected issue. Create requires a type (the domain), writes a body of
-handle and prose, and lands as needs-triage without the gate. closed, reading:, and unknown
-intents are refused. Close, reading:, and domain labels stay the session's. Beads is the only
-comment store.`;
+handle and prose, and lands as needs-triage without the gate. Triage moves one of the five
+labels, replacing the rest of the family. wontfix is a label, not a close. closed, reading:,
+non-triage labels, and unknown intents are refused. Close, reading:, and other domain labels
+stay the session's. Beads is the only comment store.`;
 
 class UsageError extends Error {}
 
@@ -82,8 +84,9 @@ export type OverviewResponse = {
 
 /**
  * One request: GET / is the page, POST /comment is the tagged write door. A comment intent is
- * `bd comment`. A create intent writes the body and `bd create`. `closed`, `reading:`, and
- * unknown intents are refused and do not write.
+ * `bd comment`. A create intent writes the body and `bd create`. A triage intent moves one of
+ * the five labels, replacing the rest of the family. `closed`, `reading:`, non-triage labels,
+ * and unknown intents are refused and do not write.
  */
 export async function handleOverviewRequest(
 	req: { method?: string; url?: string },
