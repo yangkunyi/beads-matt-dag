@@ -1,18 +1,22 @@
 /**
  * The operator surface's one write door.
  *
- * A tagged intent goes in; a store write comes out, or a refusal and nothing is written.
- * Comment is `bd comment` on the selected issue. Intra-domain `blocks` is `bd dep add` /
- * `bd dep remove`. Crossing `relates-to` is `bd dep relate` / `bd dep unrelate`. Crossing
- * `discovered-from` is `bd dep add --type discovered-from` / `bd dep remove`. Cross-domain
- * `blocks` and `parent-child` are refused. Triage moves one of the five labels, replacing the
- * rest of the family; `wontfix` is a label, not a close. Close, `reading:`, non-triage labels,
- * and unknown intents are refused. `bd human respond` is not used. Close, `reading:`, and other
- * domain label acts stay the session's (ADR-0006).
+ * A tagged intent goes in; a store write or a run launch comes out, or a refusal and nothing
+ * is written. Comment is `bd comment` on the selected issue. Create requires a type (the domain),
+ * lands as `needs-triage` without the gate, and writes a body of handle and prose. Start launches
+ * that domain's existing run with the selected ids as the allow-list; it does not claim, merge,
+ * or stamp `closed`. Intra-domain `blocks` is `bd dep add` / `bd dep remove`. Crossing `relates-to`
+ * is `bd dep relate` / `bd dep unrelate`. Crossing `discovered-from` is `bd dep add --type
+ * discovered-from` / `bd dep remove`. Cross-domain `blocks` and `parent-child` are refused. Triage
+ * moves one of the five labels, replacing the rest of the family; `wontfix` is a label, not a
+ * close. Close, `reading:`, non-triage labels, and unknown intents are refused. `bd human respond`
+ * is not used. Close, `reading:`, and other domain label acts stay the session's (ADR-0006).
  */
 
 import { addComment, parseCommentBody } from "./comment";
+import { createIssue, parseCreateBody } from "./create";
 import { domainOf } from "./model";
+import { planStart, type RunLauncher } from "./start";
 import type { BdWriteRunner } from "./store";
 import { applyTriage, isTriageLabel, parseTriageBody } from "./triage";
 
@@ -25,13 +29,13 @@ export class OperatorActionRefused extends Error {
 }
 
 const ISSUE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/;
-const ACCEPTED_INTENTS = new Set(["comment", "add-edge", "remove-edge", "triage"]);
+const ACCEPTED_INTENTS = new Set(["comment", "create", "start", "add-edge", "remove-edge", "triage"]);
 const EDGE_KINDS = new Set(["blocks", "relates-to", "discovered-from"]);
 
 export type OperatorIssue = {
 	id: string;
 	type: string;
-	dependencies: { id: string; type: string }[];
+	dependencies?: ReadonlyArray<{ id: string; type: string }>;
 };
 
 function asObject(raw: string): Record<string, unknown> {
@@ -119,9 +123,9 @@ function pairRelation(
 	a: string,
 	b: string,
 ): string | undefined {
-	const fromA = findIssue(issues, a)?.dependencies.find((dep) => dep.id === b);
+	const fromA = findIssue(issues, a)?.dependencies?.find((dep) => dep.id === b);
 	if (fromA) return fromA.type;
-	const fromB = findIssue(issues, b)?.dependencies.find((dep) => dep.id === a);
+	const fromB = findIssue(issues, b)?.dependencies?.find((dep) => dep.id === a);
 	if (fromB) return fromB.type;
 	return undefined;
 }
@@ -159,12 +163,6 @@ function requirePair(
 function refuseEdgeKind(type: string): void {
 	if (type === "parent-child") throw new OperatorActionRefused("parent-child is refused");
 	if (!EDGE_KINDS.has(type)) throw new OperatorActionRefused("unknown edge type");
-}
-
-function resolveIssues(
-	issues: ReadonlyArray<OperatorIssue> | (() => ReadonlyArray<OperatorIssue>),
-): ReadonlyArray<OperatorIssue> {
-	return typeof issues === "function" ? issues() : issues;
 }
 
 function applyAddEdge(
@@ -224,27 +222,55 @@ function asRefused(error: unknown, prefixes: string[]): never {
 	throw error;
 }
 
+/** Create needs the target dir. Start needs the graph (for domain) and a launcher. Edges need the graph. Comment and triage ignore these. */
+export type OperatorActionExtras = {
+	/** Target root. Create writes the body file here. */
+	dir?: string;
+	launchRun?: RunLauncher;
+	issues?: ReadonlyArray<OperatorIssue>;
+	targetHeld?: boolean;
+};
+
 /**
- * Apply one tagged write. Accepted intents: `comment`, `triage`, `add-edge`, `remove-edge`.
- * Anything carrying `closed`, `reading:`, a non-triage label, or an unknown intent is refused
- * and the store is not written. Cross-domain `blocks` and `parent-child` are refused the same way.
+ * Apply one tagged write. Accepted intents are `comment` (`bd comment`), `create` (body plus
+ * `bd create`), `start` (launch that domain's existing run with the selected ids as the
+ * allow-list; does not write the store), `add-edge` / `remove-edge` (store deps), and `triage`
+ * (one of the five labels, replacing the rest of the family). Anything carrying `closed`,
+ * `reading:`, a non-triage label, or an unknown intent is refused and the store is not written.
+ * Cross-domain `blocks` and `parent-child` are refused the same way.
  */
-export function applyOperatorAction(
-	bd: BdWriteRunner,
-	raw: string,
-	issues: ReadonlyArray<OperatorIssue> | (() => ReadonlyArray<OperatorIssue>) = [],
-): void {
+export function applyOperatorAction(bd: BdWriteRunner, raw: string, extras: OperatorActionExtras = {}): void {
 	const record = asObject(raw);
 	refuseClosedOrReading(record);
 	refuseNonTriageLabelWrite(record);
 	const intent = intentOf(record);
 	refuseUnknownIntent(intent);
+	if (intent === "create") {
+		try {
+			const input = parseCreateBody(raw);
+			const dir = extras.dir;
+			if (dir === undefined || dir === "") {
+				throw new OperatorActionRefused("create needs a target");
+			}
+			createIssue(bd, input, dir);
+		} catch (error) {
+			asRefused(error, ["create needs"]);
+		}
+		return;
+	}
+	if (intent === "start") {
+		const plan = planStart(record.ids, extras.issues ?? [], extras.targetHeld === true);
+		if (!plan.ok) throw new OperatorActionRefused(plan.reason);
+		if (extras.launchRun === undefined) throw new Error("start needs a run launcher");
+		extras.launchRun({ kind: plan.kind, workflow: plan.workflow, allowList: plan.allowList });
+		return;
+	}
 	if (intent === "add-edge") {
-		applyAddEdge(bd, record, resolveIssues(issues));
+		applyAddEdge(bd, record, extras.issues ?? []);
 		return;
 	}
 	if (intent === "remove-edge") {
-		applyRemoveEdge(bd, record, resolveIssues(issues));
+		applyRemoveEdge(bd, record, extras.issues ?? []);
 		return;
 	}
 	if (intent === "comment") {

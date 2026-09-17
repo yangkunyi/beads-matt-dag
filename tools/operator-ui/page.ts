@@ -4,9 +4,10 @@
  *
  * All data is embedded. A static snapshot has no socket — a browser talking to that file is looking
  * at what `bd` already answered. A served page posts tagged intents through the write door: a
- * comment as `bd comment`, store deps, or one of the five triage labels replacing the rest of the
- * family. Beads stays the only graph and the only comment store. Coordinates stay in the view. A
- * refused connect does not land on the canvas.
+ * comment as `bd comment`, create (type is the domain; needs-triage; no gate), start (that domain's
+ * existing run with the selected ids as the allow-list), store deps, or one of the five triage
+ * labels replacing the rest of the family. Beads stays the only graph and the only comment store.
+ * Coordinates stay in the view. A refused connect does not land on the canvas.
  */
 
 import { spawnSync } from "node:child_process";
@@ -43,7 +44,7 @@ function clientScript(): string {
 }
 
 export type RenderPageOptions = {
-	/** When set, the detail panel posts tagged comment and triage intents here. Absent on a static snapshot. */
+	/** When set, the page posts tagged comment, create, triage, and start intents here. Absent on a static snapshot. */
 	commentEndpoint?: string;
 };
 
@@ -66,7 +67,7 @@ ${FLOW_CSS}</style>
 <body>
 <div id="root" data-app="react" data-kit="shadcn">${app}</div>
 <script type="application/json" id="overview">${json}</script>
-<script>${clientScript()}</script>
+<script type="module">${clientScript()}</script>
 </body>
 </html>
 `;
@@ -94,6 +95,16 @@ export function pageOffersReply(html: string): boolean {
 	return html.includes('"commentEndpoint":"/comment"');
 }
 
+/** A served page offers create; a static snapshot does not. */
+export function pageOffersCreate(html: string): boolean {
+	return html.includes('id="create-form"');
+}
+
+/** A served page can start a selection; a static snapshot does not. */
+export function pageOffersStart(html: string): boolean {
+	return html.includes('id="start"') && html.includes("Start selection");
+}
+
 /** The page still names all three domains even when a live run of one kind is overlaid. */
 export function pageCoversThreeDomains(html: string): boolean {
 	return html.includes("inquiry") && html.includes("experiment") && html.includes("drain");
@@ -113,6 +124,11 @@ export function pageCarriesLive(html: string, live: LiveRun): boolean {
 
 export function pageIsReactApp(html: string): boolean {
 	return html.includes('data-app="react"') && html.includes('data-kit="shadcn"');
+}
+
+/** bun build emits ESM; a classic script would SyntaxError on import/export. */
+export function pageClientIsModule(html: string): boolean {
+	return html.includes('<script type="module">');
 }
 
 export function pageGraphIsReactFlow(html: string): boolean {

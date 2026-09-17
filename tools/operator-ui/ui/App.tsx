@@ -1,18 +1,22 @@
 /**
- * The operator page: filters, live overlay, issue detail, comment, triage, and the React Flow graph.
+ * The operator page: filters, live overlay, issue detail, comment, create, triage, start, and the React Flow graph.
  *
  * All of it is a view of the store snapshot embedded in the page. Writes go through the tagged
- * door: comments, intra-domain `blocks`, crossing `relates-to` / `discovered-from`, and one of the
- * five triage labels replacing the rest of the family.
+ * door: comments, create (type is the domain; needs-triage; no gate), start (that domain's existing
+ * run with the selected ids as the allow-list), intra-domain `blocks`, crossing `relates-to` /
+ * `discovered-from`, and one of the five triage labels replacing the rest of the family.
  */
 
 import { useMemo, useState, type FormEvent } from "react";
 import { postComment } from "../client-comment.ts";
+import { postCreate } from "../client-create.ts";
+import { postStart } from "../client-start.ts";
 import { postTriage, TRIAGE_LABELS, type TriageLabel } from "../client-triage.ts";
 import { filterChoices } from "../graph-view.ts";
 import { filterOverview, issueDetail, type Overview, type OverviewIssue } from "../model.ts";
+import { planStart } from "../start.ts";
 import { Graph } from "./Graph.tsx";
-import { Button, Label, Textarea } from "./kit.tsx";
+import { Button, Input, Label, Select, Textarea } from "./kit.tsx";
 
 export type PageOverview = Overview & { commentEndpoint: string | null };
 
@@ -118,11 +122,43 @@ function LiveBanner({ overview }: { overview: Overview }) {
 	);
 }
 
+function StartBar(props: {
+	endpoint: string;
+	overview: Overview;
+	selected: string[];
+}) {
+	const [status, setStatus] = useState("");
+	const plan = planStart(props.selected, props.overview.issues, props.overview.live !== null);
+	const label = plan.ok ? `Start ${plan.kind}` : "Start selection";
+	function onClick() {
+		setStatus("");
+		void postStart(props.endpoint, props.selected)
+			.then(() => {
+				location.reload();
+			})
+			.catch((error: unknown) => {
+				setStatus(error instanceof Error ? error.message : String(error));
+			});
+	}
+	return (
+		<section id="start" className="card" aria-label="Start selection">
+			<p id="start-summary">{plan.ok ? `${props.selected.length} ${plan.kind}` : plan.reason}</p>
+			<Button id="start-button" disabled={!plan.ok} onClick={onClick}>
+				{label}
+			</Button>
+			<p className="muted" id="start-status">
+				{status}
+			</p>
+		</section>
+	);
+}
+
 function Detail(props: {
 	overview: PageOverview;
-	selected: string | null;
+	selected: string[];
 }) {
-	const issue = props.selected === null ? undefined : issueDetail(props.overview, props.selected);
+	const focused = props.selected.length === 0 ? undefined : props.selected[props.selected.length - 1];
+	const issue = focused === undefined ? undefined : issueDetail(props.overview, focused);
 	if (issue === undefined) {
 		return (
 			<aside id="detail" className="card">
@@ -270,8 +306,99 @@ function ReplyForm(props: { endpoint: string; id: string }) {
 	);
 }
 
+const CREATE_TYPES = [
+	{ value: "task", label: "task (development)" },
+	{ value: "bug", label: "bug (development)" },
+	{ value: "feature", label: "feature (development)" },
+	{ value: "epic", label: "epic (development)" },
+	{ value: "chore", label: "chore (development)" },
+	{ value: "decision", label: "decision (inquiry)" },
+	{ value: "experiment", label: "experiment" },
+] as const;
+
+function CreateForm({ endpoint }: { endpoint: string }) {
+	const [type, setType] = useState("");
+	const [feature, setFeature] = useState("");
+	const [title, setTitle] = useState("");
+	const [prose, setProse] = useState("");
+	const [status, setStatus] = useState("");
+	function onSubmit(event: FormEvent) {
+		event.preventDefault();
+		setStatus("");
+		void postCreate(endpoint, { type, feature, title, prose })
+			.then(() => {
+				location.reload();
+			})
+			.catch((error: unknown) => {
+				setStatus(error instanceof Error ? error.message : String(error));
+			});
+	}
+	return (
+		<section id="create" className="card" aria-label="Create issue">
+			<h2>Create issue</h2>
+			<form id="create-form" onSubmit={onSubmit}>
+				<Label htmlFor="create-type">
+					Type
+					<Select
+						id="create-type"
+						name="type"
+						required
+						value={type}
+						onChange={(event) => setType(event.target.value)}
+					>
+						<option value="">Select a type</option>
+						{CREATE_TYPES.map((entry) => (
+							<option key={entry.value} value={entry.value}>
+								{entry.label}
+							</option>
+						))}
+					</Select>
+				</Label>
+				<Label htmlFor="create-feature">
+					Feature
+					<Input
+						id="create-feature"
+						name="feature"
+						required
+						value={feature}
+						onChange={(event) => setFeature(event.target.value)}
+					/>
+				</Label>
+				<Label htmlFor="create-title">
+					Title
+					<Input
+						id="create-title"
+						name="title"
+						required
+						value={title}
+						onChange={(event) => setTitle(event.target.value)}
+					/>
+				</Label>
+				<Button type="submit">Create</Button>
+				<Label className="prose" htmlFor="create-prose">
+					Prose
+					<Textarea
+						id="create-prose"
+						name="prose"
+						rows={3}
+						value={prose}
+						onChange={(event) => setProse(event.target.value)}
+					/>
+				</Label>
+				<p className="muted">
+					Type is the domain. New issues land as needs-triage; the gate is not applied. The body is
+					handle and prose, no status.
+				</p>
+				<p className="muted" id="create-status">
+					{status}
+				</p>
+			</form>
+		</section>
+	);
+}
+
 export function App({ overview }: { overview: PageOverview }) {
-	const [selected, setSelected] = useState<string | null>(null);
+	const [selected, setSelected] = useState<string[]>([]);
 	const [types, setTypes] = useState(() => initialFilter(overview.issues).types);
 	const [statuses, setStatuses] = useState(() => initialFilter(overview.issues).statuses);
 	const [labels, setLabels] = useState(() => initialFilter(overview.issues).labels);
@@ -293,6 +420,10 @@ export function App({ overview }: { overview: PageOverview }) {
 				</p>
 			</header>
 			<LiveBanner overview={overview} />
+			{overview.commentEndpoint ? <CreateForm endpoint={overview.commentEndpoint} /> : null}
+			{overview.commentEndpoint ? (
+				<StartBar endpoint={overview.commentEndpoint} overview={overview} selected={selected} />
+			) : null}
 			<Filters
 				issues={overview.issues}
 				types={types}

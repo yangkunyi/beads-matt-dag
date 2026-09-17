@@ -2,7 +2,8 @@
  * React Flow as a view of the store graph. Positions live in this component. onConnect proposes
  * into the write door — same-domain `blocks`, cross-domain a pick of `relates-to` or
  * `discovered-from` — and never lands an edge on React state. A successful write reloads from
- * the store; a refusal leaves the view unchanged.
+ * the store; a refusal leaves the view unchanged. Shift-click adds to the selection so start
+ * can take more than one id.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
@@ -53,15 +54,16 @@ function IssueNodeView({ data, selected }: NodeProps<IssueNode>) {
 
 const nodeTypes = { issue: IssueNodeView };
 
-function toFlow(overview: Overview, selected: string | null): { nodes: IssueNode[]; edges: RelationEdge[] } {
+function toFlow(overview: Overview, selected: string[]): { nodes: IssueNode[]; edges: RelationEdge[] } {
 	const projected = projectGraph(overview);
+	const selectedSet = new Set(selected);
 	return {
 		nodes: projected.nodes.map((node) => ({
 			id: node.id,
 			type: "issue" as const,
 			position: node.position,
 			data: node.data,
-			selected: node.id === selected,
+			selected: selectedSet.has(node.id),
 		})),
 		edges: projected.edges.map((edge) => ({
 			id: edge.id,
@@ -76,8 +78,8 @@ function toFlow(overview: Overview, selected: string | null): { nodes: IssueNode
 
 function GraphCanvas(props: {
 	overview: Overview;
-	selected: string | null;
-	onSelect: (id: string) => void;
+	selected: string[];
+	onSelect: (ids: string[]) => void;
 	writeEndpoint: string | null;
 }) {
 	const { overview, selected, onSelect, writeEndpoint } = props;
@@ -167,11 +169,19 @@ function GraphCanvas(props: {
 	);
 
 	const onNodeClick = useCallback(
-		(_event: MouseEvent, node: IssueNode) => {
-			onSelect(node.id);
+		(event: MouseEvent, node: IssueNode) => {
+			if (event.shiftKey) {
+				onSelect(selected.includes(node.id) ? selected.filter((id) => id !== node.id) : [...selected, node.id]);
+				return;
+			}
+			onSelect([node.id]);
 		},
-		[onSelect],
+		[onSelect, selected],
 	);
+
+	const onPaneClick = useCallback(() => {
+		onSelect([]);
+	}, [onSelect]);
 
 	const writable = writeEndpoint !== null;
 
@@ -184,9 +194,12 @@ function GraphCanvas(props: {
 				onEdgesChange={onEdgesChange}
 				onConnect={onConnect}
 				onNodeClick={onNodeClick}
+				onPaneClick={onPaneClick}
 				nodeTypes={nodeTypes}
 				fitView
 				deleteKeyCode={writable ? ["Backspace", "Delete"] : null}
+				multiSelectionKeyCode="Shift"
+				selectionOnDrag={false}
 				nodesConnectable={writable}
 			>
 				<Background />
@@ -217,8 +230,8 @@ function GraphCanvas(props: {
 
 export function Graph(props: {
 	overview: Overview;
-	selected: string | null;
-	onSelect: (id: string) => void;
+	selected: string[];
+	onSelect: (ids: string[]) => void;
 	writeEndpoint: string | null;
 }) {
 	const [ready, setReady] = useState(false);
