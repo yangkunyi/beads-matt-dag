@@ -61,13 +61,15 @@ to `PATH` — an operator who set it meant it to be used.
 
 ## Operator surface
 
-The operator UI is a view of the Target's beads graph, not an executor (ADR-0007). Beads remains the
-only graph and the only comment store. The operator may, without a session: create an issue (type is
+The operator UI is a view of the Target's beads graph, not an executor and not a local editor
+(ADR-0007). Beads remains the only graph and the only comment store. After a write the view reads the
+store again and keeps layout positions. The operator may, without a session: create an issue (type is
 the domain; that domain's identity labels go on at create; default triage is `needs-triage`); add or
 remove intra-domain `blocks`; add crossing `relates-to` and `discovered-from`; write `bd comment`;
-move the five triage labels (gate, brake, `wontfix`). Close, `reading:`, and other domain label acts
-stay the session's or the orchestrator's (ADR-0006). `bd human respond` is not used: it closes with
-reason Responded.
+move the five triage labels (gate, brake, `wontfix`); delete an issue that is not `in_progress` and
+has no dependents, after confirm (ADR-0008). Close, `reading:`, and other domain label acts
+stay the session's or the orchestrator's (ADR-0006). `bd human respond` is not used: it closes with reason
+Responded.
 
 Starting work from the surface starts the domain's existing run, optionally with an allow-list of
 issue ids for that run. It does not claim, merge, or stamp `closed`.

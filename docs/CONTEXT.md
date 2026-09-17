@@ -47,8 +47,9 @@ below — if a term can only be explained by a command, it belongs in a spec.
 - **operator** — the human acting on the Target's issue graph without a session. Not an agent role and
   not a triage label.
 - **operator surface** — a view of that graph: issues and edges, plus the live overlay of a run. Not
-  an executor. Starting work still means starting the domain's existing run (drain, inquiry, or
-  experiment).
+  an executor and not a local editor. A write goes to the store; the view reloads from the store and
+  keeps layout positions. Starting work still means starting the domain's existing run (drain,
+  inquiry, or experiment).
 - **allow-list** — the ids one run may claim. It is this run's pool, not a label; it does not brake
   issues left out of the selection.
 
@@ -66,6 +67,10 @@ below — if a term can only be explained by a command, it belongs in a spec.
   `attempted-ids.json`.
 - **merge before stamp** — a result is recorded only after it has happened, so a recorded "closed"
   never runs ahead of the merge it claims (ADR-0002).
+- **delete** — permanently remove an issue from the store. Not a status and not `closed`. The operator
+  may delete from the surface only when the issue is not `in_progress` and it has no dependents; there
+  is a confirm step. A dependent still pointing at it is refused, not cascade and not orphaned. Identity
+  is gone; it cannot be undone (ADR-0008).
 
 ## Domains
 
@@ -106,3 +111,5 @@ below — if a term can only be explained by a command, it belongs in a spec.
 | field | domain | A domain is a type and a closure meaning, not a canvas field |
 | board, card | — | Not this repo's model |
 | executor per issue | the domain's executor | Execution hangs on the domain, not on a node (ADR-0007) |
+| break (on delete) | refuse the delete | A dependent still pointing at the issue blocks delete; do not cascade or orphan |
+| local editor | operator surface | The canvas is a view; React state is not the graph (ADR-0007) |
