@@ -2,13 +2,15 @@
  * The operator surface's one write door.
  *
  * A tagged intent goes in; a store write comes out, or a refusal and nothing is written.
- * Comment is `bd comment` on the selected issue. Close, `reading:`, and unknown intents are
- * refused. `bd human respond` is not used. Close, `reading:`, and domain label acts stay the
- * session's (ADR-0006).
+ * Comment is `bd comment` on the selected issue. Triage moves one of the five labels,
+ * replacing the rest of the family; `wontfix` is a label, not a close. Close, `reading:`,
+ * non-triage labels, and unknown intents are refused. `bd human respond` is not used.
+ * Close, `reading:`, and other domain label acts stay the session's (ADR-0006).
  */
 
 import { addComment, parseCommentBody } from "./comment";
 import type { BdWriteRunner } from "./store";
+import { applyTriage, isTriageLabel, parseTriageBody } from "./triage";
 
 /** Client-side refusal: the store is not written. */
 export class OperatorActionRefused extends Error {
@@ -39,6 +41,10 @@ function isClosedToken(value: string): boolean {
 	return value === "close" || value === "closed";
 }
 
+function isIdeaToken(value: string): boolean {
+	return value === "idea" || value.startsWith("idea:");
+}
+
 function refuseClosedOrReading(record: Record<string, unknown>): void {
 	for (const key of Object.keys(record)) {
 		if (isClosedToken(key)) throw new OperatorActionRefused("closed is refused");
@@ -49,6 +55,10 @@ function refuseClosedOrReading(record: Record<string, unknown>): void {
 		if (isReadingToken(record.intent)) throw new OperatorActionRefused("reading: is refused");
 	}
 	if (record.status === "closed") throw new OperatorActionRefused("closed is refused");
+	if (typeof record.label === "string") {
+		if (isClosedToken(record.label)) throw new OperatorActionRefused("closed is refused");
+		if (isReadingToken(record.label)) throw new OperatorActionRefused("reading: is refused");
+	}
 	const labels = record.labels;
 	if (!Array.isArray(labels)) return;
 	for (const label of labels) {
@@ -58,34 +68,72 @@ function refuseClosedOrReading(record: Record<string, unknown>): void {
 	}
 }
 
-function refuseUnknownIntent(record: Record<string, unknown>): void {
-	if (typeof record.intent !== "string" || record.intent.trim() !== "comment") {
+function refuseNonTriageLabelWrite(record: Record<string, unknown>): void {
+	for (const key of Object.keys(record)) {
+		if (isIdeaToken(key)) throw new OperatorActionRefused("non-triage label");
+	}
+	if (typeof record.label === "string" && !isTriageLabel(record.label)) {
+		throw new OperatorActionRefused("non-triage label");
+	}
+	const labels = record.labels;
+	if (!Array.isArray(labels)) return;
+	for (const label of labels) {
+		if (typeof label !== "string") continue;
+		if (!isTriageLabel(label)) throw new OperatorActionRefused("non-triage label");
+	}
+}
+
+function intentOf(record: Record<string, unknown>): string {
+	if (typeof record.intent !== "string") {
+		throw new OperatorActionRefused("unknown intent");
+	}
+	return record.intent.trim();
+}
+
+function refuseUnknownIntent(intent: string): void {
+	if (intent !== "comment" && intent !== "triage") {
 		throw new OperatorActionRefused("unknown intent");
 	}
 }
 
+function asRefused(error: unknown, prefixes: string[]): never {
+	if (error instanceof OperatorActionRefused) throw error;
+	const message = error instanceof Error ? error.message : String(error);
+	if (
+		prefixes.some((prefix) => message.startsWith(prefix)) ||
+		message.includes("not JSON") ||
+		message.includes("not an object") ||
+		message === "non-triage label"
+	) {
+		throw new OperatorActionRefused(message);
+	}
+	throw error;
+}
+
 /**
- * Apply one tagged write. The only accepted intent today is `comment`, and that write is
- * `bd comment`. Anything carrying `closed`, `reading:`, or an unknown intent is refused and
- * the store is not written.
+ * Apply one tagged write. Accepted intents: `comment` (`bd comment`) and `triage` (one of the
+ * five labels, replacing the rest of the family). Anything carrying `closed`, `reading:`, a
+ * non-triage label, or an unknown intent is refused and the store is not written.
  */
 export function applyOperatorAction(bd: BdWriteRunner, raw: string): void {
 	const record = asObject(raw);
 	refuseClosedOrReading(record);
-	refuseUnknownIntent(record);
-	try {
-		const comment = parseCommentBody(raw);
-		addComment(bd, comment.id, comment.text);
-	} catch (error) {
-		if (error instanceof OperatorActionRefused) throw error;
-		const message = error instanceof Error ? error.message : String(error);
-		if (
-			message.startsWith("comment needs") ||
-			message.includes("not JSON") ||
-			message.includes("not an object")
-		) {
-			throw new OperatorActionRefused(message);
+	refuseNonTriageLabelWrite(record);
+	const intent = intentOf(record);
+	refuseUnknownIntent(intent);
+	if (intent === "comment") {
+		try {
+			const comment = parseCommentBody(raw);
+			addComment(bd, comment.id, comment.text);
+		} catch (error) {
+			asRefused(error, ["comment needs"]);
 		}
-		throw error;
+		return;
+	}
+	try {
+		const triage = parseTriageBody(raw);
+		applyTriage(bd, triage.id, triage.label);
+	} catch (error) {
+		asRefused(error, ["triage needs"]);
 	}
 }

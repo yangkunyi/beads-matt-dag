@@ -4,10 +4,11 @@
  * a selected issue carries status, comments and documents; a live drain / inquiry / experiment run
  * overlays from the run lock, Archon status, artefacts and attempted — not a pack publish API;
  * an operator reply is `bd comment` on the selected issue, never `bd human respond`; the one
- * tagged write door refuses `closed`, `reading:`, and unknown intents without writing; close /
- * `reading:` / labels stay the session's; the page is a React app with a shadcn-style kit; the
- * graph is React Flow projecting the store and does not write an edge on connect; coordinates
- * stay in the view.
+ * tagged write door refuses `closed`, `reading:`, and unknown intents without writing; triage
+ * moves one of the five labels, replacing the rest of the family; `wontfix` is a label, not a
+ * close; a non-triage label write is refused; close / `reading:` / other domain labels stay the
+ * session's; the page is a React app with a shadcn-style kit; the graph is React Flow projecting
+ * the store and does not write an edge on connect; coordinates stay in the view.
  *
  *   bun tools/operator-ui/overview-test.ts
  */
@@ -30,6 +31,7 @@ import {
 import { fetchLive, gitDirOf, RUN_LOCK_NAME } from "./overlay";
 import { applyOperatorAction, OperatorActionRefused } from "./actions";
 import { commentWriteBody } from "./client-comment";
+import { triageWriteBody } from "./client-triage";
 import { addComment, parseCommentBody } from "./comment";
 import { projectGraph, writeForConnect } from "./graph-view";
 import {
@@ -679,6 +681,169 @@ const humanRespond = refusedAction(JSON.stringify({ intent: "human-respond", id:
 expect("human-respond intent is refused", humanRespond.refused);
 expectEqual("human-respond intent does not write", writes, []);
 
+writes.length = 0;
+applyOperatorAction(
+	writeRunner,
+	JSON.stringify({ intent: "triage", id: "from-bd", label: "ready-for-agent" }),
+);
+expectEqual("ready-for-agent replaces the family", writes, [
+	{
+		args: [
+			"update",
+			"from-bd",
+			"--add-label",
+			"ready-for-agent",
+			"--remove-label",
+			"needs-triage",
+			"--remove-label",
+			"needs-info",
+			"--remove-label",
+			"ready-for-human",
+			"--remove-label",
+			"wontfix",
+		],
+		stdin: undefined,
+	},
+]);
+expect(
+	"ready-for-agent is not a close",
+	writes.every((call) => call.args[0] === "update" && !call.args.includes("close") && !call.args.includes("closed")),
+);
+
+writes.length = 0;
+applyOperatorAction(writeRunner, JSON.stringify({ intent: "triage", id: "from-bd", label: "needs-info" }));
+expectEqual("needs-info brake replaces the family", writes, [
+	{
+		args: [
+			"update",
+			"from-bd",
+			"--add-label",
+			"needs-info",
+			"--remove-label",
+			"needs-triage",
+			"--remove-label",
+			"ready-for-agent",
+			"--remove-label",
+			"ready-for-human",
+			"--remove-label",
+			"wontfix",
+		],
+		stdin: undefined,
+	},
+]);
+
+writes.length = 0;
+applyOperatorAction(writeRunner, JSON.stringify({ intent: "triage", id: "from-bd", label: "needs-triage" }));
+expectEqual("needs-triage brake replaces the family", writes, [
+	{
+		args: [
+			"update",
+			"from-bd",
+			"--add-label",
+			"needs-triage",
+			"--remove-label",
+			"needs-info",
+			"--remove-label",
+			"ready-for-agent",
+			"--remove-label",
+			"ready-for-human",
+			"--remove-label",
+			"wontfix",
+		],
+		stdin: undefined,
+	},
+]);
+
+writes.length = 0;
+applyOperatorAction(writeRunner, JSON.stringify({ intent: "triage", id: "from-bd", label: "ready-for-human" }));
+expectEqual("ready-for-human replaces the family", writes, [
+	{
+		args: [
+			"update",
+			"from-bd",
+			"--add-label",
+			"ready-for-human",
+			"--remove-label",
+			"needs-triage",
+			"--remove-label",
+			"needs-info",
+			"--remove-label",
+			"ready-for-agent",
+			"--remove-label",
+			"wontfix",
+		],
+		stdin: undefined,
+	},
+]);
+
+writes.length = 0;
+applyOperatorAction(writeRunner, JSON.stringify({ intent: "triage", id: "from-bd", label: "wontfix" }));
+expectEqual("wontfix replaces the family", writes, [
+	{
+		args: [
+			"update",
+			"from-bd",
+			"--add-label",
+			"wontfix",
+			"--remove-label",
+			"needs-triage",
+			"--remove-label",
+			"needs-info",
+			"--remove-label",
+			"ready-for-agent",
+			"--remove-label",
+			"ready-for-human",
+		],
+		stdin: undefined,
+	},
+]);
+expect(
+	"wontfix is a label, not a close",
+	writes.every(
+		(call) =>
+			call.args[0] === "update" &&
+			call.args.includes("--add-label") &&
+			call.args.includes("wontfix") &&
+			!call.args.includes("close") &&
+			!call.args.includes("closed") &&
+			!call.args.includes("status"),
+	),
+);
+
+writes.length = 0;
+const missingTriageLabel = refusedAction(JSON.stringify({ intent: "triage", id: "from-bd" }));
+expect("triage without a label is refused", missingTriageLabel.refused);
+expectEqual("triage without a label does not write", writes, []);
+
+writes.length = 0;
+const ideaTriage = refusedAction(JSON.stringify({ intent: "triage", id: "from-bd", label: "idea:bare" }));
+expect("idea:* label write is refused", ideaTriage.refused);
+expectEqual("idea:* does not write", writes, []);
+
+writes.length = 0;
+const readingTriage = refusedAction(JSON.stringify({ intent: "triage", id: "from-bd", label: "reading:none" }));
+expect("reading: via triage is refused", readingTriage.refused);
+expectEqual("reading: via triage does not write", writes, []);
+
+writes.length = 0;
+const experimentTriage = refusedAction(JSON.stringify({ intent: "triage", id: "from-bd", label: "experiment" }));
+expect("non-triage label write is refused", experimentTriage.refused);
+expectEqual("non-triage label does not write", writes, []);
+
+writes.length = 0;
+const ideaOnComment = refusedAction(
+	JSON.stringify({ intent: "comment", id: "from-bd", text: "leave this", labels: ["idea:argued"] }),
+);
+expect("idea:* on a comment is refused", ideaOnComment.refused);
+expectEqual("idea:* on a comment does not write", writes, []);
+
+writes.length = 0;
+const ideaField = refusedAction(
+	JSON.stringify({ intent: "comment", id: "from-bd", text: "leave this", "idea:bare": true }),
+);
+expect("idea:* field is refused", ideaField.refused);
+expectEqual("idea:* field does not write", writes, []);
+
 let badBody = false;
 try {
 	parseCommentBody("not-json");
@@ -708,12 +873,29 @@ expectEqual(
 	commentWriteBody("from-bd", "leave this"),
 	JSON.stringify({ intent: "comment", id: "from-bd", text: "leave this" }),
 );
+expectEqual(
+	"triage write body is the tagged intent",
+	triageWriteBody("from-bd", "ready-for-agent"),
+	JSON.stringify({ intent: "triage", id: "from-bd", label: "ready-for-agent" }),
+);
 expect("served page offers the comment door", pageOffersReply(servedHtml));
 const graphSrc = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "ui", "Graph.tsx"), "utf8");
 expect("graph uses React Flow", graphSrc.includes("@xyflow/react"));
 expect(
 	"graph connect does not fetch or write",
 	!graphSrc.includes("fetch(") && graphSrc.includes("writeForConnect"),
+);
+const appSrc = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "ui", "App.tsx"), "utf8");
+expect("surface has a triage form", appSrc.includes('id="triage-form"'));
+expect("surface posts triage through the write door", appSrc.includes("postTriage"));
+expect("surface offers the five triage labels", appSrc.includes("TRIAGE_LABELS"));
+expect("surface can mark wontfix as a label", appSrc.includes("wontfix"));
+expect("surface does not close from triage", !appSrc.includes("bd close") && !appSrc.includes('name="close"'));
+const familySrc = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "triage-labels.ts"), "utf8");
+expect("gate is on the surface", familySrc.includes("ready-for-agent") && appSrc.includes("TRIAGE_LABELS"));
+expect(
+	"a brake is on the surface",
+	familySrc.includes("needs-info") && familySrc.includes("needs-triage") && appSrc.includes("TRIAGE_LABELS"),
 );
 
 const doorWrites: { args: string[]; stdin: string | undefined }[] = [];
@@ -761,13 +943,53 @@ const unknownPost = await handleOverviewRequest(
 );
 expectEqual("POST unknown intent is 400", unknownPost.status, 400);
 expectEqual("POST unknown intent does not write", doorWrites.length, 1);
+const triagePost = await handleOverviewRequest(
+	{ method: "POST", url: "/comment" },
+	JSON.stringify({ intent: "triage", id: "from-bd", label: "needs-info" }),
+	handler,
+);
+expectEqual("POST triage is 204", triagePost.status, 204);
+expectEqual("POST triage writes the brake", doorWrites[1], {
+	args: [
+		"update",
+		"from-bd",
+		"--add-label",
+		"needs-info",
+		"--remove-label",
+		"needs-triage",
+		"--remove-label",
+		"ready-for-agent",
+		"--remove-label",
+		"ready-for-human",
+		"--remove-label",
+		"wontfix",
+	],
+	stdin: undefined,
+});
+const ideaPost = await handleOverviewRequest(
+	{ method: "POST", url: "/comment" },
+	JSON.stringify({ intent: "triage", id: "from-bd", label: "idea:bare" }),
+	handler,
+);
+expectEqual("POST idea:* is 400", ideaPost.status, 400);
+expectEqual("POST idea:* does not write", doorWrites.length, 2);
+const wontfixPost = await handleOverviewRequest(
+	{ method: "POST", url: "/comment" },
+	JSON.stringify({ intent: "triage", id: "from-bd", label: "wontfix" }),
+	handler,
+);
+expectEqual("POST wontfix is 204", wontfixPost.status, 204);
+expect(
+	"POST wontfix is a label write, not a close",
+	doorWrites[2]?.args[0] === "update" && (doorWrites[2]?.args.includes("wontfix") ?? false),
+);
 const emptyPost = await handleOverviewRequest(
 	{ method: "POST", url: "/comment" },
 	JSON.stringify({ intent: "comment", id: "from-bd", text: "" }),
 	handler,
 );
 expectEqual("empty POST is 400", emptyPost.status, 400);
-expectEqual("empty POST does not write", doorWrites.length, 1);
+expectEqual("empty POST does not write", doorWrites.length, 3);
 const missing = await handleOverviewRequest({ method: "POST", url: "/close" }, "", handler);
 expectEqual("unknown path is 404", missing.status, 404);
 
