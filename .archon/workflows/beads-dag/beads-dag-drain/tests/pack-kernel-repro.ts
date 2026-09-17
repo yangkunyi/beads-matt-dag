@@ -18,6 +18,7 @@ const KERNEL = [
   "run-lock",
   "lock",
   "attempted",
+  "allow-list",
   "roles",
   "naming",
   "doc-commit",

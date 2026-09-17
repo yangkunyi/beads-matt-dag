@@ -1,5 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { applyAllowList } from "../../scripts/allow-list.ts";
 import { addAttempted, readAttempted } from "../../scripts/attempted.ts";
 import { assertNoCrossDomainEdges, NON_WORK_TYPES } from "../../scripts/domains.ts";
 import { runNode } from "../../scripts/node-entry.ts";
@@ -13,13 +14,13 @@ import { claimIssues, preflightStore, readyIssues, type StoreIssue } from "../..
  * It is the store's own answer, minus what only this run knows:
  *
  *   ready issues − non-work-type issues − issues without the gate label − issues already attempted
- *     → truncated to config.concurrency → claimed in one transaction
+ *     − issues outside a present allow-list → truncated to config.concurrency → claimed in one transaction
  *
  * The store owns readiness — `open`, not blocked — and that is one query, `readyIssues`. It cannot own
- * the three exclusions: two are this flow's policy rather than the store's facts, and the third (what
- * this run already tried) is bookkeeping that lives beside the run by design. Because the store cannot
- * explain any of them, every excluded issue and its rule goes into the run's own exclusion report, so
- * "nothing happened" is explainable afterwards.
+ * the exclusions: two are this flow's policy rather than the store's facts, one (what this run already
+ * tried) is bookkeeping that lives beside the run by design, and a present allow-list is this run's pool.
+ * Because the store cannot explain any of them, every excluded issue and its rule goes into the run's
+ * own exclusion report, so "nothing happened" is explainable afterwards.
  *
  * An issue whose attempt failed needs no branch of its own: it is `open` again, so the store offers it
  * like fresh work and the retry channel is the same query. The only thing this run adds is that it does
@@ -40,7 +41,7 @@ export const GATE_LABEL = "ready-for-agent";
  * ones it can explain: anything the store itself excluded (blocked, in progress, closed) never reaches
  * this step and is answered by asking the store.
  */
-type ExclusionRule = "non-work-type" | "missing-gate-label" | "attempted-by-this-run";
+type ExclusionRule = "non-work-type" | "missing-gate-label" | "attempted-by-this-run" | "outside-allow-list";
 
 type ExcludedIssue = { id: string; handle: string | undefined; rule: ExclusionRule };
 
@@ -65,7 +66,7 @@ function exclusionRule(issue: StoreIssue, attempted: Set<string>): ExclusionRule
   return undefined;
 }
 
-/** The store's answer with this step's three rules applied. */
+/** The store's answer with this step's type, gate and attempted rules applied. */
 function composeFrontier(
   issues: StoreIssue[],
   attempted: Set<string>,
@@ -103,10 +104,12 @@ function writeExclusionReport(artifactsDir: string, report: ExclusionReport): vo
 if (import.meta.main) {
   await runNode({
     artifacts: true,
-    run: ({ target, artifactsDir, config }) => {
+    run: ({ target, artifactsDir, config, allowList }) => {
       const store = preflightStore(target, config);
       const attempted = readAttempted(artifactsDir);
-      const { candidates, excluded } = composeFrontier(readyIssues(store, target), attempted);
+      const composed = composeFrontier(readyIssues(store, target), attempted);
+      const { kept: candidates, dropped } = applyAllowList(composed.candidates, allowList);
+      const excluded = [...composed.excluded, ...dropped];
       // The graph preflight again, behind the frontier read and ahead of every claim this cycle makes. It
       // is `open`'s own check — the same function, the same read of the whole store and the same message —
       // and not a second opinion about what crossing domains means: `open`'s reading is one moment, and a

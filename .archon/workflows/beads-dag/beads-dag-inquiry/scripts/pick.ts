@@ -17,6 +17,7 @@
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { applyAllowList } from "../../scripts/allow-list.ts";
 import { addAttempted, readAttempted } from "../../scripts/attempted.ts";
 import { runNode } from "../../scripts/node-entry.ts";
 import { nodeLine } from "../../scripts/node-outcomes.ts";
@@ -40,19 +41,20 @@ function writeExclusionReport(artifactsDir: string, report: ExclusionReport): vo
 if (import.meta.main) {
   await runNode({
     artifacts: true,
-    run: ({ target, artifactsDir, config }) => {
+    run: ({ target, artifactsDir, config, allowList }) => {
       const store = preflightStore(target, config);
       const frontier = readingFrontier(store, target, readAttempted(artifactsDir));
+      const { kept, dropped } = applyAllowList(frontier.candidates, allowList);
       // Every candidate is named before the batch is cut, not only the ones that fit: a frontier question
       // that cannot be named cannot be read at all (the note's path derives from its name), so it fails
       // this node rather than being claimed and left for a reader that cannot find its note.
-      const named = frontier.candidates.map((issue) => ({ id: issue.id, handle: candidateHandle(issue) }));
+      const named = kept.map((issue) => ({ id: issue.id, handle: candidateHandle(issue) }));
       const picked = named.slice(0, config.concurrency);
       const ids = picked.map((issue) => issue.id);
 
       claimIssues(store, target, ids);
       addAttempted(artifactsDir, ids);
-      writeExclusionReport(artifactsDir, { picked, excluded: frontier.excluded });
+      writeExclusionReport(artifactsDir, { picked, excluded: [...frontier.excluded, ...dropped] });
       return nodeLine(JSON.stringify(picked.map((issue) => issue.handle)));
     },
   });

@@ -685,10 +685,10 @@ function fakePiSource(mode: string): string {
 }
 
 /**
- * The runner's conversation with one node: the three variables Archon sets for a node and nothing else.
+ * The runner's conversation with one node: the protocol variables Archon sets for a node and nothing else.
  * A fixture never inherits them, in any shape.
  */
-const PROTOCOL_ENV = ["INPUTS_ISSUE", "INPUTS_CONFIG", "ARTIFACTS_DIR"];
+const PROTOCOL_ENV = ["INPUTS_ISSUE", "INPUTS_CONFIG", "INPUTS_ALLOW_LIST", "ARTIFACTS_DIR"];
 
 export function envWithout(...names: string[]): NodeJS.ProcessEnv {
   const env = { ...process.env };
@@ -718,8 +718,8 @@ export function envWithoutStore(): NodeJS.ProcessEnv {
  * an operator's shell, so the node resolves the store the way the design says it may. `process.execPath`
  * is bun here, which is the runtime the YAMLs declare, so a test drives the same process the runner does.
  *
- * **The node protocol's own variables never come from this process.** `INPUTS_ISSUE`, `INPUTS_CONFIG` and
- * `ARTIFACTS_DIR` are the runner's conversation with one node, and a repro's caller builds that
+ * **The node protocol's own variables never come from this process.** `INPUTS_ISSUE`, `INPUTS_CONFIG`,
+ * `INPUTS_ALLOW_LIST` and `ARTIFACTS_DIR` are the runner's conversation with one node, and a repro's caller builds that
  * conversation itself - the third argument, and nothing else. Inherited, they are a worker's own inputs:
  * the implementer of a beads-dag ticket runs this suite with `INPUTS_ISSUE` set to its own handle and its
  * own `ARTIFACTS_DIR`, and three repros then read the ambient run instead of their Target (measured
