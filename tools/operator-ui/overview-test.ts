@@ -3,7 +3,8 @@
  * The overview's seams: the graph is `bd`, never jsonl; the page filters by type / status / label;
  * a selected issue carries status, comments and documents; a live drain / inquiry / experiment run
  * overlays from the run lock, Archon status, artefacts and attempted — not a pack publish API;
- * an operator reply is `bd comment` on the selected issue, never `bd human respond`, and close /
+ * an operator reply is `bd comment` on the selected issue, never `bd human respond`; the one
+ * tagged write door refuses `closed`, `reading:`, and unknown intents without writing; close /
  * `reading:` / labels stay the session's.
  *
  *   bun tools/operator-ui/overview-test.ts
@@ -25,6 +26,7 @@ import {
 	type StoreIssue,
 } from "./model";
 import { fetchLive, gitDirOf, RUN_LOCK_NAME } from "./overlay";
+import { applyOperatorAction, OperatorActionRefused } from "./actions";
 import { addComment, parseCommentBody } from "./comment";
 import { pageCarriesDetail, pageCarriesLive, pageCoversThreeDomains, pageHasFilters, pageOffersReply, renderPage } from "./page";
 import { createOverviewServer, handleOverviewRequest } from "./serve";
@@ -556,11 +558,83 @@ try {
 expect("empty reply is refused", refused);
 expectEqual("empty reply does not write", writes, []);
 
-const parsed = parseCommentBody(JSON.stringify({ id: "from-bd", text: "leave this", close: true, labels: ["reading:none"] }));
-expectEqual("extra close/label fields are ignored", parsed, { id: "from-bd", text: "leave this" });
 writes.length = 0;
-addComment(writeRunner, parsed.id, parsed.text);
-expectEqual("ignored fields still write only bd comment", writes[0]?.args, ["comment", "from-bd", "--stdin"]);
+applyOperatorAction(writeRunner, JSON.stringify({ intent: "comment", id: "from-bd", text: "leave this" }));
+expectEqual("comment intent is bd comment", writes, [{ args: ["comment", "from-bd", "--stdin"], stdin: "leave this" }]);
+expect(
+	"comment intent is not human respond, close, or a label",
+	writes.every(
+		(call) =>
+			call.args[0] === "comment" &&
+			!call.args.includes("human") &&
+			!call.args.includes("respond") &&
+			!call.args.includes("close") &&
+			!call.args.includes("label") &&
+			!call.args.includes("update"),
+	),
+);
+
+function refusedAction(raw: string): { refused: boolean; message: string } {
+	try {
+		applyOperatorAction(writeRunner, raw);
+		return { refused: false, message: "" };
+	} catch (error) {
+		return {
+			refused: error instanceof OperatorActionRefused,
+			message: error instanceof Error ? error.message : String(error),
+		};
+	}
+}
+
+writes.length = 0;
+const closedField = refusedAction(JSON.stringify({ intent: "comment", id: "from-bd", text: "leave this", closed: true }));
+expect("closed field is refused", closedField.refused);
+expect("closed field names closed", closedField.message.includes("closed"));
+expectEqual("closed field does not write", writes, []);
+
+writes.length = 0;
+const closeField = refusedAction(JSON.stringify({ intent: "comment", id: "from-bd", text: "leave this", close: true }));
+expect("close field is refused", closeField.refused);
+expectEqual("close field does not write", writes, []);
+
+writes.length = 0;
+const closedIntent = refusedAction(JSON.stringify({ intent: "closed", id: "from-bd", text: "leave this" }));
+expect("closed intent is refused", closedIntent.refused);
+expectEqual("closed intent does not write", writes, []);
+
+writes.length = 0;
+const readingField = refusedAction(JSON.stringify({ intent: "comment", id: "from-bd", text: "leave this", "reading:": "none" }));
+expect("reading: field is refused", readingField.refused);
+expect("reading: field names reading:", readingField.message.includes("reading:"));
+expectEqual("reading: field does not write", writes, []);
+
+writes.length = 0;
+const readingLabel = refusedAction(
+	JSON.stringify({ intent: "comment", id: "from-bd", text: "leave this", labels: ["reading:none"] }),
+);
+expect("reading: label is refused", readingLabel.refused);
+expectEqual("reading: label does not write", writes, []);
+
+writes.length = 0;
+const readingIntent = refusedAction(JSON.stringify({ intent: "reading:", id: "from-bd", text: "leave this" }));
+expect("reading: intent is refused", readingIntent.refused);
+expectEqual("reading: intent does not write", writes, []);
+
+writes.length = 0;
+const unknownIntent = refusedAction(JSON.stringify({ intent: "explode", id: "from-bd", text: "leave this" }));
+expect("unknown intent is refused", unknownIntent.refused);
+expect("unknown intent names unknown", unknownIntent.message.includes("unknown intent"));
+expectEqual("unknown intent does not write", writes, []);
+
+writes.length = 0;
+const missingIntent = refusedAction(JSON.stringify({ id: "from-bd", text: "leave this" }));
+expect("missing intent is refused", missingIntent.refused);
+expectEqual("missing intent does not write", writes, []);
+
+writes.length = 0;
+const humanRespond = refusedAction(JSON.stringify({ intent: "human-respond", id: "from-bd", text: "leave this" }));
+expect("human-respond intent is refused", humanRespond.refused);
+expectEqual("human-respond intent does not write", writes, []);
 
 let badBody = false;
 try {
@@ -569,6 +643,11 @@ try {
 	badBody = true;
 }
 expect("non-JSON comment body is refused", badBody);
+
+writes.length = 0;
+const badWrite = refusedAction("not-json");
+expect("non-JSON write is refused", badWrite.refused);
+expectEqual("non-JSON write does not write", writes, []);
 
 const servedHtml = renderPage(overview, { commentEndpoint: "/comment" });
 expect("served page offers a reply endpoint", pageOffersReply(servedHtml));
@@ -581,13 +660,14 @@ expect(
 		!servedHtml.includes('name="labels"') &&
 		!servedHtml.includes("bd human"),
 );
-expect("served page posts id and text", servedHtml.includes("JSON.stringify({ id: issue.id, text: text })"));
+expect("served page posts a tagged comment intent", servedHtml.includes('JSON.stringify({ intent: "comment", id: issue.id, text: text })'));
 
-const added: { id: string; text: string }[] = [];
+const doorWrites: { args: string[]; stdin: string | undefined }[] = [];
 const handler = {
-	add: (id: string, text: string) => {
-		added.push({ id, text });
-	},
+	write: ((args: string[], stdin?: string) => {
+		doorWrites.push({ args, stdin });
+		return "";
+	}) satisfies BdWriteRunner,
 	page: () => renderPage(overview, { commentEndpoint: "/comment" }),
 };
 const getPage = await handleOverviewRequest({ method: "GET", url: "/" }, "", handler);
@@ -595,18 +675,45 @@ expectEqual("GET / is 200", getPage.status, 200);
 expect("GET / offers a reply endpoint", pageOffersReply(getPage.body));
 const posted = await handleOverviewRequest(
 	{ method: "POST", url: "/comment" },
-	JSON.stringify({ id: "from-bd", text: "operator reply", close: true, labels: ["reading:none"] }),
+	JSON.stringify({ intent: "comment", id: "from-bd", text: "operator reply" }),
 	handler,
 );
 expectEqual("POST /comment is 204", posted.status, 204);
-expectEqual("POST /comment writes only the reply", added, [{ id: "from-bd", text: "operator reply" }]);
+expectEqual("POST /comment writes only bd comment", doorWrites, [
+	{ args: ["comment", "from-bd", "--stdin"], stdin: "operator reply" },
+]);
+expect(
+	"POST /comment is not human respond",
+	doorWrites.every((call) => call.args[0] === "comment" && !call.args.includes("human") && !call.args.includes("respond")),
+);
+const closedPost = await handleOverviewRequest(
+	{ method: "POST", url: "/comment" },
+	JSON.stringify({ intent: "comment", id: "from-bd", text: "operator reply", closed: true }),
+	handler,
+);
+expectEqual("POST carrying closed is 400", closedPost.status, 400);
+expectEqual("POST carrying closed does not write", doorWrites.length, 1);
+const readingPost = await handleOverviewRequest(
+	{ method: "POST", url: "/comment" },
+	JSON.stringify({ intent: "comment", id: "from-bd", text: "operator reply", labels: ["reading:none"] }),
+	handler,
+);
+expectEqual("POST carrying reading: is 400", readingPost.status, 400);
+expectEqual("POST carrying reading: does not write", doorWrites.length, 1);
+const unknownPost = await handleOverviewRequest(
+	{ method: "POST", url: "/comment" },
+	JSON.stringify({ intent: "explode", id: "from-bd", text: "operator reply" }),
+	handler,
+);
+expectEqual("POST unknown intent is 400", unknownPost.status, 400);
+expectEqual("POST unknown intent does not write", doorWrites.length, 1);
 const emptyPost = await handleOverviewRequest(
 	{ method: "POST", url: "/comment" },
-	JSON.stringify({ id: "from-bd", text: "" }),
+	JSON.stringify({ intent: "comment", id: "from-bd", text: "" }),
 	handler,
 );
 expectEqual("empty POST is 400", emptyPost.status, 400);
-expectEqual("empty POST does not write", added.length, 1);
+expectEqual("empty POST does not write", doorWrites.length, 1);
 const missing = await handleOverviewRequest({ method: "POST", url: "/close" }, "", handler);
 expectEqual("unknown path is 404", missing.status, 404);
 
@@ -657,7 +764,7 @@ expect("live page is from bd, not jsonl", commentPage.includes("From bd") && !co
 const livePost = await fetch(`http://127.0.0.1:${commentPort}/comment`, {
 	method: "POST",
 	headers: { "content-type": "application/json" },
-	body: JSON.stringify({ id: "from-bd", text: "operator reply", close: true }),
+	body: JSON.stringify({ intent: "comment", id: "from-bd", text: "operator reply" }),
 });
 expectEqual("live POST /comment is 204", livePost.status, 204);
 const logged = existsSync(commentLog) ? readFileSync(commentLog, "utf8").trim() : "";
@@ -665,6 +772,20 @@ const recorded = logged === "" ? null : JSON.parse(logged.split("\n")[0] ?? logg
 expectEqual("live write is bd comment", recorded?.args, ["comment", "from-bd", "--stdin"]);
 expectEqual("live write stdin is the reply", recorded?.stdin, "operator reply");
 expect("live write is not human respond", recorded !== null && !(recorded.args as string[]).includes("human"));
+const liveClosed = await fetch(`http://127.0.0.1:${commentPort}/comment`, {
+	method: "POST",
+	headers: { "content-type": "application/json" },
+	body: JSON.stringify({ intent: "comment", id: "from-bd", text: "operator reply", closed: true }),
+});
+expectEqual("live POST carrying closed is 400", liveClosed.status, 400);
+const liveUnknown = await fetch(`http://127.0.0.1:${commentPort}/comment`, {
+	method: "POST",
+	headers: { "content-type": "application/json" },
+	body: JSON.stringify({ intent: "explode", id: "from-bd", text: "operator reply" }),
+});
+expectEqual("live POST unknown intent is 400", liveUnknown.status, 400);
+const loggedAfterRefuse = existsSync(commentLog) ? readFileSync(commentLog, "utf8").trim() : "";
+expectEqual("refused live POSTs do not write", loggedAfterRefuse, logged);
 await new Promise<void>((resolve, reject) => commentServer.close((err) => (err ? reject(err) : resolve())));
 
 const servePath = join(dirname(fileURLToPath(import.meta.url)), "serve.ts");
@@ -672,13 +793,14 @@ const serveHelp = spawnSync(process.execPath, [servePath, "--help"], { encoding:
 expectEqual("serve help exits 0", serveHelp.status, 0);
 expect("serve help names bd comment", (serveHelp.stdout ?? "").includes("bd comment"));
 expect("serve help does not name human respond", !(serveHelp.stdout ?? "").includes("human respond"));
+expect("serve help names the tagged door", (serveHelp.stdout ?? "").includes("tagged door"));
 
 const contract = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "..", "docs", "agents", "issue-tracker.md"), "utf8");
-expect("contract: UI writes bd comment", contract.includes("The operator UI writes a reply as `bd comment`"));
+expect("contract: UI writes bd comment", contract.includes("write `bd comment`"));
 expect("contract: human respond is not used", contract.includes("`bd human respond` is not used"));
 expect(
 	"contract: close, reading:, and labels stay with the session",
-	contract.includes("Close, `reading:`, and the domain's label acts stay the session's"),
+	contract.includes("Close, `reading:`, and other domain label acts") && contract.includes("stay the session's"),
 );
 
 if (failed > 0) {
