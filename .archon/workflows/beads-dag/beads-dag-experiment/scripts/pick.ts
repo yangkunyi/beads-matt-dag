@@ -6,11 +6,11 @@
  * issues minus the ones that are not type `experiment`, minus the ones that do not carry the
  * `experiment` label, minus the ones this run already tried.
  *
- * The store owns readiness — `open`, not blocked — and that is one query. It cannot own the three
- * exclusions: two are this flow's policy (the type is the domain, the label is what makes the tickets one
- * filter) and the third is bookkeeping that lives beside the run by design (`attempted-ids.json`). Because
- * the store cannot explain any of them, every excluded issue and its rule goes into the run's own
- * exclusion report, so a run that did nothing can say why.
+ * The store owns readiness — `open`, not blocked — and that is one query. It cannot own the exclusions:
+ * two are this flow's policy (the type is the domain, the label is what makes the tickets one filter),
+ * one is bookkeeping that lives beside the run by design (`attempted-ids.json`), and a present allow-list
+ * is this run's pool. Because the store cannot explain any of them, every excluded issue and its rule
+ * goes into the run's own exclusion report, so a run that did nothing can say why.
  *
  * Ordered by handle — feature, then number, then slug — so a batch of tickets is worked in the order the
  * handles read, and truncated to the run's configured concurrency: this is where several independent
@@ -20,6 +20,7 @@
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { applyAllowList } from "../../scripts/allow-list.ts";
 import { readAttempted } from "../../scripts/attempted.ts";
 import { runNode } from "../../scripts/node-entry.ts";
 import { nodeLine } from "../../scripts/node-outcomes.ts";
@@ -31,7 +32,7 @@ import { EXPERIMENT_LABEL, EXPERIMENT_TYPE } from "../../beads-dag-experiment-ru
  * ones it can explain: anything the store itself excluded (blocked, in progress, closed) never reaches
  * this step and is answered by asking the store.
  */
-type ExclusionRule = "not-experiment-type" | "missing-experiment-label" | "attempted-by-this-run";
+type ExclusionRule = "not-experiment-type" | "missing-experiment-label" | "attempted-by-this-run" | "outside-allow-list";
 
 type ExcludedIssue = { id: string; handle: string | undefined; rule: ExclusionRule };
 
@@ -98,7 +99,7 @@ function compareCandidates(a: Candidate, b: Candidate): number {
   return a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : 0;
 }
 
-/** The store's answer with this step's three rules applied. */
+/** The store's answer with this step's type, label and attempted rules applied. */
 function composeFrontier(
   issues: StoreIssue[],
   attempted: Set<string>,
@@ -125,10 +126,12 @@ function writeExclusionReport(artifactsDir: string, report: ExclusionReport): vo
 if (import.meta.main) {
   await runNode({
     artifacts: true,
-    run: ({ target, artifactsDir, config }) => {
+    run: ({ target, artifactsDir, config, allowList }) => {
       const store = preflightStore(target, config);
       const attempted = readAttempted(artifactsDir);
-      const { candidates, excluded } = composeFrontier(readyIssues(store, target), attempted);
+      const composed = composeFrontier(readyIssues(store, target), attempted);
+      const { kept: candidates, dropped } = applyAllowList(composed.candidates, allowList);
+      const excluded = [...composed.excluded, ...dropped];
       const picked = candidates
         .sort(compareCandidates)
         .slice(0, config.concurrency)

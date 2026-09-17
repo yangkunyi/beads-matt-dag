@@ -107,7 +107,7 @@ and it would enter the issue database as drain bookkeeping, which the pack keeps
 ## The frontier
 
 The drain starts what the store says can start, minus what the store cannot know. `pick` asks one
-question — `bd ready`, the whole answer, not the store's default cap — and then applies three rules:
+question — `bd ready`, the whole answer, not the store's default cap — and then applies these rules:
 
 - **the other domains.** Types `decision` and `experiment` never enter a drain, excluded by type, so a
   new flavour of question — or of experiment — cannot leak in by omission.
@@ -120,6 +120,9 @@ question — `bd ready`, the whole answer, not the store's default cap — and t
   comment and puts the issue back to `open`, so the retry channel is the store's own ready answer, and
   the only thing that stops a run retrying its own failure is the run's `attempted-ids.json`. A drain
   with no attempts of its own works such an issue exactly like fresh work.
+- **this run's allow-list**, when one is present. An issue whose id is not on the list is excluded as
+  `outside-allow-list` and not claimed; its triage is untouched. An omitted list is today's pick. An
+  empty list claims nothing. Being on the list does not bypass ready, the gate, attempted, or type.
 
 And one thing `pick` refuses rather than excludes: the graph preflight `open` ran, made again on a read of
 its own just before the claim (`Closure never crosses domains`, below) — the same check, so the two cannot
@@ -138,10 +141,11 @@ cycle that just ran, and the cycles before it are in the store's own history.
 `beads-dag-experiment` runs what the store says is an experiment. It is the one frontier that selects
 *by* the non-work type instead of excluding it: its `pick` keeps the store's ready answer minus the
 issues that are not type `experiment`, minus the experiment tickets that do not carry the `experiment`
-label, minus the ones this run already tried; what is left is ordered by handle — feature, then number,
-then slug — and truncated to `concurrency`, so several independent experiments are one run. Every issue
-left out is named with its rule in `pick-exclusions.json`. Unlike a drain, `pick` claims nothing: an
-experiment ticket's claim is an **assignment**.
+label, minus the ones this run already tried, minus a present allow-list the same way drain and inquiry
+do; what is left is ordered by handle — feature, then number, then slug — and truncated to `concurrency`,
+so several independent experiments are one run. Every issue left out is named with its rule in
+`pick-exclusions.json`. Unlike a drain, `pick` claims nothing: an experiment ticket's claim is an
+**assignment**.
 
 `open` is the drain's opening node's twin: it takes the shared run lock, preflights the store, prints
 the configuration line, and then refuses the half's two premises — the Target must carry its own copy of
@@ -609,11 +613,11 @@ Install it with `npm i -g @beads/bd@1.2.2`, or point `BEADS_BIN` at one. "There 
 repro *inside* that one run, not an argument for a second: `store-open-repro.ts` runs the opening node
 against a PATH that cannot resolve a binary and reads the reason it fails with.
 
-**A fixture never speaks the runner's protocol.** `INPUTS_ISSUE`, `INPUTS_CONFIG` and `ARTIFACTS_DIR`
-are Archon's conversation with one node, and a worker's turn has them set to its own run — so a repro
-that inherits or spreads them drives a real node against the live run instead of its own Target. `runScript`
-and the fixture's `envWithout`/`envWithoutStore` helpers drop all three for that reason, and a caller
-naming its own `ARTIFACTS_DIR` must not spread an ambient environment over it. This is not hypothetical:
+**A fixture never speaks the runner's protocol.** `INPUTS_ISSUE`, `INPUTS_CONFIG`, `INPUTS_ALLOW_LIST`
+and `ARTIFACTS_DIR` are Archon's conversation with one node, and a worker's turn has them set to its own
+run — so a repro that inherits or spreads them drives a real node against the live run instead of its own
+Target. `runScript` and the fixture's `envWithout`/`envWithoutStore` helpers drop them for that reason, and a
+caller naming its own `ARTIFACTS_DIR` must not spread an ambient environment over it. This is not hypothetical:
 the worker of ticket beads-dag/29 ran this suite inside its turn and three repros each overwrote that
 run's `review-base` and `run-lock.json` with a throwaway Target's, so the run's review-base named a commit
 no repository had and its review reported nothing at all. `worker-readonly-repro.ts` pins the rule by
@@ -670,6 +674,7 @@ through the drain executor to get them:
 | `domains.ts` | the domain boundary: the non-work types, and the cross-domain graph preflight |
 | `failures.ts` | the failures block: the store's own failure records, and how they read |
 | `attempted.ts` | the run's attempted set: what this run has started, outside the store |
+| `allow-list.ts` | this run's pool: parse the allow-list input, and the `outside-allow-list` rule |
 | `config.ts` | the Target's optional config file, and the built-in defaults |
 | `node-entry.ts` | the node protocol: `INPUTS_*`, config, artifacts |
 | `node-outcomes.ts` | the tokens a node prints |

@@ -40,7 +40,8 @@ export type ExclusionRule =
   | "missing-reading-label"
   | "reading-already-landed"
   | "attempted-by-this-run"
-  | "already-claimed";
+  | "already-claimed"
+  | "outside-allow-list";
 
 /** One issue the store offered and the rules left out, with the rule that left it out. */
 export type ExcludedIssue = { id: string; handle: string | undefined; rule: ExclusionRule };

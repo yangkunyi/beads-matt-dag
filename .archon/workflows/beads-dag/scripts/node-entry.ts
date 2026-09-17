@@ -1,3 +1,4 @@
+import { parseAllowList, type AllowList } from "./allow-list.ts";
 import { loadConfig, type ConfigProvenance, type PackConfig } from "./config.ts";
 
 /** What a node's handler is handed: where it runs, its own inputs, and the Target's config. */
@@ -14,6 +15,11 @@ type NodeEnv = {
    * The opening node's configuration line is built from this; every other node ignores it.
    */
   configProvenance: ConfigProvenance;
+  /**
+   * INPUTS_ALLOW_LIST: this run's pool, when the run was started with one. Undefined is omitted — pick
+   * is today's. A present set, empty included, is the ids this run may claim.
+   */
+  allowList: AllowList;
 };
 
 type NodeOpts = {
@@ -48,8 +54,9 @@ export async function runNode(opts: NodeOpts): Promise<void> {
     const issueHandle = opts.issue ? requireEnv("INPUTS_ISSUE") : "";
     const artifactsDir = opts.artifacts ? requireEnv("ARTIFACTS_DIR") : "";
     const { config, provenance } = loadConfig(target, process.env.INPUTS_CONFIG);
+    const allowList = parseAllowList(process.env.INPUTS_ALLOW_LIST);
     process.stdout.write(
-      await opts.run({ target, issueHandle, artifactsDir, config, configProvenance: provenance }),
+      await opts.run({ target, issueHandle, artifactsDir, config, configProvenance: provenance, allowList }),
     );
   } catch (e) {
     console.error(e instanceof Error ? e.message : String(e));

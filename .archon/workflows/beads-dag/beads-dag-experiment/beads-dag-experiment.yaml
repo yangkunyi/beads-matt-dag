@@ -12,6 +12,9 @@ inputs:
   config:
     default: .scratch/beads-dag.yaml
     description: Path to YAML with model, thinkingLevel, concurrency, runner
+  allow_list:
+    default: ""
+    description: JSON array of issue ids this run may claim. Unset keeps today's pick; [] claims nothing.
 nodes:
   - id: open
     script: open
@@ -30,6 +33,7 @@ nodes:
           runtime: bun
           with:
             config: $INPUTS.config
+            allow_list: $INPUTS.allow_list
         # One experiment ticket per instance, over the handles pick offers, truncated to
         # config.concurrency by pick itself. The per-ticket node is an `include:` rather than a script
         # node because Archon supports `fan_out:` on workflow/include nodes only; the include shares this
