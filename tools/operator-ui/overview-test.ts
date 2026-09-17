@@ -1324,6 +1324,15 @@ expect(
 expect("the client is revalidated, not trusted blind", getJs.headers["cache-control"] === "no-cache");
 expect("the client carries a strong validator", (getJs.headers["etag"] ?? "").startsWith('"'));
 expect("the served script is the built module, not a stub", getJs.body.includes("createElement"));
+// A development React in the served client is a silent 263 KB: react-dom's exports map picks the
+// development build unless the build defines NODE_ENV, and nothing else would notice.
+expect(
+	"the client ships the production React, not the development one",
+	!getJs.body.includes("Each child in a list") &&
+		readFileSync(join(dirname(fileURLToPath(import.meta.url)), "ui", "build.ts"), "utf8").includes(
+			"process.env.NODE_ENV",
+		),
+);
 const getCss = await handleOverviewRequest({ method: "GET", url: CLIENT_ASSETS.css }, "", handler);
 expectEqual("GET /app.css is 200", getCss.status, 200);
 expect("the sheet is served as CSS", getCss.headers["content-type"] === "text/css; charset=utf-8");

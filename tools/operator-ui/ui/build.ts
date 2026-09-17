@@ -27,6 +27,10 @@ const result = await Bun.build({
 	outdir,
 	target: "browser",
 	minify: true,
+	// Without this, react-dom's exports map resolves its *development* build and 263 KB of warning
+	// machinery the operator cannot act on lands in the served client (1,103,517 bytes against
+	// 840,710). The operator page is a production surface: it ships the production React.
+	define: { "process.env.NODE_ENV": JSON.stringify("production") },
 	plugins: [tailwindcss],
 });
 
