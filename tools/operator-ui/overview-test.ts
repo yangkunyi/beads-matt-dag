@@ -788,6 +788,27 @@ expectEqual("discovered-from remove is dep remove", writes, [
 ]);
 
 writes.length = 0;
+const missingRelation = refusedAction(
+	JSON.stringify({ intent: "remove-edge", from: "t1", to: "t2", type: "blocks" }),
+	edgeIssues,
+);
+expect("removing a missing relation is refused", missingRelation.refused);
+expectEqual("removing a missing relation does not write", writes, []);
+
+writes.length = 0;
+const parentChildRemove = refusedAction(
+	JSON.stringify({ intent: "remove-edge", from: "t1", to: "t2", type: "parent-child" }),
+	[
+		taskOne,
+		issue({ id: "t2", title: "two", type: "task", dependencies: [{ id: "t1", type: "parent-child" }] }),
+		decisionOne,
+		experimentOne,
+	],
+);
+expect("parent-child remove is refused", parentChildRemove.refused);
+expectEqual("parent-child remove does not write", writes, []);
+
+writes.length = 0;
 const alreadyRelated = refusedAction(
 	JSON.stringify({ intent: "add-edge", from: "t1", to: "t2", type: "relates-to" }),
 	[
@@ -1020,9 +1041,13 @@ expectEqual(
 expect("served page offers the comment door", pageOffersReply(servedHtml));
 const graphSrc = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "ui", "Graph.tsx"), "utf8");
 expect("graph uses React Flow", graphSrc.includes("@xyflow/react"));
-expect("graph connect does not addEdge as the record", !graphSrc.includes("addEdge"));
+expect("graph connect does not addEdge as the record", !/\baddEdge\b/.test(graphSrc));
 expect("graph connect proposes into operator-actions", graphSrc.includes("proposeConnect"));
 expect("a successful edge write reloads from the store", graphSrc.includes("location.reload"));
+expect(
+	"a refused remove is not applied onto React edges",
+	graphSrc.includes('change.type !== "remove"') && graphSrc.includes("writeEdge(\"remove-edge\""),
+);
 const appSrc = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "ui", "App.tsx"), "utf8");
 expect("surface has a triage form", appSrc.includes('id="triage-form"'));
 expect("surface posts triage through the write door", appSrc.includes("postTriage"));
@@ -1183,6 +1208,53 @@ expectEqual("POST crossing discovered-from writes typed dep add", edgeWrites[2],
 	args: ["dep", "add", "t1", "e1", "--type", "discovered-from"],
 	stdin: undefined,
 });
+const removeWrites: { args: string[]; stdin: string | undefined }[] = [];
+const removeHandler = {
+	write: ((args: string[], stdin?: string) => {
+		removeWrites.push({ args, stdin });
+		return "";
+	}) satisfies BdWriteRunner,
+	page: () => renderPage(overview, { commentEndpoint: "/comment" }),
+	issues: () => [
+		taskOne,
+		issue({ id: "t2", title: "two", type: "task", dependencies: [{ id: "t1", type: "blocks" }] }),
+		decisionOne,
+		issue({ id: "e1", title: "run", type: "experiment", dependencies: [{ id: "t1", type: "relates-to" }] }),
+	],
+};
+const removedBlocks = await handleOverviewRequest(
+	{ method: "POST", url: "/comment" },
+	JSON.stringify({ intent: "remove-edge", from: "t1", to: "t2", type: "blocks" }),
+	removeHandler,
+);
+expectEqual("POST same-domain blocks remove is 204", removedBlocks.status, 204);
+expectEqual("POST same-domain blocks remove writes dep remove", removeWrites, [
+	{ args: ["dep", "remove", "t2", "t1"], stdin: undefined },
+]);
+const removedRelate = await handleOverviewRequest(
+	{ method: "POST", url: "/comment" },
+	JSON.stringify({ intent: "remove-edge", from: "e1", to: "t1", type: "relates-to" }),
+	removeHandler,
+);
+expectEqual("POST relates-to remove is 204", removedRelate.status, 204);
+expectEqual("POST relates-to remove writes unrelate", removeWrites[1], {
+	args: ["dep", "unrelate", "e1", "t1"],
+	stdin: undefined,
+});
+const refusedRemoveMissing = await handleOverviewRequest(
+	{ method: "POST", url: "/comment" },
+	JSON.stringify({ intent: "remove-edge", from: "t1", to: "t2", type: "blocks" }),
+	edgeHandler,
+);
+expectEqual("POST remove of a missing relation is 400", refusedRemoveMissing.status, 400);
+expectEqual("POST remove of a missing relation does not write", edgeWrites.length, 3);
+const refusedRemoveParent = await handleOverviewRequest(
+	{ method: "POST", url: "/comment" },
+	JSON.stringify({ intent: "remove-edge", from: "t1", to: "t2", type: "parent-child" }),
+	removeHandler,
+);
+expectEqual("POST parent-child remove is 400", refusedRemoveParent.status, 400);
+expectEqual("POST parent-child remove does not write", removeWrites.length, 2);
 
 const commentTmp = mkdtempSync(join(tmpdir(), "operator-ui-comment-"));
 const commentLog = join(commentTmp, "comment.log");

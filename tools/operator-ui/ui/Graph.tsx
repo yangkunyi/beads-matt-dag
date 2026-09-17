@@ -13,6 +13,7 @@ import {
 	MarkerType,
 	Position,
 	ReactFlow,
+	applyEdgeChanges,
 	applyNodeChanges,
 	type Connection,
 	type Edge,
@@ -150,6 +151,10 @@ function GraphCanvas(props: {
 
 	const onEdgesChange = useCallback(
 		(changes: EdgeChange<RelationEdge>[]) => {
+			const kept = changes.filter((change) => change.type !== "remove");
+			if (kept.length > 0) {
+				setEdges((current) => applyEdgeChanges(kept, current));
+			}
 			for (const change of changes) {
 				if (change.type !== "remove") continue;
 				const edge = edges.find((item) => item.id === change.id);
