@@ -1,5 +1,5 @@
 // Typecheck gate for the Target-side tooling: the inquiry domain's tools, the experiment script, and the
-// operator-ui overview. Dev-only,
+// operator-ui overview (including the React surface). Dev-only,
 // and it lives here rather than beside the tools for the same reason the pack's gate does: what a Target
 // copies in must carry nothing the runtime cannot use.
 //
@@ -23,8 +23,9 @@
     "noEmit": true,
     "skipLibCheck": true,
     "allowImportingTsExtensions": true,
-    "lib": ["ES2022"],
+    "jsx": "react-jsx",
+    "lib": ["ES2022", "DOM"],
     "types": ["node"]
   },
-  "include": ["tools/**/*.ts"]
+  "include": ["tools/**/*.ts", "tools/**/*.tsx"]
 }
