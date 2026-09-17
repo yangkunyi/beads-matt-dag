@@ -1,20 +1,22 @@
 /**
- * The operator page: filters, live overlay, issue detail, comment, triage, start, and the React Flow graph.
+ * The operator page: filters, live overlay, issue detail, comment, create, triage, start, and the React Flow graph.
  *
- * All of it is a view of the store snapshot embedded in the page. Writes go through the tagged
- * door: a comment is `bd comment`; start launches that domain's existing run with the selected
- * ids as the allow-list; triage applies one of the five labels replacing the rest of the family.
+ * All of it is a view of the store snapshot embedded in the page. Writes are tagged intents through
+ * the door the server already exposes: comment, create (type is the domain; needs-triage; no gate),
+ * start (that domain's existing run with the selected ids as the allow-list), and one of the five
+ * triage labels replacing the rest of the family.
  */
 
 import { useMemo, useState, type FormEvent } from "react";
 import { postComment } from "../client-comment.ts";
+import { postCreate } from "../client-create.ts";
 import { postStart } from "../client-start.ts";
 import { postTriage, TRIAGE_LABELS, type TriageLabel } from "../client-triage.ts";
 import { filterChoices } from "../graph-view.ts";
 import { filterOverview, issueDetail, type Overview, type OverviewIssue } from "../model.ts";
 import { planStart } from "../start.ts";
 import { Graph } from "./Graph.tsx";
-import { Button, Label, Textarea } from "./kit.tsx";
+import { Button, Input, Label, Select, Textarea } from "./kit.tsx";
 
 export type PageOverview = Overview & { commentEndpoint: string | null };
 
@@ -304,6 +306,97 @@ function ReplyForm(props: { endpoint: string; id: string }) {
 	);
 }
 
+const CREATE_TYPES = [
+	{ value: "task", label: "task (development)" },
+	{ value: "bug", label: "bug (development)" },
+	{ value: "feature", label: "feature (development)" },
+	{ value: "epic", label: "epic (development)" },
+	{ value: "chore", label: "chore (development)" },
+	{ value: "decision", label: "decision (inquiry)" },
+	{ value: "experiment", label: "experiment" },
+] as const;
+
+function CreateForm({ endpoint }: { endpoint: string }) {
+	const [type, setType] = useState("");
+	const [feature, setFeature] = useState("");
+	const [title, setTitle] = useState("");
+	const [prose, setProse] = useState("");
+	const [status, setStatus] = useState("");
+	function onSubmit(event: FormEvent) {
+		event.preventDefault();
+		setStatus("");
+		void postCreate(endpoint, { type, feature, title, prose })
+			.then(() => {
+				location.reload();
+			})
+			.catch((error: unknown) => {
+				setStatus(error instanceof Error ? error.message : String(error));
+			});
+	}
+	return (
+		<section id="create" className="card" aria-label="Create issue">
+			<h2>Create issue</h2>
+			<form id="create-form" onSubmit={onSubmit}>
+				<Label htmlFor="create-type">
+					Type
+					<Select
+						id="create-type"
+						name="type"
+						required
+						value={type}
+						onChange={(event) => setType(event.target.value)}
+					>
+						<option value="">Select a type</option>
+						{CREATE_TYPES.map((entry) => (
+							<option key={entry.value} value={entry.value}>
+								{entry.label}
+							</option>
+						))}
+					</Select>
+				</Label>
+				<Label htmlFor="create-feature">
+					Feature
+					<Input
+						id="create-feature"
+						name="feature"
+						required
+						value={feature}
+						onChange={(event) => setFeature(event.target.value)}
+					/>
+				</Label>
+				<Label htmlFor="create-title">
+					Title
+					<Input
+						id="create-title"
+						name="title"
+						required
+						value={title}
+						onChange={(event) => setTitle(event.target.value)}
+					/>
+				</Label>
+				<Button type="submit">Create</Button>
+				<Label className="prose" htmlFor="create-prose">
+					Prose
+					<Textarea
+						id="create-prose"
+						name="prose"
+						rows={3}
+						value={prose}
+						onChange={(event) => setProse(event.target.value)}
+					/>
+				</Label>
+				<p className="muted">
+					Type is the domain. New issues land as needs-triage; the gate is not applied. The body is
+					handle and prose, no status.
+				</p>
+				<p className="muted" id="create-status">
+					{status}
+				</p>
+			</form>
+		</section>
+	);
+}
+
 export function App({ overview }: { overview: PageOverview }) {
 	const [selected, setSelected] = useState<string[]>([]);
 	const [types, setTypes] = useState(() => initialFilter(overview.issues).types);
@@ -327,6 +420,7 @@ export function App({ overview }: { overview: PageOverview }) {
 				</p>
 			</header>
 			<LiveBanner overview={overview} />
+			{overview.commentEndpoint ? <CreateForm endpoint={overview.commentEndpoint} /> : null}
 			{overview.commentEndpoint ? (
 				<StartBar endpoint={overview.commentEndpoint} overview={overview} selected={selected} />
 			) : null}

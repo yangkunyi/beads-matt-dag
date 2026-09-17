@@ -4,9 +4,9 @@
  *
  * All data is embedded. A static snapshot has no socket — a browser talking to that file is looking
  * at what `bd` already answered. A served page posts tagged intents through the write door: a
- * comment as `bd comment`; start launches that domain's existing run with the selected ids as
- * the allow-list; triage applies one of the five labels replacing the rest of the family.
- * Beads stays the only comment store. Coordinates stay in the view.
+ * comment as `bd comment`, create (type is the domain; needs-triage; no gate), start (that domain's
+ * existing run with the selected ids as the allow-list), or one of the five triage labels replacing
+ * the rest of the family. Beads stays the only comment store. Coordinates stay in the view.
  */
 
 import { spawnSync } from "node:child_process";
@@ -43,7 +43,7 @@ function clientScript(): string {
 }
 
 export type RenderPageOptions = {
-	/** When set, the page posts tagged comment, triage, and start intents here. Absent on a static snapshot. */
+	/** When set, the page posts tagged comment, create, triage, and start intents here. Absent on a static snapshot. */
 	commentEndpoint?: string;
 };
 
@@ -92,6 +92,11 @@ export function pageHasFilters(html: string): boolean {
 /** A served page posts replies; a static snapshot does not. */
 export function pageOffersReply(html: string): boolean {
 	return html.includes('"commentEndpoint":"/comment"');
+}
+
+/** A served page offers create; a static snapshot does not. */
+export function pageOffersCreate(html: string): boolean {
+	return html.includes('id="create-form"');
 }
 
 /** A served page can start a selection; a static snapshot does not. */

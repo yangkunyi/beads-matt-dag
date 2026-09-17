@@ -2,15 +2,17 @@
  * The operator surface's one write door.
  *
  * A tagged intent goes in; a store write or a run launch comes out, or a refusal and nothing
- * is written. Comment is `bd comment` on the selected issue. Start launches that domain's
- * existing run with the selected ids as the allow-list; it does not claim, merge, or stamp
- * `closed`. Triage moves one of the five labels, replacing the rest of the family; `wontfix`
- * is a label, not a close. Close, `reading:`, non-triage labels, and unknown intents are
- * refused. `bd human respond` is not used. Close, `reading:`, and other domain label acts
+ * is written. Comment is `bd comment` on the selected issue. Create requires a type (the domain),
+ * lands as `needs-triage` without the gate, and writes a body of handle and prose. Start launches
+ * that domain's existing run with the selected ids as the allow-list; it does not claim, merge,
+ * or stamp `closed`. Triage moves one of the five labels, replacing the rest of the family;
+ * `wontfix` is a label, not a close. Close, `reading:`, non-triage labels, and unknown intents
+ * are refused. `bd human respond` is not used. Close, `reading:`, and other domain label acts
  * stay the session's (ADR-0006).
  */
 
 import { addComment, parseCommentBody } from "./comment";
+import { createIssue, parseCreateBody } from "./create";
 import { planStart, type RunLauncher } from "./start";
 import type { BdWriteRunner } from "./store";
 import { applyTriage, isTriageLabel, parseTriageBody } from "./triage";
@@ -94,7 +96,7 @@ function intentOf(record: Record<string, unknown>): string {
 }
 
 function refuseUnknownIntent(intent: string): void {
-	if (intent !== "comment" && intent !== "triage" && intent !== "start") {
+	if (intent !== "comment" && intent !== "create" && intent !== "triage" && intent !== "start") {
 		throw new OperatorActionRefused("unknown intent");
 	}
 }
@@ -113,18 +115,21 @@ function asRefused(error: unknown, prefixes: string[]): never {
 	throw error;
 }
 
-/** Start needs the graph (for domain) and a launcher. Comment and triage ignore these. */
+/** Create needs the target dir. Start needs the graph (for domain) and a launcher. Comment and triage ignore these. */
 export type OperatorActionExtras = {
+	/** Target root. Create writes the body file here. */
+	dir?: string;
 	launchRun?: RunLauncher;
 	issues?: ReadonlyArray<{ id: string; type: string }>;
 	targetHeld?: boolean;
 };
 
 /**
- * Apply one tagged write. `comment` is `bd comment`. `start` launches that domain's existing
- * run with the selected ids as the allow-list and does not write the store. `triage` applies
- * one of the five labels, replacing the rest of the family. Anything carrying `closed`,
- * `reading:`, a non-triage label, or an unknown intent is refused and the store is not written.
+ * Apply one tagged write. Accepted intents are `comment` (`bd comment`), `create` (body plus
+ * `bd create`), `start` (launch that domain's existing run with the selected ids as the
+ * allow-list; does not write the store), and `triage` (one of the five labels, replacing the
+ * rest of the family). Anything carrying `closed`, `reading:`, a non-triage label, or an
+ * unknown intent is refused and the store is not written.
  */
 export function applyOperatorAction(bd: BdWriteRunner, raw: string, extras: OperatorActionExtras = {}): void {
 	const record = asObject(raw);
@@ -132,6 +137,19 @@ export function applyOperatorAction(bd: BdWriteRunner, raw: string, extras: Oper
 	refuseNonTriageLabelWrite(record);
 	const intent = intentOf(record);
 	refuseUnknownIntent(intent);
+	if (intent === "create") {
+		try {
+			const input = parseCreateBody(raw);
+			const dir = extras.dir;
+			if (dir === undefined || dir === "") {
+				throw new OperatorActionRefused("create needs a target");
+			}
+			createIssue(bd, input, dir);
+		} catch (error) {
+			asRefused(error, ["create needs"]);
+		}
+		return;
+	}
 	if (intent === "start") {
 		const plan = planStart(record.ids, extras.issues ?? [], extras.targetHeld === true);
 		if (!plan.ok) throw new OperatorActionRefused(plan.reason);

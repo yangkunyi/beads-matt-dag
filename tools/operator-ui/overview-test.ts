@@ -4,14 +4,15 @@
  * a selected issue carries status, comments and documents; a live drain / inquiry / experiment run
  * overlays from the run lock, Archon status, artefacts and attempted — not a pack publish API;
  * an operator reply is `bd comment` on the selected issue, never `bd human respond`; the one
- * tagged write door refuses `closed`, `reading:`, and unknown intents without writing; a same-domain
- * selection starts that domain's existing run with those ids as the allow-list; mixed-domain, empty,
- * and a held Target do not start; start does not claim, merge, or stamp `closed`; issues left out
- * keep their triage; triage moves one of the five labels, replacing the rest of the family;
- * `wontfix` is a label, not a close; a non-triage label write is refused; close / `reading:` /
- * other domain labels stay the session's; the page is a React app with a shadcn-style kit; the
- * graph is React Flow projecting the store and does not write an edge on connect; coordinates
- * stay in the view.
+ * tagged write door refuses `closed`, `reading:`, and unknown intents without writing; create
+ * requires a type (the domain), lands as `needs-triage` without the gate, and writes handle,
+ * slug, and a body of prose with no status; a same-domain selection starts that domain's existing
+ * run with those ids as the allow-list; mixed-domain, empty, and a held Target do not start; start
+ * does not claim, merge, or stamp `closed`; issues left out keep their triage; triage moves one of
+ * the five labels, replacing the rest of the family; `wontfix` is a label, not a close; a non-triage
+ * label write is refused; close / `reading:` / other domain labels stay the session's; the page is a
+ * React app with a shadcn-style kit; the graph is React Flow projecting the store and does not write
+ * an edge on connect; coordinates stay in the view.
  *
  *   bun tools/operator-ui/overview-test.ts
  */
@@ -34,6 +35,7 @@ import {
 import { fetchLive, gitDirOf, RUN_LOCK_NAME } from "./overlay";
 import { applyOperatorAction, OperatorActionRefused } from "./actions";
 import { commentWriteBody } from "./client-comment";
+import { createWriteBody } from "./client-create";
 import { startWriteBody } from "./client-start";
 import { triageWriteBody } from "./client-triage";
 import { addComment, parseCommentBody } from "./comment";
@@ -46,6 +48,7 @@ import {
 	pageHasFilters,
 	pageIsReactApp,
 	pageClientIsModule,
+	pageOffersCreate,
 	pageOffersReply,
 	pageOffersStart,
 	renderPage,
@@ -215,6 +218,7 @@ expectEqual(
 const html = renderPage(overview);
 expect("page has type/status/label filters", pageHasFilters(html));
 expect("static snapshot does not offer a reply endpoint", !pageOffersReply(html));
+expect("static snapshot does not offer create", !pageOffersCreate(html));
 expect("static snapshot does not offer start", !pageOffersStart(html));
 expect("page is a React app with a shadcn-style kit", pageIsReactApp(html));
 expect("client script is type=module so bun's ESM hydrate runs", pageClientIsModule(html));
@@ -578,8 +582,10 @@ expect("CLI page still covers inquiry, experiment, and drain", pageCoversThreeDo
 expect("CLI page is still from bd, not jsonl", livePage.includes("From bd") && !livePage.includes("From jsonl"));
 
 const writes: { args: string[]; stdin: string | undefined }[] = [];
+let listStdout = "[]";
 const writeRunner: BdWriteRunner = (args, stdin) => {
 	writes.push({ args, stdin });
+	if (args[0] === "list") return listStdout;
 	return "";
 };
 addComment(writeRunner, "from-bd", "operator reply");
@@ -623,9 +629,9 @@ expect(
 	),
 );
 
-function refusedAction(raw: string): { refused: boolean; message: string } {
+function refusedAction(raw: string, options?: { dir?: string }): { refused: boolean; message: string } {
 	try {
-		applyOperatorAction(writeRunner, raw);
+		applyOperatorAction(writeRunner, raw, options);
 		return { refused: false, message: "" };
 	} catch (error) {
 		return {
@@ -866,8 +872,120 @@ const badWrite = refusedAction("not-json");
 expect("non-JSON write is refused", badWrite.refused);
 expectEqual("non-JSON write does not write", writes, []);
 
+function createArgs(): string[] {
+	return writes.find((call) => call.args[0] === "create")?.args ?? [];
+}
+function flagAfter(args: string[], name: string): string | undefined {
+	const i = args.indexOf(name);
+	return i >= 0 ? args[i + 1] : undefined;
+}
+
+writes.length = 0;
+const createNoType = refusedAction(JSON.stringify({ intent: "create", feature: "drain", title: "the work" }));
+expect("create without a type is refused", createNoType.refused);
+expect("create without a type names type", createNoType.message.includes("type"));
+expectEqual("create without a type does not write", writes, []);
+
+writes.length = 0;
+const createClosed = refusedAction(
+	JSON.stringify({ intent: "create", type: "task", feature: "drain", title: "the work", closed: true }),
+);
+expect("create carrying closed is refused", createClosed.refused);
+expectEqual("create carrying closed does not write", writes, []);
+
+const createDir = mkdtempSync(join(tmpdir(), "operator-ui-create-"));
+writes.length = 0;
+listStdout = "[]";
+applyOperatorAction(
+	writeRunner,
+	JSON.stringify({ intent: "create", type: "task", feature: "drain", title: "the work" }),
+	{ dir: createDir },
+);
+const taskCreated = createArgs();
+expect("create task wrote a bead", taskCreated[0] === "create");
+expectEqual("create task type", flagAfter(taskCreated, "--type"), "task");
+expectEqual("create task labels", flagAfter(taskCreated, "--labels"), "needs-triage");
+expect("create does not apply the gate", !taskCreated.includes("ready-for-agent") && !(flagAfter(taskCreated, "--labels") ?? "").includes("ready-for-agent"));
+const taskMeta = JSON.parse(flagAfter(taskCreated, "--metadata") ?? "{}") as { handle?: string; slug?: string };
+expectEqual("create task handle", taskMeta.handle, "drain/01");
+expectEqual("create task slug", taskMeta.slug, "the-work");
+const taskBody = join(createDir, ".scratch", "drain", "issues", "01-the-work.md");
+expect("create task wrote the body", existsSync(taskBody));
+const taskText = existsSync(taskBody) ? readFileSync(taskBody, "utf8") : "";
+expect("task body carries the handle", taskText.includes("drain/01"));
+expect("task body carries the prose", taskText.includes("the work"));
+expect("task body has no status", !/status\s*:/i.test(taskText));
+expect(
+	"create listed then created",
+	writes[0]?.args[0] === "list" && writes.some((call) => call.args[0] === "create"),
+);
+
+const experimentDir = mkdtempSync(join(tmpdir(), "operator-ui-create-exp-"));
+writes.length = 0;
+listStdout = "[]";
+applyOperatorAction(
+	writeRunner,
+	JSON.stringify({
+		intent: "create",
+		type: "experiment",
+		feature: "lab",
+		title: "the run",
+		prose: "measure x against the pin",
+	}),
+	{ dir: experimentDir },
+);
+const experimentCreated = createArgs();
+expectEqual("create experiment type", flagAfter(experimentCreated, "--type"), "experiment");
+expectEqual("create experiment labels", flagAfter(experimentCreated, "--labels"), "needs-triage,experiment");
+expect("experiment create does not apply the gate", !(flagAfter(experimentCreated, "--labels") ?? "").includes("ready-for-agent"));
+const experimentMeta = JSON.parse(flagAfter(experimentCreated, "--metadata") ?? "{}") as {
+	handle?: string;
+	slug?: string;
+};
+expectEqual("create experiment handle", experimentMeta.handle, "lab/01");
+expectEqual("create experiment slug", experimentMeta.slug, "the-run");
+const experimentBody = join(experimentDir, ".scratch", "lab", "issues", "01-the-run.md");
+expect("create experiment wrote the body", existsSync(experimentBody));
+const experimentText = existsSync(experimentBody) ? readFileSync(experimentBody, "utf8") : "";
+expect("experiment body carries the handle", experimentText.includes("lab/01"));
+expect("experiment body carries the prose", experimentText.includes("measure x against the pin"));
+expect("experiment body has no status", !/status\s*:/i.test(experimentText));
+
+const allocDir = mkdtempSync(join(tmpdir(), "operator-ui-create-alloc-"));
+writes.length = 0;
+listStdout = JSON.stringify([
+	{ id: "x", metadata: { handle: "lab/02", slug: "later" } },
+	{ id: "y", metadata: { handle: "lab/01", slug: "earlier" } },
+	{ id: "z", metadata: { handle: "drain/09", slug: "other" } },
+]);
+applyOperatorAction(
+	writeRunner,
+	JSON.stringify({ intent: "create", type: "decision", feature: "lab", title: "next question" }),
+	{ dir: allocDir },
+);
+const allocMeta = JSON.parse(flagAfter(createArgs(), "--metadata") ?? "{}") as { handle?: string; slug?: string };
+expectEqual("create allocates the next unused NN", allocMeta.handle, "lab/03");
+expectEqual("create slug from title", allocMeta.slug, "next-question");
+expectEqual("create decision labels are triage only", flagAfter(createArgs(), "--labels"), "needs-triage");
+
+const fileAllocDir = mkdtempSync(join(tmpdir(), "operator-ui-create-file-"));
+mkdirSync(join(fileAllocDir, ".scratch", "lab", "issues"), { recursive: true });
+writeFileSync(join(fileAllocDir, ".scratch", "lab", "issues", "03-existing.md"), "# lab/03 — existing\n");
+writes.length = 0;
+listStdout = "[]";
+applyOperatorAction(
+	writeRunner,
+	JSON.stringify({ intent: "create", type: "task", feature: "lab", title: "after a body" }),
+	{ dir: fileAllocDir },
+);
+const fileAllocMeta = JSON.parse(flagAfter(createArgs(), "--metadata") ?? "{}") as { handle?: string };
+expectEqual("create skips a body file's NN", fileAllocMeta.handle, "lab/04");
+listStdout = "[]";
+
 const servedHtml = renderPage(overview, { commentEndpoint: "/comment" });
 expect("served page offers a reply endpoint", pageOffersReply(servedHtml));
+expect("served page offers create", pageOffersCreate(servedHtml));
+expect("create form requires a type", servedHtml.includes('id="create-type"') && servedHtml.includes("Select a type"));
 expect("served page offers start", pageOffersStart(servedHtml));
 expect("served page still carries issue detail", pageCarriesDetail(servedHtml, issueDetail(overview, "c")!));
 expect("served page still has filters", pageHasFilters(servedHtml));
@@ -882,6 +1000,11 @@ expectEqual(
 	"comment write body is the tagged intent",
 	commentWriteBody("from-bd", "leave this"),
 	JSON.stringify({ intent: "comment", id: "from-bd", text: "leave this" }),
+);
+expectEqual(
+	"create write body is the tagged intent",
+	createWriteBody({ type: "task", feature: "drain", title: "the work" }),
+	JSON.stringify({ intent: "create", type: "task", feature: "drain", title: "the work", prose: "" }),
 );
 expectEqual(
 	"triage write body is the tagged intent",
@@ -919,6 +1042,7 @@ const handler = {
 const getPage = await handleOverviewRequest({ method: "GET", url: "/" }, "", handler);
 expectEqual("GET / is 200", getPage.status, 200);
 expect("GET / offers a reply endpoint", pageOffersReply(getPage.body));
+expect("GET / offers create", pageOffersCreate(getPage.body));
 const posted = await handleOverviewRequest(
 	{ method: "POST", url: "/comment" },
 	JSON.stringify({ intent: "comment", id: "from-bd", text: "operator reply" }),
@@ -1003,6 +1127,42 @@ expectEqual("empty POST does not write", doorWrites.length, 3);
 const missing = await handleOverviewRequest({ method: "POST", url: "/close" }, "", handler);
 expectEqual("unknown path is 404", missing.status, 404);
 
+const doorCreateDir = mkdtempSync(join(tmpdir(), "operator-ui-door-create-"));
+const doorCreateWrites: { args: string[]; stdin: string | undefined }[] = [];
+const createHandler = {
+	write: ((args: string[], stdin?: string) => {
+		doorCreateWrites.push({ args, stdin });
+		if (args[0] === "list") return "[]";
+		return "";
+	}) satisfies BdWriteRunner,
+	page: () => renderPage(overview, { commentEndpoint: "/comment" }),
+	dir: doorCreateDir,
+};
+const createNoTypePost = await handleOverviewRequest(
+	{ method: "POST", url: "/comment" },
+	JSON.stringify({ intent: "create", feature: "drain", title: "the work" }),
+	createHandler,
+);
+expectEqual("POST create without a type is 400", createNoTypePost.status, 400);
+expectEqual("POST create without a type does not write", doorCreateWrites.length, 0);
+const createdPost = await handleOverviewRequest(
+	{ method: "POST", url: "/comment" },
+	JSON.stringify({ intent: "create", type: "task", feature: "drain", title: "the work" }),
+	createHandler,
+);
+expectEqual("POST create is 204", createdPost.status, 204);
+const doorCreate = doorCreateWrites.find((call) => call.args[0] === "create")?.args ?? [];
+expectEqual("POST create type", flagAfter(doorCreate, "--type"), "task");
+expectEqual("POST create labels", flagAfter(doorCreate, "--labels"), "needs-triage");
+expect("POST create does not apply the gate", !(flagAfter(doorCreate, "--labels") ?? "").includes("ready-for-agent"));
+const doorMeta = JSON.parse(flagAfter(doorCreate, "--metadata") ?? "{}") as { handle?: string; slug?: string };
+expectEqual("POST create handle", doorMeta.handle, "drain/01");
+expectEqual("POST create slug", doorMeta.slug, "the-work");
+const doorBody = join(doorCreateDir, ".scratch", "drain", "issues", "01-the-work.md");
+expect("POST create wrote the body", existsSync(doorBody));
+const doorBodyText = existsSync(doorBody) ? readFileSync(doorBody, "utf8") : "";
+expect("POST create body has no status", !/status\s*:/i.test(doorBodyText));
+
 const commentTmp = mkdtempSync(join(tmpdir(), "operator-ui-comment-"));
 const commentLog = join(commentTmp, "comment.log");
 const commentBd = join(commentTmp, "fake-bd");
@@ -1046,6 +1206,7 @@ const commentGet = await fetch(`http://127.0.0.1:${commentPort}/`);
 expectEqual("live GET / is 200", commentGet.status, 200);
 const commentPage = await commentGet.text();
 expect("live page offers a reply endpoint", pageOffersReply(commentPage));
+expect("live page offers create", pageOffersCreate(commentPage));
 expect("live page is from bd, not jsonl", commentPage.includes("From bd") && !commentPage.includes("From jsonl"));
 const livePost = await fetch(`http://127.0.0.1:${commentPort}/comment`, {
 	method: "POST",
@@ -1074,10 +1235,80 @@ const loggedAfterRefuse = existsSync(commentLog) ? readFileSync(commentLog, "utf
 expectEqual("refused live POSTs do not write", loggedAfterRefuse, logged);
 await new Promise<void>((resolve, reject) => commentServer.close((err) => (err ? reject(err) : resolve())));
 
+const liveCreateTmp = mkdtempSync(join(tmpdir(), "operator-ui-live-create-"));
+const liveCreateLog = join(liveCreateTmp, "create.log");
+const liveCreateBd = join(liveCreateTmp, "fake-bd");
+writeFileSync(
+	liveCreateBd,
+	`#!/usr/bin/env bun
+const fs = require("fs");
+const args = process.argv.slice(2);
+if (args[0] === "create") {
+  fs.appendFileSync(${JSON.stringify(liveCreateLog)}, JSON.stringify({ args }) + "\\n");
+  process.stdout.write("new-id\\n");
+  process.exit(0);
+}
+if (args.includes("ready-for-agent") || args.includes("human") || args.includes("respond") || args[0] === "close" || args[0] === "update" || args[0] === "label") {
+  process.stderr.write("forbidden " + args.join(" "));
+  process.exit(2);
+}
+if (args.includes("list")) {
+  process.stdout.write("[]");
+  process.exit(0);
+}
+if (args.includes("show")) {
+  process.stdout.write("[]");
+  process.exit(0);
+}
+process.stderr.write("unexpected " + args.join(" "));
+process.exit(1);
+`,
+);
+chmodSync(liveCreateBd, 0o755);
+const liveCreateServer = createOverviewServer({ dir: liveCreateTmp, store: liveCreateBd });
+const liveCreatePort = await new Promise<number>((resolve, reject) => {
+	liveCreateServer.once("error", reject);
+	liveCreateServer.listen(0, "127.0.0.1", () => {
+		const address = liveCreateServer.address();
+		if (typeof address === "object" && address !== null) resolve(address.port);
+		else reject(new Error("server has no port"));
+	});
+});
+const liveCreatePost = await fetch(`http://127.0.0.1:${liveCreatePort}/comment`, {
+	method: "POST",
+	headers: { "content-type": "application/json" },
+	body: JSON.stringify({ intent: "create", type: "experiment", feature: "lab", title: "the run" }),
+});
+expectEqual("live POST create is 204", liveCreatePost.status, 204);
+const liveCreateLogged = existsSync(liveCreateLog) ? readFileSync(liveCreateLog, "utf8").trim() : "";
+const liveCreateRecorded = liveCreateLogged === "" ? null : JSON.parse(liveCreateLogged.split("\n")[0] ?? liveCreateLogged);
+const liveCreateArgs = (liveCreateRecorded?.args ?? []) as string[];
+expectEqual("live create type", flagAfter(liveCreateArgs, "--type"), "experiment");
+expectEqual("live create labels", flagAfter(liveCreateArgs, "--labels"), "needs-triage,experiment");
+expect("live create does not apply the gate", !liveCreateArgs.includes("ready-for-agent"));
+const liveCreateMeta = JSON.parse(flagAfter(liveCreateArgs, "--metadata") ?? "{}") as { handle?: string; slug?: string };
+expectEqual("live create handle", liveCreateMeta.handle, "lab/01");
+expectEqual("live create slug", liveCreateMeta.slug, "the-run");
+const liveCreateBody = join(liveCreateTmp, ".scratch", "lab", "issues", "01-the-run.md");
+expect("live create wrote the body", existsSync(liveCreateBody));
+const liveCreateText = existsSync(liveCreateBody) ? readFileSync(liveCreateBody, "utf8") : "";
+expect("live create body carries the handle", liveCreateText.includes("lab/01"));
+expect("live create body has no status", !/status\s*:/i.test(liveCreateText));
+const liveCreateNoType = await fetch(`http://127.0.0.1:${liveCreatePort}/comment`, {
+	method: "POST",
+	headers: { "content-type": "application/json" },
+	body: JSON.stringify({ intent: "create", feature: "lab", title: "the run" }),
+});
+expectEqual("live POST create without a type is 400", liveCreateNoType.status, 400);
+const liveCreateLoggedAfter = existsSync(liveCreateLog) ? readFileSync(liveCreateLog, "utf8").trim() : "";
+expectEqual("refused live create does not write", liveCreateLoggedAfter, liveCreateLogged);
+await new Promise<void>((resolve, reject) => liveCreateServer.close((err) => (err ? reject(err) : resolve())));
+
 const servePath = join(dirname(fileURLToPath(import.meta.url)), "serve.ts");
 const serveHelp = spawnSync(process.execPath, [servePath, "--help"], { encoding: "utf8" });
 expectEqual("serve help exits 0", serveHelp.status, 0);
 expect("serve help names bd comment", (serveHelp.stdout ?? "").includes("bd comment"));
+expect("serve help names create", (serveHelp.stdout ?? "").includes("Create requires a type"));
 expect("serve help does not name human respond", !(serveHelp.stdout ?? "").includes("human respond"));
 expect("serve help names the tagged door", (serveHelp.stdout ?? "").includes("tagged door"));
 
