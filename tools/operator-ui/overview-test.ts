@@ -6,11 +6,13 @@
  * an operator reply is `bd comment` on the selected issue, never `bd human respond`; the one
  * tagged write door refuses `closed`, `reading:`, and unknown intents without writing; create
  * requires a type (the domain), lands as `needs-triage` without the gate, and writes handle,
- * slug, and a body of prose with no status; triage moves one of the five labels, replacing the
- * rest of the family; `wontfix` is a label, not a close; a non-triage label write is refused;
- * close / `reading:` / other domain labels stay the session's; the page is a React app with a
- * shadcn-style kit; the graph is React Flow projecting the store and does not write an edge on
- * connect; coordinates stay in the view.
+ * slug, and a body of prose with no status; a same-domain selection starts that domain's existing
+ * run with those ids as the allow-list; mixed-domain, empty, and a held Target do not start; start
+ * does not claim, merge, or stamp `closed`; issues left out keep their triage; triage moves one of
+ * the five labels, replacing the rest of the family; `wontfix` is a label, not a close; a non-triage
+ * label write is refused; close / `reading:` / other domain labels stay the session's; the page is a
+ * React app with a shadcn-style kit; the graph is React Flow projecting the store and does not write
+ * an edge on connect; coordinates stay in the view.
  *
  *   bun tools/operator-ui/overview-test.ts
  */
@@ -34,6 +36,7 @@ import { fetchLive, gitDirOf, RUN_LOCK_NAME } from "./overlay";
 import { applyOperatorAction, OperatorActionRefused } from "./actions";
 import { commentWriteBody } from "./client-comment";
 import { createWriteBody } from "./client-create";
+import { startWriteBody } from "./client-start";
 import { triageWriteBody } from "./client-triage";
 import { addComment, parseCommentBody } from "./comment";
 import { projectGraph, writeForConnect } from "./graph-view";
@@ -44,10 +47,13 @@ import {
 	pageGraphIsReactFlow,
 	pageHasFilters,
 	pageIsReactApp,
+	pageClientIsModule,
 	pageOffersCreate,
 	pageOffersReply,
+	pageOffersStart,
 	renderPage,
 } from "./page";
+import type { RunLaunch } from "./start";
 import { createOverviewServer, handleOverviewRequest } from "./serve";
 import { fetchStore, type BdRunner, type BdWriteRunner } from "./store";
 
@@ -213,7 +219,9 @@ const html = renderPage(overview);
 expect("page has type/status/label filters", pageHasFilters(html));
 expect("static snapshot does not offer a reply endpoint", !pageOffersReply(html));
 expect("static snapshot does not offer create", !pageOffersCreate(html));
+expect("static snapshot does not offer start", !pageOffersStart(html));
 expect("page is a React app with a shadcn-style kit", pageIsReactApp(html));
+expect("client script is type=module so bun's ESM hydrate runs", pageClientIsModule(html));
 expect("graph is React Flow", pageGraphIsReactFlow(html));
 expect("page carries the DAG nodes", html.includes('"id":"a"') && html.includes('"id":"c"'));
 
@@ -978,6 +986,7 @@ const servedHtml = renderPage(overview, { commentEndpoint: "/comment" });
 expect("served page offers a reply endpoint", pageOffersReply(servedHtml));
 expect("served page offers create", pageOffersCreate(servedHtml));
 expect("create form requires a type", servedHtml.includes('id="create-type"') && servedHtml.includes("Select a type"));
+expect("served page offers start", pageOffersStart(servedHtml));
 expect("served page still carries issue detail", pageCarriesDetail(servedHtml, issueDetail(overview, "c")!));
 expect("served page still has filters", pageHasFilters(servedHtml));
 expect(
@@ -1302,6 +1311,273 @@ expect("serve help names bd comment", (serveHelp.stdout ?? "").includes("bd comm
 expect("serve help names create", (serveHelp.stdout ?? "").includes("Create requires a type"));
 expect("serve help does not name human respond", !(serveHelp.stdout ?? "").includes("human respond"));
 expect("serve help names the tagged door", (serveHelp.stdout ?? "").includes("tagged door"));
+
+const startIssues = [
+	{ id: "a", type: "decision" },
+	{ id: "b", type: "experiment" },
+	{ id: "c", type: "task" },
+	{ id: "d", type: "bug" },
+	{ id: "gated", type: "task" },
+];
+const launches: RunLaunch[] = [];
+const launchRun = (launch: RunLaunch) => {
+	launches.push(launch);
+};
+const startExtras = { launchRun, issues: startIssues, targetHeld: false };
+
+function startAction(raw: string, extras = startExtras): { refused: boolean; message: string } {
+	try {
+		applyOperatorAction(writeRunner, raw, extras);
+		return { refused: false, message: "" };
+	} catch (error) {
+		return {
+			refused: error instanceof OperatorActionRefused,
+			message: error instanceof Error ? error.message : String(error),
+		};
+	}
+}
+
+writes.length = 0;
+launches.length = 0;
+const startedDrain = startAction(JSON.stringify({ intent: "start", ids: ["c"] }));
+expect("same-domain development start is accepted", !startedDrain.refused);
+expectEqual("development start launches drain", launches, [
+	{ kind: "drain", workflow: "beads-dag-drain", allowList: ["c"] },
+]);
+expectEqual("development start does not write the store", writes, []);
+
+writes.length = 0;
+launches.length = 0;
+const startedInquiry = startAction(JSON.stringify({ intent: "start", ids: ["a"] }));
+expect("same-domain inquiry start is accepted", !startedInquiry.refused);
+expectEqual("decision start launches inquiry", launches, [
+	{ kind: "inquiry", workflow: "beads-dag-inquiry", allowList: ["a"] },
+]);
+expectEqual("inquiry start does not write the store", writes, []);
+
+writes.length = 0;
+launches.length = 0;
+const startedExperiment = startAction(JSON.stringify({ intent: "start", ids: ["b"] }));
+expect("same-domain experiment start is accepted", !startedExperiment.refused);
+expectEqual("experiment start launches the experiment run", launches, [
+	{ kind: "experiment", workflow: "beads-dag-experiment", allowList: ["b"] },
+]);
+expectEqual("experiment start does not write the store", writes, []);
+
+writes.length = 0;
+launches.length = 0;
+const startedSameDomainTypes = startAction(JSON.stringify({ intent: "start", ids: ["c", "d"] }));
+expect("two development types start as one drain", !startedSameDomainTypes.refused);
+expectEqual("drain allow-list is the selected ids", launches, [
+	{ kind: "drain", workflow: "beads-dag-drain", allowList: ["c", "d"] },
+]);
+
+writes.length = 0;
+launches.length = 0;
+const mixedStart = startAction(JSON.stringify({ intent: "start", ids: ["a", "c"] }));
+expect("mixed-domain start is refused", mixedStart.refused);
+expect("mixed-domain start names mixed-domain", mixedStart.message.includes("mixed-domain"));
+expectEqual("mixed-domain start does not launch", launches, []);
+expectEqual("mixed-domain start does not write", writes, []);
+
+writes.length = 0;
+launches.length = 0;
+const emptyStart = startAction(JSON.stringify({ intent: "start", ids: [] }));
+expect("empty selection is refused", emptyStart.refused);
+expect("empty selection names empty", emptyStart.message.includes("empty selection"));
+expectEqual("empty selection does not launch", launches, []);
+expectEqual("empty selection does not write", writes, []);
+
+writes.length = 0;
+launches.length = 0;
+const missingIds = startAction(JSON.stringify({ intent: "start" }));
+expect("missing ids is empty selection", missingIds.refused);
+expectEqual("missing ids does not launch", launches, []);
+
+writes.length = 0;
+launches.length = 0;
+const heldStart = startAction(JSON.stringify({ intent: "start", ids: ["c"] }), {
+	...startExtras,
+	targetHeld: true,
+});
+expect("held Target start is refused", heldStart.refused);
+expect("held Target start names held", heldStart.message.includes("Target already held"));
+expectEqual("held Target does not launch", launches, []);
+expectEqual("held Target does not write", writes, []);
+
+writes.length = 0;
+launches.length = 0;
+const startClosed = startAction(JSON.stringify({ intent: "start", ids: ["c"], closed: true }));
+expect("start carrying closed is refused", startClosed.refused);
+expectEqual("start carrying closed does not launch", launches, []);
+expectEqual("start carrying closed does not write", writes, []);
+
+writes.length = 0;
+launches.length = 0;
+const leftOut = startAction(JSON.stringify({ intent: "start", ids: ["c"] }));
+expect("starting one of two gated issues is accepted", !leftOut.refused);
+expect(
+	"start does not claim, merge, close, or label",
+	writes.every(
+		(call) =>
+			!call.args.includes("claim") &&
+			!call.args.includes("close") &&
+			!call.args.includes("update") &&
+			!call.args.includes("label") &&
+			!call.args.includes("merge"),
+	) && writes.length === 0,
+);
+expectEqual("unselected gated issue is not written", writes, []);
+expectEqual(
+	"start write body is the tagged intent",
+	startWriteBody(["c", "d"]),
+	JSON.stringify({ intent: "start", ids: ["c", "d"] }),
+);
+
+const startLaunches: RunLaunch[] = [];
+const startHandler = {
+	write: ((args: string[], stdin?: string) => {
+		doorWrites.push({ args, stdin });
+		return "";
+	}) satisfies BdWriteRunner,
+	page: () => renderPage(overview, { commentEndpoint: "/comment" }),
+	launchRun: (launch: RunLaunch) => {
+		startLaunches.push(launch);
+	},
+	issues: () => startIssues,
+	targetHeld: () => false,
+};
+const startPost = await handleOverviewRequest(
+	{ method: "POST", url: "/comment" },
+	JSON.stringify({ intent: "start", ids: ["c"] }),
+	startHandler,
+);
+expectEqual("POST start is 204", startPost.status, 204);
+expectEqual("POST start launches drain with the allow-list", startLaunches, [
+	{ kind: "drain", workflow: "beads-dag-drain", allowList: ["c"] },
+]);
+expectEqual("POST start does not write the store", doorWrites.length, 3);
+
+startLaunches.length = 0;
+const mixedPost = await handleOverviewRequest(
+	{ method: "POST", url: "/comment" },
+	JSON.stringify({ intent: "start", ids: ["a", "c"] }),
+	startHandler,
+);
+expectEqual("POST mixed-domain start is 400", mixedPost.status, 400);
+expect("POST mixed-domain names mixed-domain", mixedPost.body.includes("mixed-domain"));
+expectEqual("POST mixed-domain does not launch", startLaunches, []);
+expectEqual("POST mixed-domain does not write", doorWrites.length, 3);
+
+const emptyPostStart = await handleOverviewRequest(
+	{ method: "POST", url: "/comment" },
+	JSON.stringify({ intent: "start", ids: [] }),
+	startHandler,
+);
+expectEqual("POST empty selection is 400", emptyPostStart.status, 400);
+expectEqual("POST empty selection does not launch", startLaunches, []);
+
+startHandler.targetHeld = () => true;
+const heldPost = await handleOverviewRequest(
+	{ method: "POST", url: "/comment" },
+	JSON.stringify({ intent: "start", ids: ["c"] }),
+	startHandler,
+);
+expectEqual("POST held Target is 400", heldPost.status, 400);
+expectEqual("POST held Target does not launch", startLaunches, []);
+startHandler.targetHeld = () => false;
+
+const startTmp = mkdtempSync(join(tmpdir(), "operator-ui-start-"));
+const startLog = join(startTmp, "start.log");
+const startBdLog = join(startTmp, "bd.log");
+const startBd = join(startTmp, "fake-bd");
+writeFileSync(
+	startBd,
+	`#!/usr/bin/env bun
+const fs = require("fs");
+const args = process.argv.slice(2);
+if (args[0] === "--readonly") args.shift();
+fs.appendFileSync(${JSON.stringify(startBdLog)}, JSON.stringify({ args }) + "\\n");
+if (args.includes("human") || args.includes("respond") || args[0] === "close" || args[0] === "update" || args[0] === "label" || args[0] === "claim") {
+  process.stderr.write("forbidden " + args.join(" "));
+  process.exit(2);
+}
+if (args.includes("list")) {
+  process.stdout.write(${JSON.stringify(listJson)});
+  process.exit(0);
+}
+if (args.includes("show")) {
+  process.stdout.write(${JSON.stringify(showJson)});
+  process.exit(0);
+}
+process.stderr.write("unexpected " + args.join(" "));
+process.exit(1);
+`,
+);
+chmodSync(startBd, 0o755);
+const startArchon = join(startTmp, "fake-archon");
+writeFileSync(
+	startArchon,
+	`#!/usr/bin/env bun
+const fs = require("fs");
+const args = process.argv.slice(2);
+fs.appendFileSync(${JSON.stringify(startLog)}, JSON.stringify({ args }) + "\\n");
+process.exit(0);
+`,
+);
+chmodSync(startArchon, 0o755);
+const startServer = createOverviewServer({
+	dir: startTmp,
+	store: startBd,
+	archon: startArchon,
+	targetHeld: () => false,
+});
+const startPort = await new Promise<number>((resolve, reject) => {
+	startServer.once("error", reject);
+	startServer.listen(0, "127.0.0.1", () => {
+		const address = startServer.address();
+		if (typeof address === "object" && address !== null) resolve(address.port);
+		else reject(new Error("server has no port"));
+	});
+});
+const liveStart = await fetch(`http://127.0.0.1:${startPort}/comment`, {
+	method: "POST",
+	headers: { "content-type": "application/json" },
+	body: JSON.stringify({ intent: "start", ids: ["from-bd"] }),
+});
+expectEqual("live POST start is 204", liveStart.status, 204);
+const startLogged = existsSync(startLog) ? readFileSync(startLog, "utf8").trim() : "";
+const startRecorded = startLogged === "" ? null : JSON.parse(startLogged.split("\n")[0] ?? startLogged);
+expectEqual("live start is archon workflow run drain", startRecorded?.args, [
+	"workflow",
+	"run",
+	"beads-dag-drain",
+	"--detach",
+	"--input",
+	'allow_list=["from-bd"]',
+]);
+const bdLogged = existsSync(startBdLog) ? readFileSync(startBdLog, "utf8").trim() : "";
+const bdLines = bdLogged === "" ? [] : bdLogged.split("\n").map((line) => JSON.parse(line) as { args: string[] });
+expect(
+	"live start does not claim, close, update, or label",
+	bdLines.every(
+		(line) =>
+			line.args[0] !== "close" &&
+			line.args[0] !== "update" &&
+			line.args[0] !== "label" &&
+			line.args[0] !== "claim" &&
+			!line.args.includes("human"),
+	),
+);
+const liveMixed = await fetch(`http://127.0.0.1:${startPort}/comment`, {
+	method: "POST",
+	headers: { "content-type": "application/json" },
+	body: JSON.stringify({ intent: "start", ids: [] }),
+});
+expectEqual("live POST empty selection is 400", liveMixed.status, 400);
+const startLoggedAfter = existsSync(startLog) ? readFileSync(startLog, "utf8").trim() : "";
+expectEqual("refused live start does not launch again", startLoggedAfter, startLogged);
+await new Promise<void>((resolve, reject) => startServer.close((err) => (err ? reject(err) : resolve())));
 
 const contract = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "..", "docs", "agents", "issue-tracker.md"), "utf8");
 expect("contract: UI writes bd comment", contract.includes("write `bd comment`"));

@@ -1,15 +1,18 @@
 #!/usr/bin/env bun
 /**
- * Serve the Target's beads graph as a React page so an operator can comment or create without a session.
+ * Serve the Target's beads graph as a React page so an operator can comment or create without a
+ * session, and a same-domain selection can start that domain's existing run.
  *
  *   bun tools/operator-ui/serve.ts [--dir <target>] [--store <bd>] [--archon <bin>] [--port <n>] [--host <addr>]
  *
  * The graph is `bd list` / `bd show`, never `.beads/issues.jsonl`. The page is a React app with a
  * shadcn-style kit; React Flow projects the store and does not write an edge on connect. Writes go
  * through one tagged door: a comment is `bd comment`; create requires a type (the domain) and lands
- * as `needs-triage` without the gate; triage moves one of the five labels, replacing the rest of
- * the family. `closed`, `reading:`, non-triage labels, and unknown intents are refused. `wontfix`
- * is a label, not a close. Close, `reading:`, and other domain labels stay the session's.
+ * as `needs-triage` without the gate; start launches drain, inquiry, or experiment with those ids
+ * as the allow-list and does not claim, merge, or stamp `closed`. Mixed-domain, empty, and a held
+ * Target are refused. Triage moves one of the five labels, replacing the rest of the family.
+ * `wontfix` is a label, not a close. `closed`, `reading:`, non-triage labels, and unknown intents
+ * are refused. Close, `reading:`, and other domain labels stay the session's.
  */
 
 import http from "node:http";
@@ -18,8 +21,9 @@ import { pathToFileURL } from "node:url";
 import { applyOperatorAction, OperatorActionRefused } from "./actions";
 import { documentsFor } from "./documents";
 import { assembleOverview } from "./model";
-import { fetchLive, resolveArchon } from "./overlay";
+import { fetchLive, makeArchonRunner, resolveArchon, targetRunHeld } from "./overlay";
 import { renderPage } from "./page";
+import { launchWithArchon, type RunLauncher } from "./start";
 import { fetchStore, makeRunner, makeWriteRunner, resolveBd, type BdWriteRunner } from "./store";
 
 const USAGE = `usage: bun tools/operator-ui/serve.ts [--dir <target>] [--store <bd>] [--archon <bin>] [--port <n>] [--host <addr>]
@@ -32,10 +36,12 @@ const USAGE = `usage: bun tools/operator-ui/serve.ts [--dir <target>] [--store <
 
 The graph is read via bd, not the jsonl export. Writes go through one tagged door. An operator
 reply is bd comment on the selected issue. Create requires a type (the domain), writes a body of
-handle and prose, and lands as needs-triage without the gate. Triage moves one of the five
-labels, replacing the rest of the family. wontfix is a label, not a close. closed, reading:,
-non-triage labels, and unknown intents are refused. Close, reading:, and other domain labels
-stay the session's. Beads is the only comment store.`;
+handle and prose, and lands as needs-triage without the gate. A same-domain selection starts that
+domain's existing run with those ids as the allow-list. Mixed-domain, empty, and a held Target
+are refused. Start does not claim, merge, or stamp closed. Triage moves one of the five labels,
+replacing the rest of the family. wontfix is a label, not a close. closed, reading:, non-triage
+labels, and unknown intents are refused. Close, reading:, and other domain labels stay the
+session's. Beads is the only comment store.`;
 
 class UsageError extends Error {}
 
@@ -74,6 +80,9 @@ export type OverviewHandler = {
 	page: () => string;
 	/** Target root. Create writes the body file here. */
 	dir?: string;
+	launchRun?: RunLauncher;
+	issues?: () => ReadonlyArray<{ id: string; type: string }>;
+	targetHeld?: () => boolean;
 };
 
 export type OverviewResponse = {
@@ -84,7 +93,8 @@ export type OverviewResponse = {
 
 /**
  * One request: GET / is the page, POST /comment is the tagged write door. A comment intent is
- * `bd comment`. A create intent writes the body and `bd create`. A triage intent moves one of
+ * `bd comment`. A create intent writes the body and `bd create`. A start intent launches that
+ * domain's existing run with the selected ids as the allow-list. A triage intent moves one of
  * the five labels, replacing the rest of the family. `closed`, `reading:`, non-triage labels,
  * and unknown intents are refused and do not write.
  */
@@ -104,7 +114,12 @@ export async function handleOverviewRequest(
 	}
 	if (method === "POST" && path === "/comment") {
 		try {
-			applyOperatorAction(handler.write, body, { dir: handler.dir });
+			applyOperatorAction(handler.write, body, {
+				dir: handler.dir,
+				launchRun: handler.launchRun,
+				issues: handler.issues?.() ?? [],
+				targetHeld: handler.targetHeld?.() ?? false,
+			});
 			return { status: 204, headers: {}, body: "" };
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
@@ -125,6 +140,9 @@ export type ServeOptions = {
 	archon?: string;
 	write?: BdWriteRunner;
 	page?: () => string;
+	launchRun?: RunLauncher;
+	issues?: () => ReadonlyArray<{ id: string; type: string }>;
+	targetHeld?: () => boolean;
 };
 
 function buildPage(dir: string, store: string, archon?: string): string {
@@ -139,10 +157,23 @@ function buildPage(dir: string, store: string, archon?: string): string {
 	return renderPage(overview, { commentEndpoint: "/comment" });
 }
 
+function defaultLaunchRun(dir: string, archon?: string): RunLauncher {
+	return (launch) => {
+		const binary = resolveArchon(dir, archon);
+		if (binary === undefined) throw new Error("cannot find the archon binary");
+		launchWithArchon(makeArchonRunner(binary, dir), launch);
+	};
+}
+
 export function createOverviewServer(options: ServeOptions): http.Server {
 	const write = options.write ?? makeWriteRunner(options.store, options.dir);
 	const page = options.page ?? (() => buildPage(options.dir, options.store, options.archon));
 	const dir = options.dir;
+	const issues =
+		options.issues ??
+		(() => fetchStore(makeRunner(options.store, options.dir)).issues.map((issue) => ({ id: issue.id, type: issue.type })));
+	const targetHeld = options.targetHeld ?? (() => targetRunHeld(options.dir));
+	const launchRun = options.launchRun ?? defaultLaunchRun(options.dir, options.archon);
 	return http.createServer((req, res) => {
 		const chunks: Buffer[] = [];
 		req.on("data", (chunk: Buffer | string) => {
@@ -150,7 +181,14 @@ export function createOverviewServer(options: ServeOptions): http.Server {
 		});
 		req.on("end", () => {
 			const raw = Buffer.concat(chunks).toString("utf8");
-			void handleOverviewRequest({ method: req.method, url: req.url }, raw, { write, page, dir }).then((out) => {
+			void handleOverviewRequest({ method: req.method, url: req.url }, raw, {
+				write,
+				page,
+				dir,
+				launchRun,
+				issues,
+				targetHeld,
+			}).then((out) => {
 				res.writeHead(out.status, out.headers);
 				res.end(out.body);
 			});
