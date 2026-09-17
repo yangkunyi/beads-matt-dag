@@ -3,8 +3,9 @@
  * the DAG, the three filters, live overlay, and a click-for-detail panel.
  *
  * All data is embedded. A static snapshot has no socket — a browser talking to that file is looking
- * at what `bd` already answered. A served page posts a tagged comment intent through the write door
- * as `bd comment`; Beads stays the only comment store. Coordinates stay in the view.
+ * at what `bd` already answered. A served page posts tagged intents through the write door as
+ * `bd comment` and store deps; Beads stays the only graph and the only comment store. Coordinates
+ * stay in the view. A refused connect does not land on the canvas.
  */
 
 import { spawnSync } from "node:child_process";

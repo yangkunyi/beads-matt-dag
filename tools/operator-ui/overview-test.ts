@@ -5,9 +5,11 @@
  * overlays from the run lock, Archon status, artefacts and attempted — not a pack publish API;
  * an operator reply is `bd comment` on the selected issue, never `bd human respond`; the one
  * tagged write door refuses `closed`, `reading:`, and unknown intents without writing; close /
- * `reading:` / labels stay the session's; the page is a React app with a shadcn-style kit; the
- * graph is React Flow projecting the store and does not write an edge on connect; coordinates
- * stay in the view.
+ * `reading:` / labels stay the session's; same-domain `blocks` and crossing `relates-to` /
+ * `discovered-from` go through that door; cross-domain `blocks` and `parent-child` are refused
+ * with no write; the page is a React app with a shadcn-style kit; the graph is React Flow
+ * projecting the store; a connect proposes into the door and a refusal does not stay on the
+ * canvas; coordinates stay in the view.
  *
  *   bun tools/operator-ui/overview-test.ts
  */
@@ -30,8 +32,9 @@ import {
 import { fetchLive, gitDirOf, RUN_LOCK_NAME } from "./overlay";
 import { applyOperatorAction, OperatorActionRefused } from "./actions";
 import { commentWriteBody } from "./client-comment";
+import { edgeWriteBody } from "./client-edge";
 import { addComment, parseCommentBody } from "./comment";
-import { projectGraph, writeForConnect } from "./graph-view";
+import { projectGraph, proposeConnect } from "./graph-view";
 import {
 	pageCarriesDetail,
 	pageCarriesLive,
@@ -231,7 +234,16 @@ expect(
 const nodeA = projected.nodes.find((node) => node.id === "a");
 const nodeC = projected.nodes.find((node) => node.id === "c");
 expect("blocker sits to the left of its dependent", Boolean(nodeA && nodeC && nodeA.position.x < nodeC.position.x));
-expectEqual("connecting two issues does not write an edge", writeForConnect("a", "c"), null);
+expectEqual(
+	"same-domain connect proposes blocks",
+	proposeConnect("c", "d", "development", "development"),
+	{ from: "c", to: "d", type: "blocks" },
+);
+expectEqual(
+	"cross-domain connect does not default to blocks",
+	proposeConnect("a", "c", "inquiry", "development"),
+	{ from: "a", to: "c", pick: ["relates-to", "discovered-from"] },
+);
 const selected = issueDetail(overview, "c");
 expect("selected issue is in the model", selected !== undefined);
 if (selected) {
@@ -612,9 +624,9 @@ expect(
 	),
 );
 
-function refusedAction(raw: string): { refused: boolean; message: string } {
+function refusedAction(raw: string, issues: StoreIssue[] = []): { refused: boolean; message: string } {
 	try {
-		applyOperatorAction(writeRunner, raw);
+		applyOperatorAction(writeRunner, raw, issues);
 		return { refused: false, message: "" };
 	} catch (error) {
 		return {
@@ -669,6 +681,123 @@ const connectIntent = refusedAction(JSON.stringify({ intent: "connect", from: "a
 expect("connect intent is refused", connectIntent.refused);
 expectEqual("connect intent does not write", writes, []);
 
+const taskOne = issue({ id: "t1", title: "one", type: "task" });
+const taskTwo = issue({ id: "t2", title: "two", type: "task" });
+const decisionOne = issue({ id: "q1", title: "question", type: "decision" });
+const experimentOne = issue({ id: "e1", title: "run", type: "experiment" });
+const edgeIssues = [taskOne, taskTwo, decisionOne, experimentOne];
+
+writes.length = 0;
+applyOperatorAction(
+	writeRunner,
+	JSON.stringify({ intent: "add-edge", from: "t1", to: "t2", type: "blocks" }),
+	edgeIssues,
+);
+expectEqual("same-domain blocks is dep add of dependent onto blocker", writes, [
+	{ args: ["dep", "add", "t2", "t1"], stdin: undefined },
+]);
+
+writes.length = 0;
+applyOperatorAction(
+	writeRunner,
+	JSON.stringify({ intent: "remove-edge", from: "t1", to: "t2", type: "blocks" }),
+	[
+		taskOne,
+		issue({ id: "t2", title: "two", type: "task", dependencies: [{ id: "t1", type: "blocks" }] }),
+		decisionOne,
+		experimentOne,
+	],
+);
+expectEqual("same-domain blocks remove is dep remove", writes, [
+	{ args: ["dep", "remove", "t2", "t1"], stdin: undefined },
+]);
+
+writes.length = 0;
+const crossBlocks = refusedAction(
+	JSON.stringify({ intent: "add-edge", from: "q1", to: "t1", type: "blocks" }),
+	edgeIssues,
+);
+expect("cross-domain blocks is refused", crossBlocks.refused);
+expect("cross-domain blocks names blocks", crossBlocks.message.includes("blocks"));
+expectEqual("cross-domain blocks does not write", writes, []);
+
+writes.length = 0;
+const parentChild = refusedAction(
+	JSON.stringify({ intent: "add-edge", from: "t1", to: "t2", type: "parent-child" }),
+	edgeIssues,
+);
+expect("parent-child is refused", parentChild.refused);
+expect("parent-child names parent-child", parentChild.message.includes("parent-child"));
+expectEqual("parent-child does not write", writes, []);
+
+writes.length = 0;
+applyOperatorAction(
+	writeRunner,
+	JSON.stringify({ intent: "add-edge", from: "e1", to: "t1", type: "relates-to" }),
+	edgeIssues,
+);
+expectEqual("crossing relates-to is dep relate", writes, [
+	{ args: ["dep", "relate", "e1", "t1"], stdin: undefined },
+]);
+expect(
+	"relates-to is not a blocking dep add",
+	writes.every((call) => call.args[1] === "relate" && !call.args.includes("blocks")),
+);
+
+writes.length = 0;
+applyOperatorAction(
+	writeRunner,
+	JSON.stringify({ intent: "remove-edge", from: "e1", to: "t1", type: "relates-to" }),
+	[
+		taskOne,
+		taskTwo,
+		decisionOne,
+		issue({ id: "e1", title: "run", type: "experiment", dependencies: [{ id: "t1", type: "relates-to" }] }),
+	],
+);
+expectEqual("relates-to remove is unrelate", writes, [
+	{ args: ["dep", "unrelate", "e1", "t1"], stdin: undefined },
+]);
+
+writes.length = 0;
+applyOperatorAction(
+	writeRunner,
+	JSON.stringify({ intent: "add-edge", from: "e1", to: "t1", type: "discovered-from" }),
+	edgeIssues,
+);
+expectEqual("crossing discovered-from is dep add of derived onto source", writes, [
+	{ args: ["dep", "add", "t1", "e1", "--type", "discovered-from"], stdin: undefined },
+]);
+expect("discovered-from does not write blocks", !writes.some((call) => call.args.includes("blocks")));
+
+writes.length = 0;
+applyOperatorAction(
+	writeRunner,
+	JSON.stringify({ intent: "remove-edge", from: "e1", to: "t1", type: "discovered-from" }),
+	[
+		issue({ id: "t1", title: "one", type: "task", dependencies: [{ id: "e1", type: "discovered-from" }] }),
+		taskTwo,
+		decisionOne,
+		experimentOne,
+	],
+);
+expectEqual("discovered-from remove is dep remove", writes, [
+	{ args: ["dep", "remove", "t1", "e1"], stdin: undefined },
+]);
+
+writes.length = 0;
+const alreadyRelated = refusedAction(
+	JSON.stringify({ intent: "add-edge", from: "t1", to: "t2", type: "relates-to" }),
+	[
+		taskOne,
+		issue({ id: "t2", title: "two", type: "task", dependencies: [{ id: "t1", type: "blocks" }] }),
+		decisionOne,
+		experimentOne,
+	],
+);
+expect("a second relation on the same pair is refused", alreadyRelated.refused);
+expectEqual("a second relation does not write", writes, []);
+
 writes.length = 0;
 const missingIntent = refusedAction(JSON.stringify({ id: "from-bd", text: "leave this" }));
 expect("missing intent is refused", missingIntent.refused);
@@ -708,13 +837,22 @@ expectEqual(
 	commentWriteBody("from-bd", "leave this"),
 	JSON.stringify({ intent: "comment", id: "from-bd", text: "leave this" }),
 );
+expectEqual(
+	"add-edge write body is the tagged intent",
+	edgeWriteBody("add-edge", "t1", "t2", "blocks"),
+	JSON.stringify({ intent: "add-edge", from: "t1", to: "t2", type: "blocks" }),
+);
+expectEqual(
+	"remove-edge write body is the tagged intent",
+	edgeWriteBody("remove-edge", "t1", "t2", "blocks"),
+	JSON.stringify({ intent: "remove-edge", from: "t1", to: "t2", type: "blocks" }),
+);
 expect("served page offers the comment door", pageOffersReply(servedHtml));
 const graphSrc = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "ui", "Graph.tsx"), "utf8");
 expect("graph uses React Flow", graphSrc.includes("@xyflow/react"));
-expect(
-	"graph connect does not fetch or write",
-	!graphSrc.includes("fetch(") && graphSrc.includes("writeForConnect"),
-);
+expect("graph connect does not addEdge as the record", !graphSrc.includes("addEdge"));
+expect("graph connect proposes into operator-actions", graphSrc.includes("proposeConnect"));
+expect("a successful edge write reloads from the store", graphSrc.includes("location.reload"));
 
 const doorWrites: { args: string[]; stdin: string | undefined }[] = [];
 const handler = {
@@ -770,6 +908,59 @@ expectEqual("empty POST is 400", emptyPost.status, 400);
 expectEqual("empty POST does not write", doorWrites.length, 1);
 const missing = await handleOverviewRequest({ method: "POST", url: "/close" }, "", handler);
 expectEqual("unknown path is 404", missing.status, 404);
+
+const edgeWrites: { args: string[]; stdin: string | undefined }[] = [];
+const edgeHandler = {
+	write: ((args: string[], stdin?: string) => {
+		edgeWrites.push({ args, stdin });
+		return "";
+	}) satisfies BdWriteRunner,
+	page: () => renderPage(overview, { commentEndpoint: "/comment" }),
+	issues: () => edgeIssues,
+};
+const addedBlocks = await handleOverviewRequest(
+	{ method: "POST", url: "/comment" },
+	JSON.stringify({ intent: "add-edge", from: "t1", to: "t2", type: "blocks" }),
+	edgeHandler,
+);
+expectEqual("POST same-domain blocks is 204", addedBlocks.status, 204);
+expectEqual("POST same-domain blocks writes dep add", edgeWrites, [
+	{ args: ["dep", "add", "t2", "t1"], stdin: undefined },
+]);
+const refusedCross = await handleOverviewRequest(
+	{ method: "POST", url: "/comment" },
+	JSON.stringify({ intent: "add-edge", from: "q1", to: "t1", type: "blocks" }),
+	edgeHandler,
+);
+expectEqual("POST cross-domain blocks is 400", refusedCross.status, 400);
+expectEqual("POST cross-domain blocks does not write", edgeWrites.length, 1);
+const refusedParent = await handleOverviewRequest(
+	{ method: "POST", url: "/comment" },
+	JSON.stringify({ intent: "add-edge", from: "t1", to: "t2", type: "parent-child" }),
+	edgeHandler,
+);
+expectEqual("POST parent-child is 400", refusedParent.status, 400);
+expectEqual("POST parent-child does not write", edgeWrites.length, 1);
+const addedRelate = await handleOverviewRequest(
+	{ method: "POST", url: "/comment" },
+	JSON.stringify({ intent: "add-edge", from: "e1", to: "t1", type: "relates-to" }),
+	edgeHandler,
+);
+expectEqual("POST crossing relates-to is 204", addedRelate.status, 204);
+expectEqual("POST crossing relates-to writes dep relate", edgeWrites[1], {
+	args: ["dep", "relate", "e1", "t1"],
+	stdin: undefined,
+});
+const addedDiscovered = await handleOverviewRequest(
+	{ method: "POST", url: "/comment" },
+	JSON.stringify({ intent: "add-edge", from: "e1", to: "t1", type: "discovered-from" }),
+	edgeHandler,
+);
+expectEqual("POST crossing discovered-from is 204", addedDiscovered.status, 204);
+expectEqual("POST crossing discovered-from writes typed dep add", edgeWrites[2], {
+	args: ["dep", "add", "t1", "e1", "--type", "discovered-from"],
+	stdin: undefined,
+});
 
 const commentTmp = mkdtempSync(join(tmpdir(), "operator-ui-comment-"));
 const commentLog = join(commentTmp, "comment.log");

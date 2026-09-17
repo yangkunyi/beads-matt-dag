@@ -1,8 +1,8 @@
 /**
  * The operator page: filters, live overlay, issue detail, comment, and the React Flow graph.
  *
- * All of it is a view of the store snapshot embedded in the page. The only write is a tagged
- * comment through the door the server already exposes.
+ * All of it is a view of the store snapshot embedded in the page. Writes go through the tagged
+ * door: comments, intra-domain `blocks`, and crossing `relates-to` / `discovered-from`.
  */
 
 import { useMemo, useState, type FormEvent } from "react";
@@ -256,7 +256,12 @@ export function App({ overview }: { overview: PageOverview }) {
 				onLabels={setLabels}
 			/>
 			<div id="layout">
-				<Graph overview={shown} selected={selected} onSelect={setSelected} />
+				<Graph
+					overview={shown}
+					selected={selected}
+					onSelect={setSelected}
+					writeEndpoint={overview.commentEndpoint}
+				/>
 				<Detail overview={overview} selected={selected} />
 			</div>
 		</div>
