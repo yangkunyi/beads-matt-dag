@@ -1,7 +1,9 @@
 /**
  * An operator reply is `bd comment` on the selected issue. Beads is the only comment store.
  *
- * Close, `reading:`, and domain labels are the session's, not this write.
+ * This module writes the comment. The tagged write door (`actions.ts`) refuses `closed`,
+ * `reading:`, and unknown intents before anything here runs. Close, `reading:`, and domain
+ * labels are the session's, not this write.
  */
 
 import type { BdWriteRunner } from "./store";
@@ -14,8 +16,8 @@ export type CommentBody = {
 };
 
 /**
- * Pull an issue id and reply text out of a JSON object. Extra fields (close, labels, reading) are
- * ignored — this write is a comment, and nothing else.
+ * Pull an issue id and reply text out of a JSON object. The write door refuses `closed`,
+ * `reading:`, and unknown intents before this runs; remaining extra fields are not a write.
  */
 export function parseCommentBody(raw: string): CommentBody {
 	let parsed: unknown;

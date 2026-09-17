@@ -2,8 +2,8 @@
  * The overview as a self-contained HTML page: the DAG, the three filters, and a click-for-detail panel.
  *
  * All data is embedded. A static snapshot has no socket — a browser talking to that file is looking
- * at what `bd` already answered. A served page posts an operator reply as `bd comment`; Beads stays
- * the only comment store.
+ * at what `bd` already answered. A served page posts a tagged comment intent through the write door
+ * as `bd comment`; Beads stays the only comment store.
  */
 
 import type { LiveRun, Overview, OverviewIssue } from "./model";
@@ -287,7 +287,7 @@ const CLIENT = String.raw`
         fetch(commentEndpoint, {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ id: issue.id, text: text }),
+          body: JSON.stringify({ intent: "comment", id: issue.id, text: text }),
         }).then(function (res) {
           if (!res.ok) {
             return res.text().then(function (t) { throw new Error(t || String(res.status)); });
@@ -398,7 +398,7 @@ g.node text.live-tag { font-size: 10px; font-weight: 700; fill: var(--live); tex
 `;
 
 export type RenderPageOptions = {
-	/** When set, the detail panel posts a reply here as `bd comment`. Absent on a static snapshot. */
+	/** When set, the detail panel posts a tagged comment intent here as `bd comment`. Absent on a static snapshot. */
 	commentEndpoint?: string;
 };
 

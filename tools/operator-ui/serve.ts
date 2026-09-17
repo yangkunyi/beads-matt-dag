@@ -4,19 +4,20 @@
  *
  *   bun tools/operator-ui/serve.ts [--dir <target>] [--store <bd>] [--archon <bin>] [--port <n>] [--host <addr>]
  *
- * The graph is `bd list` / `bd show`, never `.beads/issues.jsonl`. A reply is `bd comment` on the
- * selected issue. Close, `reading:`, and domain labels stay the session's.
+ * The graph is `bd list` / `bd show`, never `.beads/issues.jsonl`. Writes go through one tagged
+ * door: a comment is `bd comment` on the selected issue; `closed`, `reading:`, and unknown intents
+ * are refused. Close, `reading:`, and domain labels stay the session's.
  */
 
 import http from "node:http";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { addComment, parseCommentBody } from "./comment";
+import { applyOperatorAction, OperatorActionRefused } from "./actions";
 import { documentsFor } from "./documents";
 import { assembleOverview } from "./model";
 import { fetchLive, resolveArchon } from "./overlay";
 import { renderPage } from "./page";
-import { fetchStore, makeRunner, makeWriteRunner, resolveBd } from "./store";
+import { fetchStore, makeRunner, makeWriteRunner, resolveBd, type BdWriteRunner } from "./store";
 
 const USAGE = `usage: bun tools/operator-ui/serve.ts [--dir <target>] [--store <bd>] [--archon <bin>] [--port <n>] [--host <addr>]
 
@@ -26,8 +27,9 @@ const USAGE = `usage: bun tools/operator-ui/serve.ts [--dir <target>] [--store <
   --port <n>        listen port (default: 8765)
   --host <addr>     listen address (default: 127.0.0.1)
 
-The graph is read via bd, not the jsonl export. An operator reply is bd comment on the selected
-issue. Close, reading:, and domain labels stay the session's. Beads is the only comment store.`;
+The graph is read via bd, not the jsonl export. Writes go through one tagged door. An operator
+reply is bd comment on the selected issue. closed, reading:, and unknown intents are refused.
+Close, reading:, and domain labels stay the session's. Beads is the only comment store.`;
 
 class UsageError extends Error {}
 
@@ -61,8 +63,8 @@ function unknownFlags(argv: string[], known: string[]): string[] {
 	return extra;
 }
 
-export type CommentHandler = {
-	add: (id: string, text: string) => void;
+export type OverviewHandler = {
+	write: BdWriteRunner;
 	page: () => string;
 };
 
@@ -73,13 +75,13 @@ export type OverviewResponse = {
 };
 
 /**
- * One request: GET / is the page, POST /comment is `bd comment`. Nothing else — no close, no
- * `reading:`, no labels.
+ * One request: GET / is the page, POST /comment is the tagged write door. A comment intent is
+ * `bd comment`. `closed`, `reading:`, and unknown intents are refused and do not write.
  */
 export async function handleOverviewRequest(
 	req: { method?: string; url?: string },
 	body: string,
-	handler: CommentHandler,
+	handler: OverviewHandler,
 ): Promise<OverviewResponse> {
 	const path = (req.url ?? "/").split("?")[0] ?? "/";
 	const method = req.method ?? "GET";
@@ -92,15 +94,11 @@ export async function handleOverviewRequest(
 	}
 	if (method === "POST" && path === "/comment") {
 		try {
-			const parsed = parseCommentBody(body);
-			handler.add(parsed.id, parsed.text);
+			applyOperatorAction(handler.write, body);
 			return { status: 204, headers: {}, body: "" };
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
-			const client =
-				message.startsWith("comment needs") ||
-				message.includes("not JSON") ||
-				message.includes("not an object");
+			const client = error instanceof OperatorActionRefused;
 			return {
 				status: client ? 400 : 500,
 				headers: { "content-type": "text/plain; charset=utf-8" },
@@ -115,7 +113,7 @@ export type ServeOptions = {
 	dir: string;
 	store: string;
 	archon?: string;
-	add?: (id: string, text: string) => void;
+	write?: BdWriteRunner;
 	page?: () => string;
 };
 
@@ -132,9 +130,7 @@ function buildPage(dir: string, store: string, archon?: string): string {
 }
 
 export function createOverviewServer(options: ServeOptions): http.Server {
-	const add =
-		options.add ??
-		((id, text) => addComment(makeWriteRunner(options.store, options.dir), id, text));
+	const write = options.write ?? makeWriteRunner(options.store, options.dir);
 	const page = options.page ?? (() => buildPage(options.dir, options.store, options.archon));
 	return http.createServer((req, res) => {
 		const chunks: Buffer[] = [];
@@ -143,7 +139,7 @@ export function createOverviewServer(options: ServeOptions): http.Server {
 		});
 		req.on("end", () => {
 			const raw = Buffer.concat(chunks).toString("utf8");
-			void handleOverviewRequest({ method: req.method, url: req.url }, raw, { add, page }).then((out) => {
+			void handleOverviewRequest({ method: req.method, url: req.url }, raw, { write, page }).then((out) => {
 				res.writeHead(out.status, out.headers);
 				res.end(out.body);
 			});
