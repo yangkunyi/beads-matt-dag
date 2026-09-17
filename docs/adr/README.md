@@ -8,6 +8,7 @@
 | [0004](0004-close-means-merged.md) | Close means merged | accepted — partly superseded by 0006 |
 | [0005](0005-one-record-per-fact.md) | One record per fact | accepted |
 | [0006](0006-closure-is-per-domain.md) | Closure is per domain | accepted |
+| [0007](0007-operator-surface-is-a-view.md) | Operator surface is a view; executors stay per domain | accepted |
 
 Design record: `docs/specs/2026-09-11-beads-issue-tracker-consensus.md` (§10 settles the flow).
 

@@ -25,7 +25,7 @@ below — if a term can only be explained by a command, it belongs in a spec.
 - **idea** — a proposition under development, tracked as a `decision` issue so that its *development* is
   kept and not just its current state: judging whether an idea is ripe means reading how it got there. Its
   process is its comment thread; its state is read off the record — `bare`, `argued`, `evidenced`,
-  `proposed`, `settled` — never typed in; and it never graduates by itself: the session graduates it into
+  `proposed`, `settled` — never typed in; and it never graduates by itself: the session or the operator graduates it into
   an issue, linked back with `relates-to`, or drops it with `wontfix`.
 - **verification leg** — the flow's half that checks a result against something the flow cannot supply
   itself: an instrument, a benchmark, an outside referee. The design record's "science half" (§7)
@@ -44,6 +44,13 @@ below — if a term can only be explained by a command, it belongs in a spec.
 - **agent role** — which agent executes a step (implement, resolve, review). Not a triage label.
 - **pack** — a folder of workflow definitions and their scripts, installed where the runner looks for
   them.
+- **operator** — the human acting on the Target's issue graph without a session. Not an agent role and
+  not a triage label.
+- **operator surface** — a view of that graph: issues and edges, plus the live overlay of a run. Not
+  an executor. Starting work still means starting the domain's existing run (drain, inquiry, or
+  experiment).
+- **allow-list** — the ids one run may claim. It is this run's pool, not a label; it does not brake
+  issues left out of the selection.
 
 ## Lifecycle
 
@@ -70,8 +77,8 @@ below — if a term can only be explained by a command, it belongs in a spec.
   development's. A drain refuses a blocking chain that reaches a non-work type, so a closure in one domain
   cannot release work in another (ADR-0006).
 - **crossing** — two non-blocking links join two domains, and no other kind does: `relates-to` for a
-  loose see-also, and `discovered-from` for the handoff a result makes (a work ticket created because an
-  experiment's result justified it). A blocking relation never crosses — neither `blocks` nor the
+  loose see-also, and `discovered-from` for the handoff a result makes (a work issue created because an
+  experiment's result justified it). The operator may write both. A blocking relation never crosses — neither `blocks` nor the
   `parent-child` hierarchy, at any depth (ADR-0004) — in either direction. A closure in one domain must
   never release work in another.
 
@@ -95,4 +102,7 @@ below — if a term can only be explained by a command, it belongs in a spec.
 | ticket | issue | Three independent vocabularies already agree on "issue" (§10.2 of the design record) |
 | role, alone | agent role, or triage label | Two different axes; "role" alone is ambiguous |
 | DAG node | issue | The graph is a property of the issues, not a separate object |
+| related-to | relates-to | The store's crossing edge name |
+| field | domain | A domain is a type and a closure meaning, not a canvas field |
 | board, card | — | Not this repo's model |
+| executor per issue | the domain's executor | Execution hangs on the domain, not on a node (ADR-0007) |

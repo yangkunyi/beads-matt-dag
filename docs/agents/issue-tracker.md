@@ -59,11 +59,18 @@ to `PATH` — an operator who set it meant it to be used.
   list, no comment thread**. State moves in the store, not in the file.
 - Comments and conversation history append to the issue in the store (`bd comment`), never to the body.
 
-## Operator reply
+## Operator surface
 
-The operator UI writes a reply as `bd comment` on the selected issue. Beads remains the only comment
-store. Close, `reading:`, and the domain's label acts stay the session's on the operator's word
-(ADR-0006). `bd human respond` is not used: it closes with reason Responded.
+The operator UI is a view of the Target's beads graph, not an executor (ADR-0007). Beads remains the
+only graph and the only comment store. The operator may, without a session: create an issue (type is
+the domain; that domain's identity labels go on at create; default triage is `needs-triage`); add or
+remove intra-domain `blocks`; add crossing `relates-to` and `discovered-from`; write `bd comment`;
+move the five triage labels (gate, brake, `wontfix`). Close, `reading:`, and other domain label acts
+stay the session's or the orchestrator's (ADR-0006). `bd human respond` is not used: it closes with
+reason Responded.
+
+Starting work from the surface starts the domain's existing run, optionally with an allow-list of
+issue ids for that run. It does not claim, merge, or stamp `closed`.
 
 ## Identity: the two metadata keys
 
