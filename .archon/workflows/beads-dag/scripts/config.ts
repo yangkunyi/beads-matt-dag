@@ -117,176 +117,158 @@ function configError(file: string, line: number, detail: string): Error {
   return new Error(`cannot read ${file} at line ${line}: ${detail}`);
 }
 
-/** Cut a `#` comment, ignoring `#` inside a quoted value. */
-function stripComment(raw: string): string {
-  let quote: '"' | "'" | undefined;
-  for (let i = 0; i < raw.length; i++) {
-    const ch = raw[i]!;
-    if (quote === '"') {
-      if (ch === "\\") i++;
-      else if (ch === '"') quote = undefined;
-    } else if (quote === "'") {
-      if (ch === "'" && raw[i + 1] === "'") i++;
-      else if (ch === "'") quote = undefined;
-    } else if (ch === '"' || ch === "'") {
-      quote = ch;
-    } else if (ch === "#" && (i === 0 || raw[i - 1] === " " || raw[i - 1] === "\t")) {
-      return raw.slice(0, i);
-    }
-  }
-  return raw;
-}
-
-/** One inline scalar: a quoted string, a number, a boolean, null, or a bare string. */
-function parseScalar(text: string, file: string, line: number): unknown {
-  const lead = text[0]!;
-  if (lead === "{" || lead === "[" || lead === "|" || lead === ">" || lead === "&" || lead === "*" || lead === "!") {
-    throw configError(file, line, `unsupported value ${JSON.stringify(text)}`);
-  }
-  if (lead === '"') {
-    if (text.length < 2 || !text.endsWith('"')) {
-      throw configError(file, line, "unterminated double-quoted value");
-    }
-    try {
-      return JSON.parse(text);
-    } catch {
-      throw configError(file, line, `unreadable double-quoted value ${JSON.stringify(text)}`);
-    }
-  }
-  if (lead === "'") {
-    if (text.length < 2 || !text.endsWith("'")) {
-      throw configError(file, line, "unterminated single-quoted value");
-    }
-    return text.slice(1, -1).replace(/''/g, "'");
-  }
-  if (/^[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?$/.test(text)) return Number(text);
-  if (text === "true") return true;
-  if (text === "false") return false;
-  if (text === "null" || text === "~") return null;
-  return text;
-}
-
 /**
- * Read the pack config out of the tiny YAML subset people actually write on a Target: one flat
- * mapping of scalars, with `#` comments and blank lines. Anything the reader does not understand - a
- * nested map or list, a key with no value, a duplicate key, a value that opens a flow collection or
- * block scalar - throws with the file and line instead of being silently reinterpreted. Unknown keys
- * are ignored, as they always were. The answer carries which keys the text set, so the opening node's
- * line can name the file as their source. `file` only names the source in error messages, so a test
- * can drive this without a filesystem.
+ * Where each top-level key sits in the text. Not a YAML reader: `Bun.YAML.parse` already accepted
+ * the file; this only names the line of a key this scan is about to refuse (nested, bare, duplicate).
+ * The platform parser last-wins on duplicates and its syntax error has no YAML line number, so the
+ * scan is how those refusals still name the file and the line.
  */
-export function parseConfigText(text: string, file: string): ParsedConfig {
-  const config: PackConfig = { ...DEFAULTS };
-  const fromFile = new Set<ConfigKey>();
-  const seen = new Set<string>();
+function topLevelKeys(text: string): {
+  first: Map<string, { line: number; bare: boolean }>;
+  duplicate: { key: string; line: number } | undefined;
+} {
+  const first = new Map<string, { line: number; bare: boolean }>();
+  let duplicate: { key: string; line: number } | undefined;
   let topIndent: number | undefined;
-  let currentKey: string | undefined;
-  /** A known key whose scalar is still missing: the next line decides "nested value" or "no value". */
-  let pending: { key: string; line: number } | undefined;
-
   const lines = text.split("\n");
   for (let i = 0; i < lines.length; i++) {
     const lineNo = i + 1;
-    const line = stripComment(lines[i]!).replace(/[ \t\r]+$/, "");
-    if (line.trim() === "" || line.trim() === "---" || line.trim() === "...") continue;
-
-    const indent = line.length - line.trimStart().length;
+    const raw = lines[i]!.replace(/[ \t\r]+$/, "");
+    const trimmed = raw.trim();
+    if (trimmed === "" || trimmed === "---" || trimmed === "..." || trimmed.startsWith("#")) continue;
+    const indent = raw.length - raw.trimStart().length;
     if (topIndent === undefined) topIndent = indent;
-    if (indent > topIndent) {
-      if (pending !== undefined) {
-        throw configError(file, pending.line, `"${pending.key}" must be a single scalar, not a nested value`);
-      }
-      if (currentKey !== undefined && isConfigKey(currentKey)) {
-        throw configError(file, lineNo, `"${currentKey}" must be a single scalar, not a nested value`);
-      }
-      continue;
-    }
-    if (indent < topIndent) throw configError(file, lineNo, "line is indented less than the first key");
-
-    if (pending !== undefined) {
-      throw configError(file, pending.line, `"${pending.key}" has no value`);
-    }
-    const kv = /^([A-Za-z0-9_.-]+):(.*)$/.exec(line.slice(indent));
-    if (!kv) throw configError(file, lineNo, `expected a "key: value" line, found ${JSON.stringify(line.trim())}`);
+    if (indent !== topIndent) continue;
+    const kv = /^["']?([A-Za-z0-9_.-]+)["']?\s*:(.*)$/.exec(raw.slice(indent));
+    if (!kv) continue;
     const key = kv[1]!;
-    currentKey = key;
-    if (seen.has(key)) throw configError(file, lineNo, `duplicate key "${key}"`);
-    seen.add(key);
-    if (!isConfigKey(key)) continue;
-
-    const valueText = kv[2]!.trim();
-    if (valueText === "") {
-      pending = { key, line: lineNo };
+    const rest = kv[2]!.trim();
+    const bare = rest === "" || rest.startsWith("#");
+    if (first.has(key)) {
+      if (duplicate === undefined) duplicate = { key, line: lineNo };
       continue;
     }
-    const value = parseScalar(valueText, file, lineNo);
-    switch (key) {
-      case "model":
-        if (typeof value === "string") {
-          config.model = value;
-          fromFile.add(key);
-        }
-        break;
-      case "store":
-        if (typeof value === "string") {
-          config.store = value;
-          fromFile.add(key);
-        }
-        break;
-      case "verify":
-        // A command is a string, empty included: `verify: ""` is the Target saying it has none, which is
-        // the same behavior as the key being absent, but the reading still records the file as its source.
-        // Anything else - a number, a bare `true`, a null - is refused rather than ignored: `config.verify`
-        // being empty means no gate runs, and a Target that meant to configure one must not be left with
-        // silence there.
-        if (typeof value !== "string") {
-          throw new Error(`invalid verify in ${file}: ${JSON.stringify(value)} (expected a shell command string)`);
-        }
-        config.verify = value;
-        fromFile.add(key);
-        break;
-      case "verifyTimeoutMs":
-        if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
-          throw new Error(`invalid verifyTimeoutMs in ${file}: ${String(value)}`);
-        }
-        config.verifyTimeoutMs = value;
-        fromFile.add(key);
-        break;
-      case "postMerge":
-        // The same refusal as `verify`, for the same reason: an empty command means nothing runs after a
-        // merge, so a Target that wrote something that is not a string must hear about it rather than be
-        // left with silence where it meant to keep its machine copies honest.
-        if (typeof value !== "string") {
-          throw new Error(`invalid postMerge in ${file}: ${JSON.stringify(value)} (expected a shell command string)`);
-        }
-        config.postMerge = value;
-        fromFile.add(key);
-        break;
-      case "thinkingLevel":
-        if (typeof value !== "string" || !isThinkingLevel(value)) {
-          throw new Error(`invalid thinkingLevel in ${file}: ${String(value)}`);
-        }
-        config.thinkingLevel = value;
-        fromFile.add(key);
-        break;
-      case "concurrency":
-        if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
-          throw new Error(`invalid concurrency in ${file}: ${String(value)}`);
-        }
-        config.concurrency = value;
-        fromFile.add(key);
-        break;
-      case "runner":
-        if (value !== "pi" && value !== "dsh") {
-          throw new Error(`invalid runner in ${file}: ${String(value)} (expected pi or dsh)`);
-        }
-        config.runner = value;
-        fromFile.add(key);
-        break;
-    }
+    first.set(key, { line: lineNo, bare });
   }
-  if (pending !== undefined) {
-    throw configError(file, pending.line, `"${pending.key}" has no value`);
+  return { first, duplicate };
+}
+
+function applyKnownKey(
+  key: ConfigKey,
+  value: unknown,
+  file: string,
+  config: PackConfig,
+  fromFile: Set<ConfigKey>,
+): void {
+  switch (key) {
+    case "model":
+      if (typeof value === "string") {
+        config.model = value;
+        fromFile.add(key);
+      }
+      break;
+    case "store":
+      if (typeof value === "string") {
+        config.store = value;
+        fromFile.add(key);
+      }
+      break;
+    case "verify":
+      // A command is a string, empty included: `verify: ""` is the Target saying it has none, which is
+      // the same behavior as the key being absent, but the reading still records the file as its source.
+      // Anything else - a number, a bare `true`, a null - is refused rather than ignored: `config.verify`
+      // being empty means no gate runs, and a Target that meant to configure one must not be left with
+      // silence there.
+      if (typeof value !== "string") {
+        throw new Error(`invalid verify in ${file}: ${JSON.stringify(value)} (expected a shell command string)`);
+      }
+      config.verify = value;
+      fromFile.add(key);
+      break;
+    case "verifyTimeoutMs":
+      if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
+        throw new Error(`invalid verifyTimeoutMs in ${file}: ${String(value)}`);
+      }
+      config.verifyTimeoutMs = value;
+      fromFile.add(key);
+      break;
+    case "postMerge":
+      // The same refusal as `verify`, for the same reason: an empty command means nothing runs after a
+      // merge, so a Target that wrote something that is not a string must hear about it rather than be
+      // left with silence where it meant to keep its machine copies honest.
+      if (typeof value !== "string") {
+        throw new Error(`invalid postMerge in ${file}: ${JSON.stringify(value)} (expected a shell command string)`);
+      }
+      config.postMerge = value;
+      fromFile.add(key);
+      break;
+    case "thinkingLevel":
+      if (typeof value !== "string" || !isThinkingLevel(value)) {
+        throw new Error(`invalid thinkingLevel in ${file}: ${String(value)}`);
+      }
+      config.thinkingLevel = value;
+      fromFile.add(key);
+      break;
+    case "concurrency":
+      if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
+        throw new Error(`invalid concurrency in ${file}: ${String(value)}`);
+      }
+      config.concurrency = value;
+      fromFile.add(key);
+      break;
+    case "runner":
+      if (value !== "pi" && value !== "dsh") {
+        throw new Error(`invalid runner in ${file}: ${String(value)} (expected pi or dsh)`);
+      }
+      config.runner = value;
+      fromFile.add(key);
+      break;
+  }
+}
+
+/**
+ * Read the pack config with the runtime's YAML parser (`Bun.YAML.parse`), then refuse anything that
+ * is not a flat mapping of scalars. That is the choice: keep the hand-rolled reader's contract
+ * (unknown keys ignored; nested map or list, bare key, duplicate key refused with file and line)
+ * rather than let the platform's superset through. The line of a refused key is found by a scan for
+ * that key, because `Bun.YAML.parse`'s own error is `YAML Parse error: Unexpected token` with no
+ * YAML line number. A syntax error therefore names the file only. The answer carries which keys the
+ * text set, so the opening node's line can name the file as their source. `file` only names the
+ * source in error messages, so a test can drive this without a filesystem.
+ */
+export function parseConfigText(text: string, file: string): ParsedConfig {
+  let parsed: unknown;
+  try {
+    parsed = Bun.YAML.parse(text);
+  } catch (e) {
+    const detail = e instanceof Error ? e.message : String(e);
+    throw new Error(`cannot read ${file}: ${detail}`);
+  }
+  if (parsed === null || parsed === undefined) {
+    return { config: { ...DEFAULTS }, fromFile: new Set() };
+  }
+  if (typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw configError(file, 1, "expected a flat mapping of scalars");
+  }
+
+  const { first, duplicate } = topLevelKeys(text);
+  if (duplicate !== undefined) {
+    throw configError(file, duplicate.line, `duplicate key "${duplicate.key}"`);
+  }
+
+  const config: PackConfig = { ...DEFAULTS };
+  const fromFile = new Set<ConfigKey>();
+  for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+    if (!isConfigKey(key)) continue;
+    const loc = first.get(key);
+    const line = loc?.line ?? 1;
+    if (value !== null && typeof value === "object") {
+      throw configError(file, line, `"${key}" must be a single scalar, not a nested value`);
+    }
+    if (value === null && (loc?.bare ?? true)) {
+      throw configError(file, line, `"${key}" has no value`);
+    }
+    applyKnownKey(key, value, file, config, fromFile);
   }
   return { config, fromFile };
 }
