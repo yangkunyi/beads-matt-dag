@@ -188,3 +188,49 @@ earlier notes (`bottom-layer-assembly.md`, `assembly-grok.md`, `assembly-deepsee
 
 Items 1–3 are the direct continuation of the client work already on Main. Items 4–7 are cheap and
 independent. Items 8–9 want a trigger written down rather than code.
+
+## 5. Reinvention adjudicated: what our own dependencies already ship
+
+§1–§4 judge the *candidates*. This section judges **us**: places where the pack or the operator surface
+reimplements something a dependency we already install provides. The method that found them is not
+reading READMEs — it is running `bd help`, `bd <cmd> --help`, `archon --help` and the commands
+themselves. That is why neither research report contains this section: both children read documentation,
+and documentation does not list a binary's subcommands.
+
+### 5a. The rows, with the verdict that survived being run
+
+| We hand-roll | The dependency already has | Verdict | Evidence |
+|---|---|---|---|
+| `config.ts`'s YAML subset reader (`parseConfigText`, `stripComment`, `parseScalar` — ~90 lines and five documented refusals) | **`Bun.YAML.parse`**, in the runtime the pack already requires | **adopt** — beads-dag/37 | `Bun.YAML.parse` on `.scratch/beads-dag.yaml` returns exactly the four keys our reader returns |
+| `reading:` written and cleared as a bare label (`store.ts` ↔ `clearUnreadMarker`) | **`bd set-state <id> dim=value --reason`** / **`bd state <id> dim`** | **adopt** — beads-dag/38 | Ran on this pin (1.2.2): `set-state … reading=some/path` → `labels: ['reading:some/path']`, an event bead as source of truth, and `bd state … reading` → `some/path` |
+| The five triage labels, one replacing the rest (hand-written in `triage-labels.ts` / `actions.ts`) | `bd set-state` again | **no** | They are bare words (`needs-triage`, not `triage:needs-triage`). Dimensionising them renames the vocabulary `docs/agents/triage-labels.md` documents and `bd ready`-shaped tooling reads |
+| `lock.ts` + `run-lock.ts` (159 + 180 lines) | **`bd merge-slot`** | **no, and this is the one we got right** | `bd merge-slot --help`: holder is `metadata.holder`, a *name*. No pid, so a crashed holder wedges the slot with nothing to steal. Our file lock is `pid`-first by design (`lock.ts`, "a pid that is no longer alive is a killed run's leftover") — and that path has been exercised twice in one session |
+| The gate label (an operator put this in the frontier) | **`bd gate`** | **no** | `bd gate --help`: types are `human`, `timer`, `gh:run`, `gh:pr`, `bead` — "park a step until the world catches up". A different concept wearing the same word |
+| `naming.ts` + `worktree.ts` (98 + 131 lines) | **`bd worktree create/list/remove/info`** | **no** | It creates at `./<name>`; it cannot derive a name from the issue's `handle`/`slug`, which is the contract the pack's tests assert |
+| `filterOverview` / `matchesFilter` | **`bd query 'labels=… AND status=…'`** | **no** | The filter runs over an in-memory snapshot the canvas, the list and the detail pane all share; `bd query` would be a second round trip for the same data |
+| `graph-view.ts`'s layering (d3-dag) | **`bd graph --box/--compact/--dot/--html`** | **no for rendering** | It *does* compute the same layering ("Layer 0 / leftmost = no dependencies"), but the canvas needs coordinates in TS for React Flow; `bd graph` renders elsewhere |
+| `worker-env.ts`: the `BD_READONLY` rule | `bd --readonly` / `bd --sandbox` | **refuted — nothing to adopt** | `--readonly` is the CLI spelling of the env var already set (verified: a write under it answers `operation 'create' is not allowed in read-only mode`), and `--sandbox` only stops Dolt auto-push, which is off by default |
+| Worktree and branch teardown | **`archon isolation list/cleanup/complete`** | **refuted — unavailable to us** | In a scratch repo `archon complete <branch>` answered `Not found: <branch> (no active isolation environment)` and did nothing; Archon's registry is empty for this Target because the pack sets `worktree.enabled: false`. The removal also already exists in the pack: `main-writes.ts` runs `git worktree prune` then `worktree remove --force` as the merge's other half |
+| One place the overlay learns a run exists | **`archon workflow get <run-id>`** | **no** | The overlay's other sources are *pack-written* facts (`run-lock.json`, `attempted-ids.json`, the reports), which no Archon command knows about. `workflow status --json` — already used — is the process list |
+| Repairing a killed run from git | **`archon workflow resume <run-id>`** | **no, but recorded as a choice** | "resume reuses its recorded working path/worktree" is real. Our drain is deliberately *re-runnable*, not *resumable*: the unit is small and Main is the truth. If it is ever worth trying, it is a spike around one role, not the loop |
+
+### 5b. What the exercise actually cost
+
+Three of the rows above are refutations of claims made in conversation before they were checked
+(worker flags, worktree teardown, the overlay's use of `workflow get`). Every refutation has the same
+shape: the command exists and is named plausibly, and the *semantics* do not match what we need — a
+gate that parks on an external fact, a slot with no pid, a completion that only knows branches Archon
+made itself. A name match is not a wheel match.
+
+The counterweight is 5a's first two rows, which are genuine: a hand-rolled YAML reader under a runtime
+that parses YAML, and a hand-maintained label family where the store ships the dimension primitive
+including the actor and reason trail.
+
+Where hand-rolling remains correct is unchanged from §4 and from §C of the two reports:
+merge-before-stamp and repair-from-git, the three closure meanings, the frontier policy the store
+cannot hold, the conflict turn inside one execution with the gate re-run afterwards, and the pack as
+bun scripts with no service, no database and no queue.
+
+The one process lesson worth keeping: this flow has an unusually low wheel count for its size, and the
+reason is not foresight — it is that nobody had read `bd help` and `archon --help` as an interface
+until now. Two subagents reading documentation could not have closed that gap.
