@@ -35,6 +35,9 @@ const USAGE = `usage: bun tools/operator-ui/serve.ts [--dir <target>] [--store <
   --port <n>        listen port (default: 8765)
   --host <addr>     listen address (default: 127.0.0.1)
 
+Routes: GET / is the page, GET /overview is the same snapshot as JSON — what a write re-reads
+instead of reloading the page — and POST /comment is the tagged write door.
+
 The graph is read via bd, not the jsonl export. Writes go through one tagged door. An operator
 reply is bd comment on the selected issue. Create requires a type (the domain), writes a body of
 handle and prose, and lands as needs-triage without the gate. A same-domain selection starts that

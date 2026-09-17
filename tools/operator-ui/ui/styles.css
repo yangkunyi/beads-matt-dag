@@ -214,7 +214,7 @@ html, body {
 
 #layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 360px;
+  grid-template-columns: minmax(220px, 300px) minmax(0, 1fr) 360px;
   gap: 12px;
   align-items: stretch;
 }
@@ -229,23 +229,13 @@ html, body {
   overflow: hidden;
 }
 
-.connect-pick {
-  position: absolute;
-  z-index: 8;
-  left: 12px;
-  bottom: 12px;
+/* The crossing-choice panel sits inside the picker popover, not over the canvas. */
+.connect-pick-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
-  max-width: calc(100% - 24px);
-  padding: 10px 12px;
-  background: hsl(var(--card));
-  border: 1px solid hsl(var(--border));
-  border-radius: var(--radius);
-  box-shadow: 0 1px 2px hsl(240 5.9% 10% / 0.08);
 }
-.connect-pick p { margin: 0 8px 0 0; }
 .graph-status {
   position: absolute;
   z-index: 8;
@@ -337,6 +327,62 @@ html, body {
   clip: rect(0, 0, 0, 0);
 }
 .muted, .empty { color: hsl(var(--muted-foreground)); }
+
+/* The header's write buttons: the palette and the create dialog live behind them. */
+.page-actions { display: flex; gap: 8px; margin-top: 10px; }
+
+/* The read surface: one dense row per issue, windowed. It selects; it never writes. */
+#issue-list { padding: 8px; }
+#issue-list .issue-row {
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+#issue-list .issue-row:hover { background: hsl(var(--muted)); }
+#issue-list .issue-row.selected { background: hsl(var(--accent)); }
+#issue-list .issue-row .handle { color: hsl(var(--muted-foreground)); font-size: 12px; }
+#issue-list .issue-row .title { min-width: 0; flex: 0 1 auto; }
+
+/* Markdown bodies: a comment and a document read as prose, not as preformatted text. */
+.md { font-size: 13px; line-height: 1.55; }
+.md > :first-child { margin-top: 0; }
+.md > :last-child { margin-bottom: 0; }
+.md h1, .md h2, .md h3, .md h4 { font-size: 13.5px; margin: 10px 0 4px; }
+.md p, .md ul, .md ol, .md blockquote, .md table { margin: 6px 0; }
+.md ul, .md ol { padding-left: 18px; }
+.md code {
+  background: hsl(var(--muted));
+  border-radius: 4px;
+  padding: 1px 4px;
+  font-size: 12px;
+}
+.md pre {
+  background: hsl(var(--muted));
+  border-radius: 6px;
+  padding: 8px 10px;
+  overflow: auto;
+}
+.md pre code { background: none; padding: 0; }
+.md a { color: hsl(var(--primary)); }
+.md blockquote {
+  border-left: 3px solid hsl(var(--border));
+  padding-left: 10px;
+  color: hsl(var(--muted-foreground));
+}
+.md table { border-collapse: collapse; }
+.md th, .md td { border: 1px solid hsl(var(--border)); padding: 2px 6px; }
+
+/* A window on a graph still needs a height: React Flow sizes to its parent. */
+#graph-wrap > .relative { height: 100%; }
+
+@media (max-width: 1200px) {
+  #layout { grid-template-columns: minmax(200px, 260px) minmax(0, 1fr); }
+  #detail { grid-column: 1 / -1; }
+}
 
 @media (max-width: 900px) {
   #layout { grid-template-columns: 1fr; }

@@ -1,23 +1,45 @@
 /**
- * The operator page: filters, live overlay, issue detail, comment, create, triage, start, and the React Flow graph.
+ * The operator page: a windowed issue list, the React Flow graph, the live overlay, detail with
+ * markdown comments and documents, and the write panels — comment, create, triage, start — plus a
+ * command palette. All of it is a view of the store snapshot embedded in the page.
  *
- * All of it is a view of the store snapshot embedded in the page. Writes go through the tagged
- * door: comments, create (type is the domain; needs-triage; no gate), start (that domain's existing
- * run with the selected ids as the allow-list), intra-domain `blocks`, crossing `relates-to` /
- * `discovered-from`, and one of the five triage labels replacing the rest of the family.
+ * Writes go through the tagged door: comments, create (type is the domain; needs-triage; no gate),
+ * start (that domain's existing run with the selected ids as the allow-list), intra-domain `blocks`,
+ * crossing `relates-to` / `discovered-from`, and one of the five triage labels replacing the rest of
+ * the family. A write re-reads the store rather than reloading the page.
  */
 
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Command } from "cmdk";
+import {
+	BookOpen,
+	CircleAlert,
+	CircleCheck,
+	CircleDashed,
+	CircleDot,
+	Code,
+	Command as CommandIcon,
+	FlaskConical,
+	MessageSquare,
+	Play,
+	Plus,
+	Tag,
+	type LucideIcon,
+} from "lucide-react";
+import { Toaster, toast } from "sonner";
 import { postComment } from "../client-comment.ts";
 import { postCreate } from "../client-create.ts";
 import { postStart } from "../client-start.ts";
 import { postTriage, TRIAGE_LABELS, type TriageLabel } from "../client-triage.ts";
 import { filterChoices } from "../graph-view.ts";
-import { filterOverview, issueDetail, type Overview, type OverviewIssue } from "../model.ts";
+import { filterOverview, issueDetail, type Overview, type OverviewDomain, type OverviewIssue } from "../model.ts";
 import { planStart } from "../start.ts";
+import { cn } from "./cn.ts";
 import { Graph } from "./Graph.tsx";
-import { Button, Input, Label, Select, Textarea } from "./kit.tsx";
+import { Button, Dialog, Input, Label, Select, Textarea } from "./kit.tsx";
+import { MarkdownBody } from "./markdown.tsx";
 
 export type PageOverview = Overview & {
 	commentEndpoint: string | null;
@@ -58,6 +80,137 @@ function useWritten(): () => void {
 	return useCallback(() => {
 		void client.invalidateQueries({ queryKey: ["overview"] });
 	}, [client]);
+}
+
+/**
+ * One place a write reports: a toast for the act, the door's own words when it refuses, and the
+ * inline line kept so a refusal is still readable once the toast has gone.
+ */
+function useWrite(act: string): { status: string; run: (write: Promise<unknown>) => Promise<boolean> } {
+	const [status, setStatus] = useState("");
+	const onWritten = useWritten();
+	const run = useCallback(
+		async (write: Promise<unknown>): Promise<boolean> => {
+			setStatus("");
+			try {
+				await write;
+				toast.success(act);
+				onWritten();
+				return true;
+			} catch (error: unknown) {
+				const reason = error instanceof Error ? error.message : String(error);
+				setStatus(reason);
+				toast.error(reason);
+				return false;
+			}
+		},
+		[act, onWritten],
+	);
+	return { status, run };
+}
+
+const STATUS_ICON: Record<string, LucideIcon> = {
+	open: CircleDashed,
+	in_progress: CircleDot,
+	closed: CircleCheck,
+};
+
+const DOMAIN_ICON: Record<OverviewDomain, LucideIcon> = {
+	inquiry: BookOpen,
+	experiment: FlaskConical,
+	development: Code,
+};
+
+/** An icon never carries the meaning alone: the status word sits beside it, or an aria-label. */
+function StatusIcon({ status }: { status: string }) {
+	const Icon = STATUS_ICON[status] ?? CircleDashed;
+	return <Icon aria-label={`status ${status}`} size={14} className={cn("shrink-0", `status-${status}`)} />;
+}
+
+/** Issues a `blocks` edge holds back, from a blocker that is not closed. Not a status. */
+function blockedIds(overview: Overview): Set<string> {
+	const closed = new Set(
+		overview.issues.filter((issue) => issue.status === "closed").map((issue) => issue.id),
+	);
+	const blocked = new Set<string>();
+	for (const edge of overview.edges) {
+		if (edge.type === "blocks" && !closed.has(edge.from)) blocked.add(edge.to);
+	}
+	return blocked;
+}
+
+const ROW_H = 30;
+/** Rows to render when there is no viewport to measure: the server, and the client's first paint. */
+const ROWS_WITHOUT_VIEWPORT = 40;
+
+/**
+ * The read surface: what is in the store, not its shape. Windowed with react-virtual, so a few
+ * hundred issues do not become a few hundred rows. It selects; it never writes.
+ */
+function IssueList(props: {
+	issues: OverviewIssue[];
+	blocked: Set<string>;
+	selected: string[];
+	onSelect: (ids: string[]) => void;
+}) {
+	const viewport = useRef<HTMLDivElement>(null);
+	const virtualizer = useVirtualizer({
+		count: props.issues.length,
+		getScrollElement: () => viewport.current,
+		estimateSize: () => ROW_H,
+		overscan: 10,
+	});
+	const measured = virtualizer.getVirtualItems();
+	// With nothing measured yet — on the server, and on the client's first paint — show the head of
+	// the list, so the served page carries the issues instead of an empty box.
+	const rows =
+		measured.length > 0
+			? measured
+			: props.issues
+					.slice(0, ROWS_WITHOUT_VIEWPORT)
+					.map((_, index) => ({ index, key: index, start: index * ROW_H, size: ROW_H }));
+	const selectedSet = new Set(props.selected);
+	return (
+		<section id="issue-list" className="card" aria-label="Issues">
+			<div ref={viewport} className="max-h-96 overflow-auto">
+				<div style={{ height: virtualizer.getTotalSize() || props.issues.length * ROW_H, position: "relative" }}>
+					{rows.map((row) => {
+						const issue = props.issues[row.index];
+						if (issue === undefined) return null;
+						const DomainIcon = DOMAIN_ICON[issue.domain];
+						const isSelected = selectedSet.has(issue.id);
+						return (
+							<button
+								key={row.key}
+								type="button"
+								data-issue={issue.id}
+								aria-pressed={isSelected}
+								onClick={() => props.onSelect([issue.id])}
+								className={cn(
+									"issue-row absolute inset-x-0 flex items-center gap-2 px-2 text-left",
+									isSelected && "selected",
+								)}
+								style={{ top: row.start, height: row.size }}
+							>
+								{props.blocked.has(issue.id) ? (
+									<CircleAlert aria-label="blocked" size={14} className="shrink-0 text-warning" />
+								) : (
+									<StatusIcon status={issue.status} />
+								)}
+								<span className="handle shrink-0">{issue.handle || issue.id}</span>
+								<span className="title truncate">{issue.title}</span>
+								<DomainIcon aria-label={issue.domain} size={14} className="ml-auto shrink-0" />
+								<span className="muted shrink-0">{issue.status}</span>
+							</button>
+						);
+					})}
+				</div>
+			</div>
+			<p className="muted">
+				{props.issues.length} shown · the list never writes: no claim, no close, no label
+			</p>
+		</section>
+	);
 }
 
 function Filters(props: {
@@ -151,24 +304,18 @@ function StartBar(props: {
 	overview: Overview;
 	selected: string[];
 }) {
-	const [status, setStatus] = useState("");
-	const onWritten = useWritten();
+	const { status, run } = useWrite("started the run");
 	const plan = planStart(props.selected, props.overview.issues, props.overview.live !== null);
 	const label = plan.ok ? `Start ${plan.kind}` : "Start selection";
-	function onClick() {
-		setStatus("");
-		void postStart(props.endpoint, props.selected)
-			.then(() => {
-				onWritten();
-			})
-			.catch((error: unknown) => {
-				setStatus(error instanceof Error ? error.message : String(error));
-			});
-	}
 	return (
 		<section id="start" className="card" aria-label="Start selection">
 			<p id="start-summary">{plan.ok ? `${props.selected.length} ${plan.kind}` : plan.reason}</p>
-			<Button id="start-button" disabled={!plan.ok} onClick={onClick}>
+			<Button
+				id="start-button"
+				disabled={!plan.ok}
+				onClick={() => void run(postStart(props.endpoint, props.selected))}
+			>
+				<Play aria-hidden="true" size={14} />
 				{label}
 			</Button>
 			<p className="muted" id="start-status">
@@ -193,9 +340,12 @@ function Detail(props: {
 	}
 	const live = props.overview.live;
 	const attempted = live !== null && live.attempted.includes(issue.id);
+	const DomainIcon = DOMAIN_ICON[issue.domain];
 	return (
 		<aside id="detail" className="card">
-			<h2>{issue.handle || issue.id}</h2>
+			<h2>
+				<DomainIcon aria-hidden="true" size={14} className="inline align-[-2px]" /> {issue.handle || issue.id}
+			</h2>
 			<p className="title">{issue.title}</p>
 			<dl>
 				<dt>status</dt>
@@ -222,9 +372,10 @@ function Detail(props: {
 				issue.comments.map((comment) => (
 					<article className="comment" key={comment.id}>
 						<header>
-							{comment.author} · {comment.createdAt}
+							<MessageSquare aria-hidden="true" size={12} className="inline align-[-1px]" /> {comment.author} ·{" "}
+							{comment.createdAt}
 						</header>
-						<pre>{comment.text}</pre>
+						<MarkdownBody text={comment.text} />
 					</article>
 				))
 			)}
@@ -238,12 +389,16 @@ function Detail(props: {
 							{doc.kind} · {doc.rel}
 							{doc.exists ? "" : " · missing"}
 						</header>
-						{doc.exists && doc.text !== null ? <pre>{doc.text}</pre> : null}
+						{doc.exists && doc.text !== null ? <MarkdownBody text={doc.text} /> : null}
 					</article>
 				))
 			)}
 			{props.overview.commentEndpoint ? (
-				<TriageForm endpoint={props.overview.commentEndpoint} id={issue.id} current={currentTriage(issue.labels)} />
+				<TriageForm
+					endpoint={props.overview.commentEndpoint}
+					id={issue.id}
+					current={currentTriage(issue.labels)}
+				/>
 			) : null}
 			{props.overview.commentEndpoint ? <ReplyForm endpoint={props.overview.commentEndpoint} id={issue.id} /> : null}
 		</aside>
@@ -255,18 +410,7 @@ function currentTriage(labels: string[]): TriageLabel | undefined {
 }
 
 function TriageForm(props: { endpoint: string; id: string; current: TriageLabel | undefined }) {
-	const [status, setStatus] = useState("");
-	const onWritten = useWritten();
-	function apply(label: TriageLabel) {
-		setStatus("");
-		void postTriage(props.endpoint, props.id, label)
-			.then(() => {
-				onWritten();
-			})
-			.catch((error: unknown) => {
-				setStatus(error instanceof Error ? error.message : String(error));
-			});
-	}
+	const { status, run } = useWrite("moved the triage label");
 	return (
 		<>
 			<h3>Triage</h3>
@@ -278,8 +422,9 @@ function TriageForm(props: { endpoint: string; id: string; current: TriageLabel 
 							name="triage"
 							value={label}
 							aria-pressed={props.current === label}
-							onClick={() => apply(label)}
+							onClick={() => void run(postTriage(props.endpoint, props.id, label))}
 						>
+							<Tag aria-hidden="true" size={12} />
 							{label}
 						</Button>
 					))}
@@ -295,18 +440,12 @@ function TriageForm(props: { endpoint: string; id: string; current: TriageLabel 
 
 function ReplyForm(props: { endpoint: string; id: string }) {
 	const [text, setText] = useState("");
-	const [status, setStatus] = useState("");
-	const onWritten = useWritten();
+	const { status, run } = useWrite("saved the comment");
 	function onSubmit(event: FormEvent) {
 		event.preventDefault();
-		setStatus("");
-		void postComment(props.endpoint, props.id, text)
-			.then(() => {
-				onWritten();
-			})
-			.catch((error: unknown) => {
-				setStatus(error instanceof Error ? error.message : String(error));
-			});
+		void run(postComment(props.endpoint, props.id, text)).then((ok) => {
+			if (ok) setText("");
+		});
 	}
 	return (
 		<>
@@ -323,8 +462,11 @@ function ReplyForm(props: { endpoint: string; id: string }) {
 					value={text}
 					onChange={(event) => setText(event.target.value)}
 				/>
-				<Button type="submit">Comment</Button>
-				<p className="muted">Saved as a store comment. Close, reading:, and other domain labels stay with the session.</p>
+				<Button type="submit">
+					<MessageSquare aria-hidden="true" size={14} />
+					Comment
+				</Button>
+				<p className="muted">Markdown. Saved as a store comment; close, reading:, and other domain labels stay with the session.</p>
 				<p className="muted" id="reply-status">
 					{status}
 				</p>
@@ -343,37 +485,36 @@ const CREATE_TYPES = [
 	{ value: "experiment", label: "experiment" },
 ] as const;
 
-function CreateForm({ endpoint }: { endpoint: string }) {
+function CreateForm({
+	endpoint,
+	open,
+	onClose,
+}: {
+	endpoint: string;
+	open: boolean;
+	onClose: () => void;
+}) {
 	const [type, setType] = useState("");
 	const [feature, setFeature] = useState("");
 	const [title, setTitle] = useState("");
 	const [prose, setProse] = useState("");
-	const [status, setStatus] = useState("");
-	const onWritten = useWritten();
+	const { status, run } = useWrite("created the issue");
 	function onSubmit(event: FormEvent) {
 		event.preventDefault();
-		setStatus("");
-		void postCreate(endpoint, { type, feature, title, prose })
-			.then(() => {
-				onWritten();
-			})
-			.catch((error: unknown) => {
-				setStatus(error instanceof Error ? error.message : String(error));
-			});
+		void run(postCreate(endpoint, { type, feature, title, prose }));
 	}
 	return (
-		<section id="create" className="card" aria-label="Create issue">
-			<h2>Create issue</h2>
+		<Dialog
+			id="create"
+			open={open}
+			onClose={onClose}
+			title="Create issue"
+			description="Type is the domain. New issues land as needs-triage; the gate is not applied. The body is handle and prose, no status."
+		>
 			<form id="create-form" onSubmit={onSubmit}>
 				<Label htmlFor="create-type">
 					Type
-					<Select
-						id="create-type"
-						name="type"
-						required
-						value={type}
-						onChange={(event) => setType(event.target.value)}
-					>
+					<Select id="create-type" name="type" required value={type} onChange={(event) => setType(event.target.value)}>
 						<option value="">Select a type</option>
 						{CREATE_TYPES.map((entry) => (
 							<option key={entry.value} value={entry.value}>
@@ -402,7 +543,6 @@ function CreateForm({ endpoint }: { endpoint: string }) {
 						onChange={(event) => setTitle(event.target.value)}
 					/>
 				</Label>
-				<Button type="submit">Create</Button>
 				<Label className="prose" htmlFor="create-prose">
 					Prose
 					<Textarea
@@ -413,15 +553,104 @@ function CreateForm({ endpoint }: { endpoint: string }) {
 						onChange={(event) => setProse(event.target.value)}
 					/>
 				</Label>
-				<p className="muted">
-					Type is the domain. New issues land as needs-triage; the gate is not applied. The body is
-					handle and prose, no status.
-				</p>
+				<Button type="submit">
+					<Plus aria-hidden="true" size={14} />
+					Create
+				</Button>
 				<p className="muted" id="create-status">
 					{status}
 				</p>
 			</form>
-		</section>
+		</Dialog>
+	);
+}
+
+/**
+ * ⌘K over the same store and the same door. It is a way in, not a new way to write: every act here
+ * posts to the intents the panels post to.
+ */
+function Palette(props: {
+	open: boolean;
+	onClose: () => void;
+	overview: PageOverview;
+	selected: string[];
+	onSelect: (ids: string[]) => void;
+	onCreate: () => void;
+}) {
+	const endpoint = props.overview.commentEndpoint ?? "";
+	const focused = props.selected.length === 0 ? undefined : props.selected[props.selected.length - 1];
+	const issue = focused === undefined ? undefined : issueDetail(props.overview, focused);
+	const { run } = useWrite("acted");
+	const plan = planStart(props.selected, props.overview.issues, props.overview.live !== null);
+	const group = "p-1";
+	const item =
+		"flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-sm outline-none data-[selected=true]:bg-accent";
+	return (
+		<Dialog id="palette" open={props.open} onClose={props.onClose} title="Commands" description="Jump, create, triage, start.">
+			{/* The items are the store's issues again: mounted when the palette opens, not baked into every page. */}
+			{props.open ? (
+				<Command label="Commands" loop>
+				<Command.Input placeholder="Jump to an issue by handle or title…" className="input" />
+				<Command.List className="mt-2 max-h-80 overflow-auto">
+					<Command.Empty className="muted p-2">Nothing matches.</Command.Empty>
+					<Command.Group heading="Issues" className={group}>
+						{props.overview.issues.map((entry) => (
+							<Command.Item
+								key={entry.id}
+								value={`${entry.handle ?? ""} ${entry.title} ${entry.id}`}
+								className={item}
+								onSelect={() => {
+									props.onSelect([entry.id]);
+									props.onClose();
+								}}
+							>
+								<StatusIcon status={entry.status} />
+								<span className="handle">{entry.handle || entry.id}</span>
+								<span className="truncate">{entry.title}</span>
+							</Command.Item>
+						))}
+					</Command.Group>
+					<Command.Group heading="Act" className={group}>
+						<Command.Item
+							className={item}
+							onSelect={() => {
+								props.onClose();
+								props.onCreate();
+							}}
+						>
+							<Plus aria-hidden="true" size={14} /> Create an issue
+						</Command.Item>
+						{plan.ok ? (
+							<Command.Item
+								className={item}
+								onSelect={() => {
+									void run(postStart(endpoint, props.selected));
+									props.onClose();
+								}}
+							>
+								<Play aria-hidden="true" size={14} /> Start {plan.kind}
+							</Command.Item>
+						) : null}
+						{issue === undefined
+							? null
+							: TRIAGE_LABELS.map((label) => (
+									<Command.Item
+										key={label}
+										value={`triage ${label} ${issue.handle ?? ""}`}
+										className={item}
+										onSelect={() => {
+											void run(postTriage(endpoint, issue.id, label));
+											props.onClose();
+										}}
+									>
+										<Tag aria-hidden="true" size={14} /> Triage {issue.handle || issue.id} as {label}
+									</Command.Item>
+								))}
+					</Command.Group>
+				</Command.List>
+			</Command>
+			) : null}
+		</Dialog>
 	);
 }
 
@@ -461,6 +690,8 @@ function Surface({ snapshot }: { snapshot: PageOverview }) {
 	const [types, setTypes] = useState(() => initialFilter(overview.issues).types);
 	const [statuses, setStatuses] = useState(() => initialFilter(overview.issues).statuses);
 	const [labels, setLabels] = useState(() => initialFilter(overview.issues).labels);
+	const [creating, setCreating] = useState(false);
+	const [palette, setPalette] = useState(false);
 	// A re-read can bring a type, status or label the filters have never seen. Add it, so an issue
 	// the operator has just created is not hidden by a filter set that predates it.
 	useEffect(() => {
@@ -469,10 +700,21 @@ function Surface({ snapshot }: { snapshot: PageOverview }) {
 		setStatuses((current) => withNewValues(current, choices.statuses));
 		setLabels((current) => withNewValues(current, choices.labels.map((entry) => entry.value)));
 	}, [overview.issues]);
+	useEffect(() => {
+		const onKey = (event: KeyboardEvent) => {
+			if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+				event.preventDefault();
+				setPalette((open) => !open);
+			}
+		};
+		window.addEventListener("keydown", onKey);
+		return () => window.removeEventListener("keydown", onKey);
+	}, []);
 	const shown = useMemo(
 		() => filterOverview(overview, { types, statuses, labels }),
 		[overview, types, statuses, labels],
 	);
+	const blocked = useMemo(() => blockedIds(overview), [overview]);
 	return (
 		<div className="page">
 			<header className="page-header">
@@ -485,9 +727,20 @@ function Surface({ snapshot }: { snapshot: PageOverview }) {
 						{shown.issues.length} of {overview.issues.length} issues
 					</span>
 				</p>
+				{overview.commentEndpoint ? (
+					<div className="page-actions">
+						<Button onClick={() => setPalette(true)}>
+							<CommandIcon aria-hidden="true" size={14} />
+							Commands <span className="muted">⌘K</span>
+						</Button>
+						<Button onClick={() => setCreating(true)}>
+							<Plus aria-hidden="true" size={14} />
+							New issue
+						</Button>
+					</div>
+				) : null}
 			</header>
 			<LiveBanner overview={overview} />
-			{overview.commentEndpoint ? <CreateForm endpoint={overview.commentEndpoint} /> : null}
 			{overview.commentEndpoint ? (
 				<StartBar endpoint={overview.commentEndpoint} overview={overview} selected={selected} />
 			) : null}
@@ -501,6 +754,7 @@ function Surface({ snapshot }: { snapshot: PageOverview }) {
 				onLabels={setLabels}
 			/>
 			<div id="layout">
+				<IssueList issues={shown.issues} blocked={blocked} selected={selected} onSelect={setSelected} />
 				<Graph
 					overview={shown}
 					selected={selected}
@@ -510,6 +764,20 @@ function Surface({ snapshot }: { snapshot: PageOverview }) {
 				/>
 				<Detail overview={overview} selected={selected} />
 			</div>
+			{overview.commentEndpoint ? (
+				<CreateForm endpoint={overview.commentEndpoint} open={creating} onClose={() => setCreating(false)} />
+			) : null}
+			{overview.commentEndpoint ? (
+				<Palette
+					open={palette}
+					onClose={() => setPalette(false)}
+					overview={overview}
+					selected={selected}
+					onSelect={setSelected}
+					onCreate={() => setCreating(true)}
+				/>
+			) : null}
+			<Toaster richColors closeButton position="bottom-right" />
 		</div>
 	);
 }

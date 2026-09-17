@@ -7,6 +7,8 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
+import { Lightbulb, Link2 } from "lucide-react";
+import { toast } from "sonner";
 import {
 	Background,
 	Controls,
@@ -26,7 +28,7 @@ import {
 import { postEdge } from "../client-edge.ts";
 import { projectGraph, proposeConnect, type ViewNodeData } from "../graph-view.ts";
 import { cn } from "./cn.ts";
-import { Button } from "./kit.tsx";
+import { Button, Popover } from "./kit.tsx";
 import type { Overview } from "../model.ts";
 
 type IssueNode = Node<ViewNodeData, "issue">;
@@ -125,7 +127,9 @@ function GraphCanvas(props: {
 				})
 				.catch((error: unknown) => {
 					setPick(null);
-					setStatus(error instanceof Error ? error.message : String(error));
+					const reason = error instanceof Error ? error.message : String(error);
+					setStatus(reason);
+					toast.error(reason);
 				});
 		},
 		[writeEndpoint, onWritten],
@@ -187,7 +191,7 @@ function GraphCanvas(props: {
 	const writable = writeEndpoint !== null;
 
 	return (
-		<>
+		<div className="relative">
 			<ReactFlow
 				nodes={nodes}
 				edges={edges}
@@ -206,26 +210,30 @@ function GraphCanvas(props: {
 				<Background />
 				<Controls />
 			</ReactFlow>
-			{pick ? (
-				<div className="connect-pick" role="dialog" aria-label="Choose crossing kind">
-					<p>Cross-domain connect cannot be blocks. Pick a crossing kind.</p>
-					<Button type="button" onClick={() => writeEdge("add-edge", pick.from, pick.to, "relates-to")}>
-						relates-to
-					</Button>
-					<Button type="button" onClick={() => writeEdge("add-edge", pick.from, pick.to, "discovered-from")}>
-						discovered-from
-					</Button>
-					<Button type="button" onClick={() => setPick(null)}>
-						Cancel
-					</Button>
-				</div>
-			) : null}
+			{pick === null ? null : (
+				<Popover label="Choose crossing kind" open className="right-4 top-4">
+					<p className="muted">Cross-domain connect cannot be blocks. Pick a crossing kind.</p>
+					<div className="connect-pick-actions">
+						<Button type="button" onClick={() => writeEdge("add-edge", pick.from, pick.to, "relates-to")}>
+							<Link2 aria-hidden="true" size={14} />
+							relates-to
+						</Button>
+						<Button type="button" onClick={() => writeEdge("add-edge", pick.from, pick.to, "discovered-from")}>
+							<Lightbulb aria-hidden="true" size={14} />
+							discovered-from
+						</Button>
+						<Button type="button" onClick={() => setPick(null)}>
+							Cancel
+						</Button>
+					</div>
+				</Popover>
+			)}
 			{status ? (
 				<p className="graph-status" id="graph-status">
 					{status}
 				</p>
 			) : null}
-		</>
+		</div>
 	);
 }
 

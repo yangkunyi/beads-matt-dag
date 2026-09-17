@@ -111,6 +111,23 @@ export function pageOffersCreate(html: string): boolean {
 	return html.includes('id="create-form"');
 }
 
+/** The create dialog's markup is in the served page while it is closed: a portalled dialog would be empty. */
+export function pageCreateStaysInDomWhileClosed(html: string): boolean {
+	const at = html.indexOf('id="create"');
+	if (at < 0) return false;
+	return html.slice(at, at + 200).includes('data-dialog="closed"') && html.includes('id="create-form"');
+}
+
+/** A served page carries the windowed list of what is in the store: the read surface, not the shape. */
+export function pageCarriesList(html: string): boolean {
+	return html.includes('id="issue-list"') && html.includes('class="issue-row ');
+}
+
+/** A served page carries the command palette, closed. */
+export function pageOffersPalette(html: string): boolean {
+	return html.includes('id="palette"');
+}
+
 /** A served page can start a selection; a static snapshot does not. */
 export function pageOffersStart(html: string): boolean {
 	return html.includes('id="start"') && html.includes("Start selection");

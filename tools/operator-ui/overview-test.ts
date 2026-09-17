@@ -45,19 +45,25 @@ import { addComment, parseCommentBody } from "./comment";
 import { projectGraph, proposeConnect } from "./graph-view";
 import {
 	pageCarriesDetail,
+	pageCarriesList,
 	pageCarriesLive,
 	pageCoversThreeDomains,
+	pageCreateStaysInDomWhileClosed,
 	pageGraphIsReactFlow,
 	pageHasFilters,
 	pageIsReactApp,
 	pageClientIsModule,
 	pageOffersCreate,
+	pageOffersPalette,
 	pageOffersRefresh,
 	pageOffersReply,
 	pageOffersStart,
 	renderPage,
 } from "./page";
 import type { RunLaunch } from "./start";
+import { MarkdownBody } from "./ui/markdown";
+import { createElement } from "react";
+import { renderToString } from "react-dom/server";
 import { createOverviewServer, handleOverviewRequest } from "./serve";
 import { fetchStore, type BdRunner, type BdWriteRunner } from "./store";
 
@@ -224,11 +230,37 @@ expect("page has type/status/label filters", pageHasFilters(html));
 expect("static snapshot does not offer a reply endpoint", !pageOffersReply(html));
 expect("static snapshot does not offer a refresh endpoint", !pageOffersRefresh(html));
 expect("static snapshot does not offer create", !pageOffersCreate(html));
+expect("static snapshot does not offer the palette", !pageOffersPalette(html));
 expect("static snapshot does not offer start", !pageOffersStart(html));
 expect("page is a React app with a shadcn-style kit", pageIsReactApp(html));
 expect("client script is type=module so bun's ESM hydrate runs", pageClientIsModule(html));
 expect("graph is React Flow", pageGraphIsReactFlow(html));
 expect("page carries the DAG nodes", html.includes('"id":"a"') && html.includes('"id":"c"'));
+expect("page carries the windowed issue list", pageCarriesList(html));
+expect("the list has a row per issue in the head of the list", html.includes('data-issue="a"') && html.includes('data-issue="c"'));
+expect("a row carries the status word beside its icon", html.includes('aria-label="status open"') && html.includes(">in_progress<"));
+expect("a blocked dependent is marked in the list", html.includes('aria-label="blocked"'));
+
+// Markdown: a comment and a document read as prose, and raw HTML stays text. The detail pane renders
+// only for a selected issue, so this renders the body it uses rather than a whole page.
+const mdHtml = renderToString(createElement(MarkdownBody, { text: "**bold** and <b>raw</b>" }));
+expect("a comment body renders as markdown", mdHtml.includes("<strong>bold</strong>"));
+// React separates adjacent text nodes with an empty comment, so read the text, not the raw HTML.
+const mdText = mdHtml.replaceAll("<!-- -->", "");
+expect(
+	"raw HTML in a body stays text",
+	!mdText.includes("<b>raw</b>") && mdText.includes("&lt;b&gt;raw&lt;/b&gt;"),
+);
+const scriptText = renderToString(createElement(MarkdownBody, { text: "<script>alert(1)</script>" })).replaceAll(
+	"<!-- -->",
+	"",
+);
+expect(
+	"a script tag in a body stays text",
+	scriptText.includes("&lt;script&gt;alert(1)&lt;/script&gt;") && !scriptText.includes("<script>"),
+);
+const docHtml = renderToString(createElement(MarkdownBody, { text: "# the doc\n" }));
+expect("a document body renders as markdown", docHtml.includes("<h1>the doc</h1>"));
 
 const projected = projectGraph(overview);
 expectEqual(
@@ -1147,6 +1179,11 @@ listStdout = "[]";
 const servedHtml = renderPage(overview, { commentEndpoint: "/comment", overviewEndpoint: "/overview" });
 expect("served page offers a reply endpoint", pageOffersReply(servedHtml));
 expect("served page offers a refresh endpoint", pageOffersRefresh(servedHtml));
+expect("served page offers the palette", pageOffersPalette(servedHtml));
+expect(
+	"the create dialog is in the served DOM while it is closed",
+	pageCreateStaysInDomWhileClosed(servedHtml),
+);
 expect("served page offers create", pageOffersCreate(servedHtml));
 expect("create form requires a type", servedHtml.includes('id="create-type"') && servedHtml.includes("Select a type"));
 expect("served page offers start", pageOffersStart(servedHtml));
@@ -1211,6 +1248,45 @@ expect("surface posts triage through the write door", appSrc.includes("postTriag
 expect("surface offers the five triage labels", appSrc.includes("TRIAGE_LABELS"));
 expect("surface can mark wontfix as a label", appSrc.includes("wontfix"));
 expect("surface does not close from triage", !appSrc.includes("bd close") && !appSrc.includes('name="close"'));
+expect(
+	"writes report through one toast path",
+	appSrc.includes("toast.success") && appSrc.includes("toast.error"),
+);
+expect(
+	"the inline status line survives the toast",
+	appSrc.includes('id="triage-status"') && appSrc.includes('id="reply-status"'),
+);
+expect(
+	"the palette is cmdk and posts only the door's intents",
+	appSrc.includes('from "cmdk"') && appSrc.includes("postTriage") && appSrc.includes("postStart"),
+);
+expect(
+	"the palette opens on Cmd or Ctrl K",
+	appSrc.includes("metaKey") && appSrc.includes('event.key.toLowerCase() === "k"'),
+);
+const mdSrc = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "ui", "markdown.tsx"), "utf8");
+const mdImports = mdSrc
+	.split("\n")
+	.filter((line) => line.startsWith("import "))
+	.join("\n");
+expect(
+	"markdown is react-markdown with no raw-HTML plugin",
+	mdImports.includes('from "react-markdown"') &&
+		!mdImports.includes("rehype") &&
+		!mdImports.includes("remark"),
+);
+expect(
+	"the surface imports icons by name so only the used ones can bundle",
+	appSrc.includes('from "lucide-react"') && !appSrc.includes("import * as"),
+);
+expect(
+	"the list is windowed with react-virtual",
+	appSrc.includes('from "@tanstack/react-virtual"') && appSrc.includes("useVirtualizer"),
+);
+const listSrc = appSrc.slice(appSrc.indexOf("function IssueList"), appSrc.indexOf("function Filters"));
+expect("the list exists and only selects: no write goes out from it", listSrc.length > 0 && !listSrc.includes("post"));
+const kitSrc = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "ui", "kit.tsx"), "utf8");
+expect("a dialog closes on Escape", kitSrc.includes("Escape"));
 const familySrc = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "triage-labels.ts"), "utf8");
 expect("gate is on the surface", familySrc.includes("ready-for-agent") && appSrc.includes("TRIAGE_LABELS"));
 expect(
