@@ -8,24 +8,39 @@
  * `measured:`, `reference:`, `covered:`, `reading:`. Missing anything is named as
  * `record incomplete — <what is missing>`; only a complete record closes.
  *
- * The unread marker is the record's `reading:` line plus a `reading:none` label stamped in the same
- * act as the close. Clearing it is one act too: the line takes the operator's words, the label comes
- * off, a comment is appended.
+ * The unread marker is the record's `reading:` line plus the store's `reading` dimension, written
+ * through `bd set-state`. Clearing it is the same verb with a new value: the store has no empty
+ * dimension, and nobody edits the cache label by hand.
  */
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { loadConfig, type PackConfig } from "../../scripts/config.ts";
 import type { IssueNames } from "../../scripts/naming.ts";
-import { commentIssue, preflightStore, removeLabel } from "../../scripts/store.ts";
+import { preflightStore, setIssueState, type Store } from "../../scripts/store.ts";
 
 /** The four closing-line labels. The document's shape and the check are this list. */
 export const RECORD_CLOSING_LABELS = ["measured:", "reference:", "covered:", "reading:"] as const;
 
-/** The store label stamped in the same act as the close: a recorded result nobody has read. */
-export const READING_NONE_LABEL = "reading:none";
+/** The store dimension the unread marker lives on. */
+export const READING_DIMENSION = "reading";
 
-/** The unread marker's value on a freshly closed record. */
+/** The unread value: `set-state reading=none` writes the `reading:none` lookup-cache label. */
+export const READING_UNREAD = "none";
+
+/** The lookup-cache label the store writes for `READING_UNREAD`. The sweep queries this. */
+export const READING_NONE_LABEL = `${READING_DIMENSION}:${READING_UNREAD}`;
+
+/** The unread marker's value on a freshly closed record's document line. */
 export const READING_NONE_YET = "none yet";
+
+/** What one reading write needs besides the value: the act that produced it, and the session. */
+export type ReadingWriteOpts = {
+  /** What act produced this reading, recorded on the event bead. */
+  reason: string;
+  /** The session that wrote it. Unset, the store's own actor default. */
+  actor?: string;
+  config?: PackConfig;
+};
 
 /**
  * The record one ticket owns: `.scratch/<feature>/results/<NN>-<slug>.md`. Derived from the issue's
@@ -110,22 +125,48 @@ function setReadingLine(text: string, reading: string): string {
   return `${body}${line}\n`;
 }
 
+/** Write the `reading` dimension. One store command: the event bead and the cache label. */
+function writeReading(
+  store: Store,
+  target: string,
+  id: string,
+  value: string,
+  opts: { reason: string; actor?: string },
+): void {
+  setIssueState(store, target, id, READING_DIMENSION, value, opts);
+}
+
 /**
- * Clear the unread marker in one act: the record's `reading:` line takes the operator's words, the
- * `reading:none` label comes off, a comment is appended. The sweep (`bd list -t experiment -s closed
- * -l reading:none`) is empty for this ticket afterwards. The record change is a document; committing
- * it is the session's.
+ * Stamp the unread value on a closed record: `bd set-state <id> reading=none --reason …`.
+ *
+ * The completeness close calls this after `closeIssue`. The actor is the experiment run's own identity;
+ * the reason is the act that produced the unread reading (`record closed`).
+ */
+export function stampUnreadReading(
+  store: Store,
+  target: string,
+  id: string,
+  opts: { reason: string; actor: string },
+): void {
+  writeReading(store, target, id, READING_UNREAD, opts);
+}
+
+/**
+ * Clear the unread marker in one act: the record's `reading:` line takes the operator's words, and
+ * `bd set-state` replaces the dimension with that value. The store has no empty dimension, so this is
+ * another write of the same verb, not a label edit. The event bead is the history (ADR-0005); there is
+ * no second comment spelling the same fact. The sweep (`bd list -t experiment -s closed -l reading:none`)
+ * is empty for this ticket afterwards. The record change is a document; committing it is the session's.
  */
 export function clearUnreadMarker(
   target: string,
   id: string,
   recordRel: string,
   reading: string,
-  config?: PackConfig,
+  opts: ReadingWriteOpts,
 ): void {
-  const store = preflightStore(target, config ?? loadConfig(target).config);
+  const store = preflightStore(target, opts.config ?? loadConfig(target).config);
   const path = join(target, recordRel);
   writeFileSync(path, setReadingLine(readFileSync(path, "utf8"), reading));
-  removeLabel(store, target, id, READING_NONE_LABEL);
-  commentIssue(store, target, id, `reading: ${reading}`);
+  writeReading(store, target, id, reading, { reason: opts.reason, actor: opts.actor });
 }

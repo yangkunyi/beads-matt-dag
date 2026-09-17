@@ -346,6 +346,16 @@ export function storeIssue(root: string, id: string): Record<string, any> {
   return shown[0];
 }
 
+/** One state dimension as the store reports it (`bd state --json`). Undefined when never written. */
+export function storeState(root: string, id: string, dimension: string): string | undefined {
+  const parsed: unknown = JSON.parse(bd(root, "state", id, dimension, "--json"));
+  if (typeof parsed !== "object" || parsed === null) {
+    throw new Error(`store state ${id} ${dimension}: unexpected shape`);
+  }
+  const value = (parsed as { value?: unknown }).value;
+  return typeof value === "string" && value !== "" ? value : undefined;
+}
+
 /** The comments the store holds for one issue, in the store's own order. */
 export function storeComments(root: string, id: string): { text: string; author: string }[] {
   return JSON.parse(bd(root, "comments", id, "--json"));

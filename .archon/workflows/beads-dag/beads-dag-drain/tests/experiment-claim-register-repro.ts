@@ -28,6 +28,7 @@ import {
   runScript,
   storeComments,
   storeIssue,
+  storeState,
   withTarget,
   writeStoreConfig,
   writeStubDvc,
@@ -65,7 +66,7 @@ try {
 
     const issue = storeIssue(root, ticket.id);
     expectEqual("the ticket is closed: the record was complete", issue.status, "closed");
-    expect("carrying the unread marker", issue.labels.includes("reading:none"), issue.labels);
+    expectEqual("carrying the unread reading", storeState(root, ticket.id, "reading"), "none");
 
     // The registration is in the run's artifacts, and it reserved the ticket's own name.
     const registrationFile = join(artifacts, "experiments", "01-pilot.json");

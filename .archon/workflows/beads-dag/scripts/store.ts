@@ -330,29 +330,76 @@ export function pushStore(store: Store, target: string): void {
  * branch that landed, so a reader of the store can see what the closure means without asking git. The
  * restriction is ADR-0004: closing an issue releases whatever waits on it, so a closure that could mean
  * anything else would release work against a dependency that was not delivered. An experiment's close
- * is a different write (`closeIssueWithLabel`): `closed` there means the record is complete, and the
- * unread marker has to land in the same command.
+ * is a different write (`closeRecordedIssue`): `closed` there means the record is complete, and the
+ * unread reading is a separate dimension write (`setIssueState`).
  */
 export function closeIssue(store: Store, target: string, id: string, reason: string): void {
   runStore(store, target, ["close", id, "--reason", reason]);
 }
 
 /**
- * Close an issue and stamp one label **in the same store command** - one transaction, one act.
+ * Close an experiment ticket: the record is complete (ADR-0006).
  *
- * The experiment executor's landing is this write: the record is complete, so the ticket goes to
- * `closed`, and the unread marker that says nobody has read it arrives at the same moment. `bd close`
- * has no label flag, so this is an `update` of status and label together - the same reason the inquiry
- * landing is `openIssueWithLabel` rather than two writes that could disagree.
+ * Not the drain's close (`closeIssue`): that one means merged. The unread reading is a separate
+ * `setIssueState` write, not a label bundled into this command.
  */
-export function closeIssueWithLabel(store: Store, target: string, id: string, label: string): void {
-  runStore(store, target, ["update", id, "-s", "closed", "--add-label", label]);
+export function closeRecordedIssue(store: Store, target: string, id: string): void {
+  runStore(store, target, ["update", id, "-s", "closed"]);
 }
 
-/** Take one label off an issue. The session's clearing of an unread result is this write, paired with
- * the record's `reading:` line changing in the same act (`clearUnreadMarker`). */
-export function removeLabel(store: Store, target: string, id: string, label: string): void {
-  runStore(store, target, ["update", id, "--remove-label", label]);
+/** Options for one dimension write: the reason is required, the actor is the session's when known. */
+export type IssueStateOpts = {
+  /** What act produced this value, recorded on the event bead. */
+  reason: string;
+  /** The session that wrote it. Unset, the store's own actor default (`$BEADS_ACTOR`, git, `$USER`). */
+  actor?: string;
+};
+
+/**
+ * Write one value of one state dimension: `bd set-state <id> <dimension>=<value> --reason …`.
+ *
+ * The store owns the family. It writes an event bead as the source of truth, removes the dimension's
+ * previous label, and adds `<dimension>:<value>` as a lookup cache — one value, replaced rather than
+ * accumulated. Callers do not add or remove those labels themselves, and they do not parse them back;
+ * `issueState` is the read. Both the event and the cache label live in the store (ADR-0005): no
+ * non-store copy of the fact appears.
+ *
+ * The store has no empty dimension (`dimension=` is refused), so clearing a value is another write of
+ * this same verb, not a label edit.
+ */
+export function setIssueState(
+  store: Store,
+  target: string,
+  id: string,
+  dimension: string,
+  value: string,
+  opts: IssueStateOpts,
+): void {
+  if (value === "") {
+    throw new Error(
+      `cannot set ${dimension} to empty: the store has no empty dimension, so a clear is another value of this same verb`,
+    );
+  }
+  const args = ["set-state", id, `${dimension}=${value}`, "--reason", opts.reason];
+  if (opts.actor !== undefined && opts.actor !== "") args.push("--actor", opts.actor);
+  runStore(store, target, args);
+}
+
+/**
+ * The current value of one state dimension, as `bd state <id> <dimension> --json` answers it.
+ *
+ * Undefined when the dimension has never been written. Callers read the value here rather than by
+ * parsing `<dimension>:<value>` off the issue's labels; the label is the store's lookup cache, not
+ * this pack's spelling of the family.
+ */
+export function issueState(store: Store, target: string, id: string, dimension: string): string | undefined {
+  const command = `state ${id} ${dimension} --json`;
+  const parsed = parseJSON(command, runStore(store, target, ["state", id, dimension, "--json"]));
+  if (typeof parsed !== "object" || parsed === null) {
+    throw new Error(`${command} answered with something that is not a state: ${JSON.stringify(parsed)}`);
+  }
+  const value = (parsed as { value?: unknown }).value;
+  return typeof value === "string" && value !== "" ? value : undefined;
 }
 
 /** One comment the store holds, as this module reads it back. */

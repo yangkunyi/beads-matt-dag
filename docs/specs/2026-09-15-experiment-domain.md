@@ -38,8 +38,9 @@ An experiment ticket is a **plan for producing a fact**, and the plan is what ma
 
 Writing the script, running it, collecting the numbers and writing the record may all run **AFK**. The
 operator appears twice: agreeing the plan, and — later, optionally — saying what the result means. The
-executor writes the store for this domain: the close, the `reading:none` label and the comment are one
-act once the record is complete. The git documents are the AFK leg's.
+executor writes the store for this domain: the close, then `bd set-state <id> reading=none` for the unread
+marker — the event bead is the source of truth and `reading:none` is the lookup cache (ADR-0005: both in
+the store, so no non-store copy of the fact appears). The git documents are the AFK leg's.
 
 A **thin target-side script** does the two things that cannot be reconstructed afterwards:
 
@@ -128,8 +129,10 @@ A recorded result nobody has read blocks nothing — no chain waits on it, and t
 does not exist until the operator wants it — so nothing acts on it. It is made *visible*, and the fact
 lives in one place, the store:
 
-- the marker is the record's `reading:` line **plus a `reading:none` label stamped in the same act as the
-  close** — the rule an idea's state label already follows. That turns a document line into a query:
+- the marker is the record's `reading:` line **plus the store's `reading` dimension**, written with the
+  completeness close as `bd set-state <id> reading=none --reason "record closed"`. The event bead is the
+  source of truth and `reading:none` is the lookup cache (ADR-0005: both in the store). Read the value
+  with `bd state <id> reading`, never by parsing the label. That turns a document line into a query:
 
   ```bash
   bd list -t experiment -s closed -l reading:none
@@ -139,9 +142,10 @@ lives in one place, the store:
   list: a second copy is a second thing that can be wrong.
 
 **Clearing it is one act**: the `reading:` line takes the operator's words and names whatever the result
-spawned; the label comes off (`bd label remove <id> reading:none`); a comment is appended. **Unread is not
-a debt** — a result the operator decides not to read is written down as such (`reading: declined — <why>`)
-and clears exactly the same way. There is no timer and nothing is ever overdue.
+spawned, and the same verb replaces the dimension (`bd set-state <id> reading=<value> --reason "<the act>"`).
+The store has no empty dimension, so a clear is another value, not a label edit. The actor is the session's
+own. **Unread is not a debt** — a result the operator decides not to read is written down as such
+(`reading: declined — <why>`) and clears exactly the same way. There is no timer and nothing is ever overdue.
 
 The reading is also where the handoff happens: if the result justifies work, the operator says so, the
 session creates the ticket in the other domain, adds `discovered-from` from the new ticket to the
