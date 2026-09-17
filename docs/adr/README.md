@@ -10,6 +10,7 @@
 | [0006](0006-closure-is-per-domain.md) | Closure is per domain | accepted |
 | [0007](0007-operator-surface-is-a-view.md) | Operator surface is a view; executors stay per domain | accepted |
 | [0008](0008-operator-may-delete.md) | Operator may delete an issue; that is not close | accepted |
+| [0009](0009-neighbours-we-do-not-adopt.md) | The neighbours of ours we do not adopt | accepted |
 
 Design record: `docs/specs/2026-09-11-beads-issue-tracker-consensus.md` (§10 settles the flow).
 
