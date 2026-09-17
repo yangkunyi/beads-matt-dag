@@ -66,7 +66,7 @@ ${FLOW_CSS}</style>
 <body>
 <div id="root" data-app="react" data-kit="shadcn">${app}</div>
 <script type="application/json" id="overview">${json}</script>
-<script>${clientScript()}</script>
+<script type="module">${clientScript()}</script>
 </body>
 </html>
 `;
@@ -118,6 +118,11 @@ export function pageCarriesLive(html: string, live: LiveRun): boolean {
 
 export function pageIsReactApp(html: string): boolean {
 	return html.includes('data-app="react"') && html.includes('data-kit="shadcn"');
+}
+
+/** bun build emits ESM; a classic script would SyntaxError on import/export. */
+export function pageClientIsModule(html: string): boolean {
+	return html.includes('<script type="module">');
 }
 
 export function pageGraphIsReactFlow(html: string): boolean {

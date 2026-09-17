@@ -45,6 +45,7 @@ import {
 	pageGraphIsReactFlow,
 	pageHasFilters,
 	pageIsReactApp,
+	pageClientIsModule,
 	pageOffersReply,
 	pageOffersStart,
 	renderPage,
@@ -216,6 +217,7 @@ expect("page has type/status/label filters", pageHasFilters(html));
 expect("static snapshot does not offer a reply endpoint", !pageOffersReply(html));
 expect("static snapshot does not offer start", !pageOffersStart(html));
 expect("page is a React app with a shadcn-style kit", pageIsReactApp(html));
+expect("client script is type=module so bun's ESM hydrate runs", pageClientIsModule(html));
 expect("graph is React Flow", pageGraphIsReactFlow(html));
 expect("page carries the DAG nodes", html.includes('"id":"a"') && html.includes('"id":"c"'));
 
