@@ -3,8 +3,8 @@
  * the DAG, the three filters, live overlay, and a click-for-detail panel.
  *
  * All data is embedded. A static snapshot has no socket — a browser talking to that file is looking
- * at what `bd` already answered. A served page posts a tagged comment intent through the write door
- * as `bd comment`; Beads stays the only comment store. Coordinates stay in the view.
+ * at what `bd` already answered. A served page posts tagged comment and create intents through the
+ * write door; Beads stays the only comment store. Coordinates stay in the view.
  */
 
 import { spawnSync } from "node:child_process";
@@ -90,6 +90,11 @@ export function pageHasFilters(html: string): boolean {
 /** A served page posts replies; a static snapshot does not. */
 export function pageOffersReply(html: string): boolean {
 	return html.includes('"commentEndpoint":"/comment"');
+}
+
+/** A served page offers create; a static snapshot does not. */
+export function pageOffersCreate(html: string): boolean {
+	return html.includes('id="create-form"');
 }
 
 /** The page still names all three domains even when a live run of one kind is overlaid. */

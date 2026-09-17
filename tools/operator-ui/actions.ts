@@ -2,12 +2,14 @@
  * The operator surface's one write door.
  *
  * A tagged intent goes in; a store write comes out, or a refusal and nothing is written.
- * Comment is `bd comment` on the selected issue. Close, `reading:`, and unknown intents are
- * refused. `bd human respond` is not used. Close, `reading:`, and domain label acts stay the
- * session's (ADR-0006).
+ * Comment is `bd comment` on the selected issue. Create requires a type (the domain), lands
+ * as `needs-triage` without the gate, and writes a body of handle and prose. Close,
+ * `reading:`, and unknown intents are refused. `bd human respond` is not used. Close,
+ * `reading:`, and domain label acts stay the session's (ADR-0006).
  */
 
 import { addComment, parseCommentBody } from "./comment";
+import { createIssue, parseCreateBody } from "./create";
 import type { BdWriteRunner } from "./store";
 
 /** Client-side refusal: the store is not written. */
@@ -58,34 +60,60 @@ function refuseClosedOrReading(record: Record<string, unknown>): void {
 	}
 }
 
+const KNOWN_INTENTS = new Set(["comment", "create"]);
+
 function refuseUnknownIntent(record: Record<string, unknown>): void {
-	if (typeof record.intent !== "string" || record.intent.trim() !== "comment") {
+	if (typeof record.intent !== "string" || !KNOWN_INTENTS.has(record.intent.trim())) {
 		throw new OperatorActionRefused("unknown intent");
 	}
 }
 
+export type OperatorActionOptions = {
+	/** Target root. Create writes the body file here. */
+	dir?: string;
+};
+
+function asClientRefusal(error: unknown): never {
+	if (error instanceof OperatorActionRefused) throw error;
+	const message = error instanceof Error ? error.message : String(error);
+	if (
+		message.startsWith("comment needs") ||
+		message.startsWith("create needs") ||
+		message.includes("not JSON") ||
+		message.includes("not an object")
+	) {
+		throw new OperatorActionRefused(message);
+	}
+	throw error;
+}
+
 /**
- * Apply one tagged write. The only accepted intent today is `comment`, and that write is
- * `bd comment`. Anything carrying `closed`, `reading:`, or an unknown intent is refused and
- * the store is not written.
+ * Apply one tagged write. Accepted intents are `comment` (`bd comment`) and `create`
+ * (body plus `bd create`). Anything carrying `closed`, `reading:`, or an unknown intent
+ * is refused and the store is not written.
  */
-export function applyOperatorAction(bd: BdWriteRunner, raw: string): void {
+export function applyOperatorAction(
+	bd: BdWriteRunner,
+	raw: string,
+	options: OperatorActionOptions = {},
+): void {
 	const record = asObject(raw);
 	refuseClosedOrReading(record);
 	refuseUnknownIntent(record);
+	const intent = typeof record.intent === "string" ? record.intent.trim() : "";
 	try {
+		if (intent === "create") {
+			const input = parseCreateBody(raw);
+			const dir = options.dir;
+			if (dir === undefined || dir === "") {
+				throw new OperatorActionRefused("create needs a target");
+			}
+			createIssue(bd, input, dir);
+			return;
+		}
 		const comment = parseCommentBody(raw);
 		addComment(bd, comment.id, comment.text);
 	} catch (error) {
-		if (error instanceof OperatorActionRefused) throw error;
-		const message = error instanceof Error ? error.message : String(error);
-		if (
-			message.startsWith("comment needs") ||
-			message.includes("not JSON") ||
-			message.includes("not an object")
-		) {
-			throw new OperatorActionRefused(message);
-		}
-		throw error;
+		asClientRefusal(error);
 	}
 }

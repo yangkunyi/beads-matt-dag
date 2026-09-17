@@ -1,13 +1,14 @@
 #!/usr/bin/env bun
 /**
- * Serve the Target's beads graph as a React page so an operator reply can land as `bd comment`.
+ * Serve the Target's beads graph as a React page so an operator can comment or create without a session.
  *
  *   bun tools/operator-ui/serve.ts [--dir <target>] [--store <bd>] [--archon <bin>] [--port <n>] [--host <addr>]
  *
  * The graph is `bd list` / `bd show`, never `.beads/issues.jsonl`. The page is a React app with a
  * shadcn-style kit; React Flow projects the store and does not write an edge on connect. Writes go
- * through one tagged door: a comment is `bd comment` on the selected issue; `closed`, `reading:`,
- * and unknown intents are refused. Close, `reading:`, and domain labels stay the session's.
+ * through one tagged door: a comment is `bd comment`; create requires a type (the domain) and lands
+ * as `needs-triage` without the gate. `closed`, `reading:`, and unknown intents are refused. Close,
+ * `reading:`, and domain labels stay the session's.
  */
 
 import http from "node:http";
@@ -29,8 +30,10 @@ const USAGE = `usage: bun tools/operator-ui/serve.ts [--dir <target>] [--store <
   --host <addr>     listen address (default: 127.0.0.1)
 
 The graph is read via bd, not the jsonl export. Writes go through one tagged door. An operator
-reply is bd comment on the selected issue. closed, reading:, and unknown intents are refused.
-Close, reading:, and domain labels stay the session's. Beads is the only comment store.`;
+reply is bd comment on the selected issue. Create requires a type (the domain), writes a body of
+handle and prose, and lands as needs-triage without the gate. closed, reading:, and unknown
+intents are refused. Close, reading:, and domain labels stay the session's. Beads is the only
+comment store.`;
 
 class UsageError extends Error {}
 
@@ -67,6 +70,8 @@ function unknownFlags(argv: string[], known: string[]): string[] {
 export type OverviewHandler = {
 	write: BdWriteRunner;
 	page: () => string;
+	/** Target root. Create writes the body file here. */
+	dir?: string;
 };
 
 export type OverviewResponse = {
@@ -77,7 +82,8 @@ export type OverviewResponse = {
 
 /**
  * One request: GET / is the page, POST /comment is the tagged write door. A comment intent is
- * `bd comment`. `closed`, `reading:`, and unknown intents are refused and do not write.
+ * `bd comment`. A create intent writes the body and `bd create`. `closed`, `reading:`, and
+ * unknown intents are refused and do not write.
  */
 export async function handleOverviewRequest(
 	req: { method?: string; url?: string },
@@ -95,7 +101,7 @@ export async function handleOverviewRequest(
 	}
 	if (method === "POST" && path === "/comment") {
 		try {
-			applyOperatorAction(handler.write, body);
+			applyOperatorAction(handler.write, body, { dir: handler.dir });
 			return { status: 204, headers: {}, body: "" };
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
@@ -133,6 +139,7 @@ function buildPage(dir: string, store: string, archon?: string): string {
 export function createOverviewServer(options: ServeOptions): http.Server {
 	const write = options.write ?? makeWriteRunner(options.store, options.dir);
 	const page = options.page ?? (() => buildPage(options.dir, options.store, options.archon));
+	const dir = options.dir;
 	return http.createServer((req, res) => {
 		const chunks: Buffer[] = [];
 		req.on("data", (chunk: Buffer | string) => {
@@ -140,7 +147,7 @@ export function createOverviewServer(options: ServeOptions): http.Server {
 		});
 		req.on("end", () => {
 			const raw = Buffer.concat(chunks).toString("utf8");
-			void handleOverviewRequest({ method: req.method, url: req.url }, raw, { write, page }).then((out) => {
+			void handleOverviewRequest({ method: req.method, url: req.url }, raw, { write, page, dir }).then((out) => {
 				res.writeHead(out.status, out.headers);
 				res.end(out.body);
 			});

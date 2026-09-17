@@ -4,7 +4,14 @@
  * Textarea so the operator page is not a pile of unstyled HTML.
  */
 
-import type { ButtonHTMLAttributes, HTMLAttributes, LabelHTMLAttributes, TextareaHTMLAttributes } from "react";
+import type {
+	ButtonHTMLAttributes,
+	HTMLAttributes,
+	InputHTMLAttributes,
+	LabelHTMLAttributes,
+	SelectHTMLAttributes,
+	TextareaHTMLAttributes,
+} from "react";
 import { cn } from "./cn.ts";
 
 export function Button({ className, type = "button", ...props }: ButtonHTMLAttributes<HTMLButtonElement>) {
@@ -25,4 +32,12 @@ export function Label({ className, ...props }: LabelHTMLAttributes<HTMLLabelElem
 
 export function Textarea({ className, ...props }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
 	return <textarea className={cn("textarea", className)} {...props} />;
+}
+
+export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
+	return <input className={cn("input", className)} {...props} />;
+}
+
+export function Select({ className, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
+	return <select className={cn("select", className)} {...props} />;
 }
