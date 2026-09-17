@@ -3,9 +3,10 @@
  * the DAG, the three filters, live overlay, and a click-for-detail panel.
  *
  * All data is embedded. A static snapshot has no socket — a browser talking to that file is looking
- * at what `bd` already answered. A served page posts tagged intents through the write door as
- * `bd comment` and store deps; Beads stays the only graph and the only comment store. Coordinates
- * stay in the view. A refused connect does not land on the canvas.
+ * at what `bd` already answered. A served page posts tagged intents through the write door: a
+ * comment as `bd comment`, store deps, or one of the five triage labels replacing the rest of the
+ * family. Beads stays the only graph and the only comment store. Coordinates stay in the view. A
+ * refused connect does not land on the canvas.
  */
 
 import { spawnSync } from "node:child_process";
@@ -42,7 +43,7 @@ function clientScript(): string {
 }
 
 export type RenderPageOptions = {
-	/** When set, the detail panel posts a tagged comment intent here as `bd comment`. Absent on a static snapshot. */
+	/** When set, the detail panel posts tagged comment and triage intents here. Absent on a static snapshot. */
 	commentEndpoint?: string;
 };
 

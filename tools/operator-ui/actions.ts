@@ -5,14 +5,16 @@
  * Comment is `bd comment` on the selected issue. Intra-domain `blocks` is `bd dep add` /
  * `bd dep remove`. Crossing `relates-to` is `bd dep relate` / `bd dep unrelate`. Crossing
  * `discovered-from` is `bd dep add --type discovered-from` / `bd dep remove`. Cross-domain
- * `blocks` and `parent-child` are refused. Close, `reading:`, and unknown intents are refused.
- * `bd human respond` is not used. Close, `reading:`, and domain label acts stay the session's
- * (ADR-0006).
+ * `blocks` and `parent-child` are refused. Triage moves one of the five labels, replacing the
+ * rest of the family; `wontfix` is a label, not a close. Close, `reading:`, non-triage labels,
+ * and unknown intents are refused. `bd human respond` is not used. Close, `reading:`, and other
+ * domain label acts stay the session's (ADR-0006).
  */
 
 import { addComment, parseCommentBody } from "./comment";
 import { domainOf } from "./model";
 import type { BdWriteRunner } from "./store";
+import { applyTriage, isTriageLabel, parseTriageBody } from "./triage";
 
 /** Client-side refusal: the store is not written. */
 export class OperatorActionRefused extends Error {
@@ -23,7 +25,7 @@ export class OperatorActionRefused extends Error {
 }
 
 const ISSUE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/;
-const ACCEPTED_INTENTS = new Set(["comment", "add-edge", "remove-edge"]);
+const ACCEPTED_INTENTS = new Set(["comment", "add-edge", "remove-edge", "triage"]);
 const EDGE_KINDS = new Set(["blocks", "relates-to", "discovered-from"]);
 
 export type OperatorIssue = {
@@ -53,6 +55,10 @@ function isClosedToken(value: string): boolean {
 	return value === "close" || value === "closed";
 }
 
+function isIdeaToken(value: string): boolean {
+	return value === "idea" || value.startsWith("idea:");
+}
+
 function refuseClosedOrReading(record: Record<string, unknown>): void {
 	for (const key of Object.keys(record)) {
 		if (isClosedToken(key)) throw new OperatorActionRefused("closed is refused");
@@ -63,6 +69,10 @@ function refuseClosedOrReading(record: Record<string, unknown>): void {
 		if (isReadingToken(record.intent)) throw new OperatorActionRefused("reading: is refused");
 	}
 	if (record.status === "closed") throw new OperatorActionRefused("closed is refused");
+	if (typeof record.label === "string") {
+		if (isClosedToken(record.label)) throw new OperatorActionRefused("closed is refused");
+		if (isReadingToken(record.label)) throw new OperatorActionRefused("reading: is refused");
+	}
 	const labels = record.labels;
 	if (!Array.isArray(labels)) return;
 	for (const label of labels) {
@@ -72,8 +82,30 @@ function refuseClosedOrReading(record: Record<string, unknown>): void {
 	}
 }
 
-function refuseUnknownIntent(record: Record<string, unknown>): void {
-	if (typeof record.intent !== "string" || !ACCEPTED_INTENTS.has(record.intent.trim())) {
+function refuseNonTriageLabelWrite(record: Record<string, unknown>): void {
+	for (const key of Object.keys(record)) {
+		if (isIdeaToken(key)) throw new OperatorActionRefused("non-triage label");
+	}
+	if (typeof record.label === "string" && !isTriageLabel(record.label)) {
+		throw new OperatorActionRefused("non-triage label");
+	}
+	const labels = record.labels;
+	if (!Array.isArray(labels)) return;
+	for (const label of labels) {
+		if (typeof label !== "string") continue;
+		if (!isTriageLabel(label)) throw new OperatorActionRefused("non-triage label");
+	}
+}
+
+function intentOf(record: Record<string, unknown>): string {
+	if (typeof record.intent !== "string") {
+		throw new OperatorActionRefused("unknown intent");
+	}
+	return record.intent.trim();
+}
+
+function refuseUnknownIntent(intent: string): void {
+	if (!ACCEPTED_INTENTS.has(intent)) {
 		throw new OperatorActionRefused("unknown intent");
 	}
 }
@@ -178,10 +210,24 @@ function applyRemoveEdge(
 	bd(["dep", "remove", to, from]);
 }
 
+function asRefused(error: unknown, prefixes: string[]): never {
+	if (error instanceof OperatorActionRefused) throw error;
+	const message = error instanceof Error ? error.message : String(error);
+	if (
+		prefixes.some((prefix) => message.startsWith(prefix)) ||
+		message.includes("not JSON") ||
+		message.includes("not an object") ||
+		message === "non-triage label"
+	) {
+		throw new OperatorActionRefused(message);
+	}
+	throw error;
+}
+
 /**
- * Apply one tagged write. Accepted intents: `comment`, `add-edge`, `remove-edge`. Anything
- * carrying `closed`, `reading:`, or an unknown intent is refused and the store is not written.
- * Cross-domain `blocks` and `parent-child` are refused the same way.
+ * Apply one tagged write. Accepted intents: `comment`, `triage`, `add-edge`, `remove-edge`.
+ * Anything carrying `closed`, `reading:`, a non-triage label, or an unknown intent is refused
+ * and the store is not written. Cross-domain `blocks` and `parent-child` are refused the same way.
  */
 export function applyOperatorAction(
 	bd: BdWriteRunner,
@@ -190,8 +236,9 @@ export function applyOperatorAction(
 ): void {
 	const record = asObject(raw);
 	refuseClosedOrReading(record);
-	refuseUnknownIntent(record);
-	const intent = typeof record.intent === "string" ? record.intent.trim() : "";
+	refuseNonTriageLabelWrite(record);
+	const intent = intentOf(record);
+	refuseUnknownIntent(intent);
 	if (intent === "add-edge") {
 		applyAddEdge(bd, record, resolveIssues(issues));
 		return;
@@ -200,19 +247,19 @@ export function applyOperatorAction(
 		applyRemoveEdge(bd, record, resolveIssues(issues));
 		return;
 	}
-	try {
-		const comment = parseCommentBody(raw);
-		addComment(bd, comment.id, comment.text);
-	} catch (error) {
-		if (error instanceof OperatorActionRefused) throw error;
-		const message = error instanceof Error ? error.message : String(error);
-		if (
-			message.startsWith("comment needs") ||
-			message.includes("not JSON") ||
-			message.includes("not an object")
-		) {
-			throw new OperatorActionRefused(message);
+	if (intent === "comment") {
+		try {
+			const comment = parseCommentBody(raw);
+			addComment(bd, comment.id, comment.text);
+		} catch (error) {
+			asRefused(error, ["comment needs"]);
 		}
-		throw error;
+		return;
+	}
+	try {
+		const triage = parseTriageBody(raw);
+		applyTriage(bd, triage.id, triage.label);
+	} catch (error) {
+		asRefused(error, ["triage needs"]);
 	}
 }

@@ -7,8 +7,9 @@
  * The graph is `bd list` / `bd show`, never `.beads/issues.jsonl`. The page is a React app with a
  * shadcn-style kit; React Flow projects the store. Writes go through one tagged door: a comment is
  * `bd comment`; same-domain `blocks` and crossing `relates-to` / `discovered-from` are store deps;
- * `closed`, `reading:`, unknown intents, cross-domain `blocks`, and `parent-child` are refused.
- * Close, `reading:`, and domain labels stay the session's.
+ * triage moves one of the five labels, replacing the rest of the family; `closed`, `reading:`,
+ * non-triage labels, unknown intents, cross-domain `blocks`, and `parent-child` are refused.
+ * `wontfix` is a label, not a close. Close, `reading:`, and other domain labels stay the session's.
  */
 
 import http from "node:http";
@@ -31,9 +32,10 @@ const USAGE = `usage: bun tools/operator-ui/serve.ts [--dir <target>] [--store <
 
 The graph is read via bd, not the jsonl export. Writes go through one tagged door. An operator
 reply is bd comment on the selected issue. Same-domain blocks and crossing relates-to /
-discovered-from are store deps. closed, reading:, unknown intents, cross-domain blocks, and
-parent-child are refused. Close, reading:, and domain labels stay the session's. Beads is the
-only graph and the only comment store.`;
+discovered-from are store deps. Triage moves one of the five labels, replacing the rest of the
+family. wontfix is a label, not a close. closed, reading:, non-triage labels, unknown intents,
+cross-domain blocks, and parent-child are refused. Close, reading:, and other domain labels stay
+the session's. Beads is the only graph and the only comment store.`;
 
 class UsageError extends Error {}
 
@@ -81,8 +83,9 @@ export type OverviewResponse = {
 
 /**
  * One request: GET / is the page, POST /comment is the tagged write door. A comment intent is
- * `bd comment`. Edge intents are store deps. `closed`, `reading:`, unknown intents, cross-domain
- * `blocks`, and `parent-child` are refused and do not write.
+ * `bd comment`. Edge intents are store deps. A triage intent moves one of the five labels,
+ * replacing the rest of the family. `closed`, `reading:`, non-triage labels, unknown intents,
+ * cross-domain `blocks`, and `parent-child` are refused and do not write.
  */
 export async function handleOverviewRequest(
 	req: { method?: string; url?: string },

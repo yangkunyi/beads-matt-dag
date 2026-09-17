@@ -248,6 +248,15 @@ html, body {
 #detail article { margin-bottom: 10px; }
 #detail article header { color: hsl(var(--muted-foreground)); font-size: 12px; }
 #reply-form .btn { margin-top: 8px; }
+.triage-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0;
+}
+.triage-actions .btn[aria-pressed="true"] {
+  box-shadow: 0 0 0 2px hsl(var(--ring));
+}
 
 .sr-only {
   position: absolute;

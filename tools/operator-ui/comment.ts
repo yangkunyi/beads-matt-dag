@@ -2,8 +2,8 @@
  * An operator reply is `bd comment` on the selected issue. Beads is the only comment store.
  *
  * This module writes the comment. The tagged write door (`actions.ts`) refuses `closed`,
- * `reading:`, and unknown intents before anything here runs. Close, `reading:`, and domain
- * labels are the session's, not this write.
+ * `reading:`, non-triage labels, and unknown intents before anything here runs. Close,
+ * `reading:`, and other domain labels are the session's, not this write.
  */
 
 import type { BdWriteRunner } from "./store";
