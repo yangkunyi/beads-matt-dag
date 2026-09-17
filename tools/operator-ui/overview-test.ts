@@ -5,7 +5,9 @@
  * overlays from the run lock, Archon status, artefacts and attempted — not a pack publish API;
  * an operator reply is `bd comment` on the selected issue, never `bd human respond`; the one
  * tagged write door refuses `closed`, `reading:`, and unknown intents without writing; close /
- * `reading:` / labels stay the session's.
+ * `reading:` / labels stay the session's; the page is a React app with a shadcn-style kit; the
+ * graph is React Flow projecting the store and does not write an edge on connect; coordinates
+ * stay in the view.
  *
  *   bun tools/operator-ui/overview-test.ts
  */
@@ -27,8 +29,19 @@ import {
 } from "./model";
 import { fetchLive, gitDirOf, RUN_LOCK_NAME } from "./overlay";
 import { applyOperatorAction, OperatorActionRefused } from "./actions";
+import { commentWriteBody } from "./client-comment";
 import { addComment, parseCommentBody } from "./comment";
-import { pageCarriesDetail, pageCarriesLive, pageCoversThreeDomains, pageHasFilters, pageOffersReply, renderPage } from "./page";
+import { projectGraph, writeForConnect } from "./graph-view";
+import {
+	pageCarriesDetail,
+	pageCarriesLive,
+	pageCoversThreeDomains,
+	pageGraphIsReactFlow,
+	pageHasFilters,
+	pageIsReactApp,
+	pageOffersReply,
+	renderPage,
+} from "./page";
 import { createOverviewServer, handleOverviewRequest } from "./serve";
 import { fetchStore, type BdRunner, type BdWriteRunner } from "./store";
 
@@ -193,7 +206,32 @@ expectEqual(
 const html = renderPage(overview);
 expect("page has type/status/label filters", pageHasFilters(html));
 expect("static snapshot does not offer a reply endpoint", !pageOffersReply(html));
+expect("page is a React app with a shadcn-style kit", pageIsReactApp(html));
+expect("graph is React Flow", pageGraphIsReactFlow(html));
 expect("page carries the DAG nodes", html.includes('"id":"a"') && html.includes('"id":"c"'));
+
+const projected = projectGraph(overview);
+expectEqual(
+	"React Flow nodes are the store issues",
+	projected.nodes.map((node) => node.id),
+	["a", "b", "c"],
+);
+expect(
+	"blocks edge is projected, not invented",
+	projected.edges.some((edge) => edge.source === "a" && edge.target === "c" && edge.relation === "blocks"),
+);
+expect(
+	"every node has a view position",
+	projected.nodes.every((node) => Number.isFinite(node.position.x) && Number.isFinite(node.position.y)),
+);
+expect(
+	"store issues do not carry coordinates",
+	overview.issues.every((item) => !("position" in item) && !("x" in item) && !("y" in item)),
+);
+const nodeA = projected.nodes.find((node) => node.id === "a");
+const nodeC = projected.nodes.find((node) => node.id === "c");
+expect("blocker sits to the left of its dependent", Boolean(nodeA && nodeC && nodeA.position.x < nodeC.position.x));
+expectEqual("connecting two issues does not write an edge", writeForConnect("a", "c"), null);
 const selected = issueDetail(overview, "c");
 expect("selected issue is in the model", selected !== undefined);
 if (selected) {
@@ -627,6 +665,11 @@ expect("unknown intent names unknown", unknownIntent.message.includes("unknown i
 expectEqual("unknown intent does not write", writes, []);
 
 writes.length = 0;
+const connectIntent = refusedAction(JSON.stringify({ intent: "connect", from: "a", to: "c" }));
+expect("connect intent is refused", connectIntent.refused);
+expectEqual("connect intent does not write", writes, []);
+
+writes.length = 0;
 const missingIntent = refusedAction(JSON.stringify({ id: "from-bd", text: "leave this" }));
 expect("missing intent is refused", missingIntent.refused);
 expectEqual("missing intent does not write", writes, []);
@@ -660,7 +703,18 @@ expect(
 		!servedHtml.includes('name="labels"') &&
 		!servedHtml.includes("bd human"),
 );
-expect("served page posts a tagged comment intent", servedHtml.includes('JSON.stringify({ intent: "comment", id: issue.id, text: text })'));
+expectEqual(
+	"comment write body is the tagged intent",
+	commentWriteBody("from-bd", "leave this"),
+	JSON.stringify({ intent: "comment", id: "from-bd", text: "leave this" }),
+);
+expect("served page offers the comment door", pageOffersReply(servedHtml));
+const graphSrc = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "ui", "Graph.tsx"), "utf8");
+expect("graph uses React Flow", graphSrc.includes("@xyflow/react"));
+expect(
+	"graph connect does not fetch or write",
+	!graphSrc.includes("fetch(") && graphSrc.includes("writeForConnect"),
+);
 
 const doorWrites: { args: string[]; stdin: string | undefined }[] = [];
 const handler = {

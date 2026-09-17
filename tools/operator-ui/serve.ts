@@ -1,12 +1,13 @@
 #!/usr/bin/env bun
 /**
- * Serve the Target's beads graph so an operator reply can land as `bd comment`.
+ * Serve the Target's beads graph as a React page so an operator reply can land as `bd comment`.
  *
  *   bun tools/operator-ui/serve.ts [--dir <target>] [--store <bd>] [--archon <bin>] [--port <n>] [--host <addr>]
  *
- * The graph is `bd list` / `bd show`, never `.beads/issues.jsonl`. Writes go through one tagged
- * door: a comment is `bd comment` on the selected issue; `closed`, `reading:`, and unknown intents
- * are refused. Close, `reading:`, and domain labels stay the session's.
+ * The graph is `bd list` / `bd show`, never `.beads/issues.jsonl`. The page is a React app with a
+ * shadcn-style kit; React Flow projects the store and does not write an edge on connect. Writes go
+ * through one tagged door: a comment is `bd comment` on the selected issue; `closed`, `reading:`,
+ * and unknown intents are refused. Close, `reading:`, and domain labels stay the session's.
  */
 
 import http from "node:http";

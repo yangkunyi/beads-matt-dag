@@ -5,6 +5,13 @@
   "type": "module",
   "devDependencies": {
     "@types/node": "^22.15.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
     "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@xyflow/react": "^12.11.6",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
   }
 }
