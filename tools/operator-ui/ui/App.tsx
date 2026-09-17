@@ -1,16 +1,18 @@
 /**
- * The operator page: filters, live overlay, issue detail, comment, triage, and the React Flow graph.
+ * The operator page: filters, live overlay, issue detail, comment, triage, start, and the React Flow graph.
  *
- * All of it is a view of the store snapshot embedded in the page. Writes are tagged intents through
- * the door the server already exposes: a comment, or one of the five triage labels replacing the
- * rest of the family.
+ * All of it is a view of the store snapshot embedded in the page. Writes go through the tagged
+ * door: a comment is `bd comment`; start launches that domain's existing run with the selected
+ * ids as the allow-list; triage applies one of the five labels replacing the rest of the family.
  */
 
 import { useMemo, useState, type FormEvent } from "react";
 import { postComment } from "../client-comment.ts";
+import { postStart } from "../client-start.ts";
 import { postTriage, TRIAGE_LABELS, type TriageLabel } from "../client-triage.ts";
 import { filterChoices } from "../graph-view.ts";
 import { filterOverview, issueDetail, type Overview, type OverviewIssue } from "../model.ts";
+import { planStart } from "../start.ts";
 import { Graph } from "./Graph.tsx";
 import { Button, Label, Textarea } from "./kit.tsx";
 
@@ -118,11 +120,43 @@ function LiveBanner({ overview }: { overview: Overview }) {
 	);
 }
 
+function StartBar(props: {
+	endpoint: string;
+	overview: Overview;
+	selected: string[];
+}) {
+	const [status, setStatus] = useState("");
+	const plan = planStart(props.selected, props.overview.issues, props.overview.live !== null);
+	const label = plan.ok ? `Start ${plan.kind}` : "Start selection";
+	function onClick() {
+		setStatus("");
+		void postStart(props.endpoint, props.selected)
+			.then(() => {
+				location.reload();
+			})
+			.catch((error: unknown) => {
+				setStatus(error instanceof Error ? error.message : String(error));
+			});
+	}
+	return (
+		<section id="start" className="card" aria-label="Start selection">
+			<p id="start-summary">{plan.ok ? `${props.selected.length} ${plan.kind}` : plan.reason}</p>
+			<Button id="start-button" disabled={!plan.ok} onClick={onClick}>
+				{label}
+			</Button>
+			<p className="muted" id="start-status">
+				{status}
+			</p>
+		</section>
+	);
+}
+
 function Detail(props: {
 	overview: PageOverview;
-	selected: string | null;
+	selected: string[];
 }) {
-	const issue = props.selected === null ? undefined : issueDetail(props.overview, props.selected);
+	const focused = props.selected.length === 0 ? undefined : props.selected[props.selected.length - 1];
+	const issue = focused === undefined ? undefined : issueDetail(props.overview, focused);
 	if (issue === undefined) {
 		return (
 			<aside id="detail" className="card">
@@ -271,7 +305,7 @@ function ReplyForm(props: { endpoint: string; id: string }) {
 }
 
 export function App({ overview }: { overview: PageOverview }) {
-	const [selected, setSelected] = useState<string | null>(null);
+	const [selected, setSelected] = useState<string[]>([]);
 	const [types, setTypes] = useState(() => initialFilter(overview.issues).types);
 	const [statuses, setStatuses] = useState(() => initialFilter(overview.issues).statuses);
 	const [labels, setLabels] = useState(() => initialFilter(overview.issues).labels);
@@ -293,6 +327,9 @@ export function App({ overview }: { overview: PageOverview }) {
 				</p>
 			</header>
 			<LiveBanner overview={overview} />
+			{overview.commentEndpoint ? (
+				<StartBar endpoint={overview.commentEndpoint} overview={overview} selected={selected} />
+			) : null}
 			<Filters
 				issues={overview.issues}
 				types={types}
