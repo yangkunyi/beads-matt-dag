@@ -1,10 +1,13 @@
 /**
- * The overview's read model: issues, edges, comments and documents as one page of the Target.
+ * The overview's read model: issues, edges, comments, documents and the current grill round as one
+ * page of the Target.
  *
  * The store is the source of the graph; this module does not talk to `bd` and does not read the jsonl
  * export. Assembly is a pure join of what the store reader, the document locator and the live overlay
  * already answered.
  */
+
+import { roundFromComments, type GrillRound } from "./round";
 
 export type OverviewComment = {
 	id: string;
@@ -36,6 +39,8 @@ export type OverviewIssue = {
 	domain: OverviewDomain;
 	comments: OverviewComment[];
 	documents: OverviewDocument[];
+	/** Current grill round, or null when the issue has none. Data, not markdown. */
+	round: GrillRound | null;
 };
 
 /** `from` is the issue depended on (the blocker for a `blocks` edge); `to` is the dependent. */
@@ -140,8 +145,9 @@ export type StoreComment = {
 
 /**
  * Join the store's issues and comments with the documents located for each issue. Edges are the
- * store's own dependencies, pointing from the depended-on issue to the dependent. The live overlay
- * is joined here too, so the page is still one snapshot.
+ * store's own dependencies, pointing from the depended-on issue to the dependent. Tagged grill
+ * comments join into the current round and leave the conversation. The live overlay is joined here
+ * too, so the page is still one snapshot.
  */
 export function assembleOverview(
 	issues: StoreIssue[],
@@ -152,18 +158,22 @@ export function assembleOverview(
 	const known = new Set(issues.map((issue) => issue.id));
 	const edges: OverviewEdge[] = [];
 	const seen = new Set<string>();
-	const assembled: OverviewIssue[] = issues.map((issue) => ({
-		id: issue.id,
-		title: issue.title,
-		type: issue.type,
-		status: issue.status,
-		labels: [...issue.labels],
-		handle: issue.handle,
-		slug: issue.slug,
-		domain: domainOf(issue.type),
-		comments: (commentsById.get(issue.id) ?? []).map((comment) => ({ ...comment })),
-		documents: documentsFor(issue),
-	}));
+	const assembled: OverviewIssue[] = issues.map((issue) => {
+		const { round, conversation } = roundFromComments(commentsById.get(issue.id) ?? []);
+		return {
+			id: issue.id,
+			title: issue.title,
+			type: issue.type,
+			status: issue.status,
+			labels: [...issue.labels],
+			handle: issue.handle,
+			slug: issue.slug,
+			domain: domainOf(issue.type),
+			comments: conversation.map((comment) => ({ ...comment })),
+			documents: documentsFor(issue),
+			round,
+		};
+	});
 	for (const issue of issues) {
 		for (const dep of issue.dependencies) {
 			if (!known.has(dep.id)) continue;
@@ -201,7 +211,7 @@ export function filterOverview(overview: Overview, filter: OverviewFilter): Over
 	return { issues, edges, live: overview.live };
 }
 
-/** The detail a click shows: status, comments and documents of one issue, or undefined if unknown. */
+/** The detail a click shows: status, comments, documents and the current grill round of one issue, or undefined if unknown. */
 export function issueDetail(overview: Overview, id: string): OverviewIssue | undefined {
 	return overview.issues.find((issue) => issue.id === id);
 }

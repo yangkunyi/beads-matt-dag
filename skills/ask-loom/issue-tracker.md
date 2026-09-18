@@ -67,7 +67,9 @@ store again and keeps layout positions. The operator may, without a session: cre
 the domain; that domain's identity labels go on at create; default triage is `needs-triage`); add or
 remove intra-domain `blocks`; add crossing `relates-to` and `discovered-from`; write `bd comment`;
 move the five triage labels (gate, brake, `wontfix`); delete an issue that is not `in_progress` and
-has no dependents, after confirm (ADR-0008). Close, `reading:`, and other domain label acts
+has no dependents, after confirm (ADR-0008); answer the current grill round on a selected issue
+(a tagged write that lands as a store comment). The round is data — numbered questions, choices, a
+recommended answer — not markdown; an issue with no round has no round form. Close, `reading:`, and other domain label acts
 stay the session's or the orchestrator's (ADR-0006). `bd human respond` is not used: it closes with reason
 Responded.
 
