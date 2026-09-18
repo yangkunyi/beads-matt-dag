@@ -7,7 +7,7 @@
  */
 
 import { dagre } from "d3-dag";
-import type { Overview, OverviewDomain, OverviewEdge, OverviewIssue } from "./model";
+import { featureOf, type Overview, type OverviewDomain, type OverviewEdge, type OverviewIssue } from "./model";
 
 export type ViewNodeData = {
 	handle: string;
@@ -46,11 +46,12 @@ function unique(values: string[]): string[] {
 	return [...new Set(values)].sort();
 }
 
-/** Checkbox values for the three filters, derived from the store snapshot. */
+/** Checkbox values for the type / status / label / feature filters, derived from the store snapshot. */
 export function filterChoices(issues: ReadonlyArray<OverviewIssue>): {
 	types: string[];
 	statuses: string[];
 	labels: { value: string; label: string }[];
+	features: { value: string; label: string }[];
 } {
 	const types = unique(issues.map((issue) => issue.type));
 	const statuses = unique(issues.map((issue) => issue.status));
@@ -60,7 +61,13 @@ export function filterChoices(issues: ReadonlyArray<OverviewIssue>): {
 		...(hasUnlabeled ? [{ value: "", label: "(none)" }] : []),
 		...labelValues.map((label) => ({ value: label, label })),
 	];
-	return { types, statuses, labels };
+	const featureValues = unique(issues.map((issue) => featureOf(issue.handle)).filter((feature) => feature !== ""));
+	const hasNoFeature = issues.some((issue) => featureOf(issue.handle) === "");
+	const features = [
+		...(hasNoFeature ? [{ value: "", label: "(none)" }] : []),
+		...featureValues.map((feature) => ({ value: feature, label: feature })),
+	];
+	return { types, statuses, labels, features };
 }
 
 /**

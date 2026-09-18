@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * The overview's seams: the graph is `bd`, never jsonl; the page filters by type / status / label;
+ * The overview's seams: the graph is `bd`, never jsonl; the page filters by type / status / label / feature;
  * a selected issue carries status, comments and documents; a live drain / inquiry / experiment run
  * overlays from the run lock, Archon status, artefacts and attempted — not a pack publish API;
  * an operator reply is `bd comment` on the selected issue, never `bd human respond`; the one
@@ -214,6 +214,17 @@ expectEqual("status filter keeps closed", byStatus.issues.map((item) => item.id)
 const byLabel = filterOverview(overview, { labels: new Set(["ready-for-agent"]) });
 expectEqual("label filter keeps matching labels", byLabel.issues.map((item) => item.id), ["c"]);
 
+const byFeature = filterOverview(overview, { features: new Set(["drain"]) });
+expectEqual("feature filter keeps matching handles", byFeature.issues.map((item) => item.id), ["c"]);
+expectEqual("feature filter drops edges whose other end vanished", byFeature.edges, []);
+expectEqual(
+	"canvas nodes follow the feature filter",
+	projectGraph(byFeature).nodes.map((node) => node.id),
+	["c"],
+);
+const byFeatures = filterOverview(overview, { features: new Set(["inquiry", "lab"]) });
+expectEqual("feature filter keeps each selected feature", byFeatures.issues.map((item) => item.id), ["a", "b"]);
+
 const unlabeled = assembleOverview(
 	[issue({ id: "u", labels: [], type: "task", status: "open" })],
 	new Map(),
@@ -229,9 +240,19 @@ expectEqual(
 	filterOverview(unlabeled, { labels: new Set(["ready-for-agent"]) }).issues.map((item) => item.id),
 	[],
 );
+expectEqual(
+	"empty-string feature is no handle",
+	filterOverview(unlabeled, { features: new Set([""]) }).issues.map((item) => item.id),
+	["u"],
+);
+expectEqual(
+	"a real feature hides no-handle",
+	filterOverview(unlabeled, { features: new Set(["drain"]) }).issues.map((item) => item.id),
+	[],
+);
 
 const html = renderPage(overview);
-expect("page has type/status/label filters", pageHasFilters(html));
+expect("page has type/status/label/feature filters", pageHasFilters(html));
 expect("static snapshot does not offer a reply endpoint", !pageOffersReply(html));
 expect("static snapshot does not offer a refresh endpoint", !pageOffersRefresh(html));
 expect("static snapshot does not offer create", !pageOffersCreate(html));
@@ -308,6 +329,12 @@ expect(
 	"and a value the operator unchecked stays unchecked",
 	grew !== undefined && !grew.selected.has("open") && grew.seen.has("open"),
 	JSON.stringify(grew && [...grew.selected]),
+);
+const afterFeatureUncheck = { seen: new Set(["drain", "lab"]), selected: new Set(["lab"]) };
+expectEqual(
+	"unchecking a feature survives a re-read",
+	withNewlyOffered(afterFeatureUncheck.seen, afterFeatureUncheck.selected, ["drain", "lab"]),
+	undefined,
 );
 
 // A `blocks` cycle. d3-dag refuses a cyclic graph, and the fallback for that is a single column — which
@@ -584,7 +611,7 @@ expectEqual(
 
 const liveHtml = renderPage(liveOverview);
 expect("page still covers inquiry, experiment, and drain", pageCoversThreeDomains(liveHtml));
-expect("page has type/status/label filters with overlay", pageHasFilters(liveHtml));
+expect("page has type/status/label/feature filters with overlay", pageHasFilters(liveHtml));
 expect("page carries the live drain and its last report", joinedDrain !== null && pageCarriesLive(liveHtml, joinedDrain!));
 expect("page still carries issue detail", pageCarriesDetail(liveHtml, issueDetail(liveOverview, "c")!));
 expect("page does not invent a pack publish API", !liveHtml.includes("publish API") || liveHtml.includes("not a pack publish API"));
