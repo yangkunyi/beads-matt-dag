@@ -31,11 +31,8 @@ import {
 	type LucideIcon,
 } from "lucide-react";
 import { Toaster, toast } from "sonner";
-import { postComment } from "../client-comment.ts";
-import { postCreate } from "../client-create.ts";
-import { postDelete } from "../client-delete.ts";
-import { postStart } from "../client-start.ts";
-import { postTriage, TRIAGE_LABELS, type TriageLabel } from "../client-triage.ts";
+import { postOperatorAction } from "../client.ts";
+import { TRIAGE_LABELS, type TriageLabel } from "../triage-labels.ts";
 import { planDeleteAll } from "../delete.ts";
 import { filterChoices } from "../graph-view.ts";
 import { filterOverview, issueDetail, type Overview, type OverviewDomain, type OverviewIssue } from "../model.ts";
@@ -413,7 +410,7 @@ function StartBar(props: {
 			<Button
 				id="start-button"
 				disabled={!plan.ok}
-				onClick={() => void run(postStart(props.endpoint, props.selected))}
+				onClick={() => void run(postOperatorAction(props.endpoint, { intent: "start", ids: props.selected }))}
 			>
 				<Play aria-hidden="true" size={14} />
 				{label}
@@ -541,7 +538,7 @@ function TriageForm(props: { endpoint: string; id: string; current: TriageLabel 
 							name="triage"
 							value={label}
 							aria-pressed={props.current === label}
-							onClick={() => void run(postTriage(props.endpoint, props.id, label))}
+							onClick={() => void run(postOperatorAction(props.endpoint, { intent: "triage", id: props.id, label }))}
 						>
 							<Tag aria-hidden="true" size={12} />
 							{label}
@@ -562,7 +559,7 @@ function ReplyForm(props: { endpoint: string; id: string }) {
 	const { status, run } = useWrite("saved the comment");
 	function onSubmit(event: FormEvent) {
 		event.preventDefault();
-		void run(postComment(props.endpoint, props.id, text)).then((ok) => {
+		void run(postOperatorAction(props.endpoint, { intent: "comment", id: props.id, text })).then((ok) => {
 			if (ok) setText("");
 		});
 	}
@@ -650,7 +647,7 @@ function DeleteForm(props: {
 						void run(
 							(async () => {
 								for (const id of props.ids) {
-									await postDelete(props.endpoint, id);
+									await postOperatorAction(props.endpoint, { intent: "delete", id, confirm: true });
 								}
 							})(),
 						).then((ok) => {
@@ -696,7 +693,7 @@ function CreateForm({
 		// Close and clear only when the store took it. Leaving the form up after a refusal is the point
 		// of the inline status; leaving it up after a success invites a second identical issue, because
 		// the fields still hold the first one. This used to be a page reload's job.
-		void run(postCreate(endpoint, { type, feature, title, prose })).then((created) => {
+		void run(postOperatorAction(endpoint, { intent: "create", type, feature, title, prose })).then((created) => {
 			if (!created) return;
 			setType("");
 			setFeature("");
@@ -827,7 +824,7 @@ function Palette(props: {
 							<Command.Item
 								className={item}
 								onSelect={() => {
-									void run(postStart(endpoint, props.selected));
+									void run(postOperatorAction(endpoint, { intent: "start", ids: props.selected }));
 									props.onClose();
 								}}
 							>
@@ -857,7 +854,7 @@ function Palette(props: {
 										value={`triage ${label} ${issue.handle ?? ""}`}
 										className={item}
 										onSelect={() => {
-											void run(postTriage(endpoint, issue.id, label));
+											void run(postOperatorAction(endpoint, { intent: "triage", id: issue.id, label }));
 											props.onClose();
 										}}
 									>

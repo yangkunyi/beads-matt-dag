@@ -5,7 +5,8 @@
  * `experiment`; inquiry and development: type is enough). Triage is `needs-triage`
  * only — never the gate. The operator supplies the feature; this module allocates
  * the next unused NN and a slug from the title. The bead carries `handle` and
- * `slug`. The body is handle and prose, no status.
+ * `slug`. The body is handle and prose, no status. The write door parses the tagged
+ * JSON and calls here.
  */
 
 import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
@@ -16,15 +17,14 @@ const FEATURE = /^[A-Za-z0-9_][A-Za-z0-9._-]*$/;
 const TYPE = /^[A-Za-z][A-Za-z0-9_-]*$/;
 const SLUG = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
-export type CreateRequest = {
+export type CreateInput = {
 	type: string;
 	feature: string;
 	title: string;
 	prose: string;
-	slug: string;
 };
 
-export function slugFromTitle(title: string): string {
+function slugFromTitle(title: string): string {
 	return title
 		.trim()
 		.toLowerCase()
@@ -48,41 +48,6 @@ function issueBody(handle: string, title: string, prose: string): string {
 	const heading = title.trim().replace(/\s+/g, " ");
 	const text = prose.trim() === "" ? heading : prose.trim();
 	return `# ${handle} — ${heading}\n\n${text}\n`;
-}
-
-/**
- * Pull type, feature, title and optional prose out of a JSON object. Type is the
- * domain and is required. Remaining extra fields are not a write.
- */
-export function parseCreateBody(raw: string): CreateRequest {
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(raw);
-	} catch {
-		throw new Error("create body is not JSON");
-	}
-	if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-		throw new Error("create body is not an object");
-	}
-	const record = parsed as Record<string, unknown>;
-	if (typeof record.type !== "string" || record.type.trim() === "") {
-		throw new Error("create needs a type");
-	}
-	const type = record.type.trim();
-	if (!TYPE.test(type)) throw new Error("create needs a type");
-	if (typeof record.feature !== "string" || record.feature.trim() === "") {
-		throw new Error("create needs a feature");
-	}
-	const feature = record.feature.trim();
-	if (!FEATURE.test(feature)) throw new Error("create needs a feature");
-	if (typeof record.title !== "string" || record.title.trim() === "") {
-		throw new Error("create needs a title");
-	}
-	const title = record.title.trim().replace(/\s+/g, " ");
-	const slug = slugFromTitle(title);
-	if (!SLUG.test(slug)) throw new Error("create needs a title");
-	const prose = typeof record.prose === "string" ? record.prose : "";
-	return { type, feature, title, prose, slug };
 }
 
 function listHandles(bd: BdWriteRunner): string[] {
@@ -141,24 +106,40 @@ function numbersFromBodies(dir: string, feature: string): number[] {
 	return used;
 }
 
+/**
+ * The create fields, validated. Throws `create needs …` naming the field that is missing or malformed,
+ * so the door refuses a thin create before it looks at anything else.
+ */
+export function parseCreateInput(record: Record<string, unknown>): CreateInput {
+	const type = typeof record.type === "string" ? record.type.trim() : "";
+	if (!TYPE.test(type)) throw new Error("create needs a type");
+	const feature = typeof record.feature === "string" ? record.feature.trim() : "";
+	if (!FEATURE.test(feature)) throw new Error("create needs a feature");
+	const title = typeof record.title === "string" ? record.title.trim().replace(/\s+/g, " ") : "";
+	if (title === "" || !SLUG.test(slugFromTitle(title))) throw new Error("create needs a title");
+	return { type, feature, title, prose: typeof record.prose === "string" ? record.prose : "" };
+}
+
 /** Write the body and create the bead. Labels are `needs-triage` (plus `experiment` for that type). */
-export function createIssue(bd: BdWriteRunner, input: CreateRequest, dir: string): void {
+export function createIssue(bd: BdWriteRunner, input: CreateInput, dir: string): void {
+	const { type, feature, title, prose } = parseCreateInput({ ...input });
+	const slug = slugFromTitle(title);
 	const handles = listHandles(bd);
-	const nn = nextNumber([...numbersFromHandles(input.feature, handles), ...numbersFromBodies(dir, input.feature)]);
-	const handle = `${input.feature}/${nn}`;
-	const rel = join(".scratch", input.feature, "issues", `${nn}-${input.slug}.md`);
+	const nn = nextNumber([...numbersFromHandles(feature, handles), ...numbersFromBodies(dir, feature)]);
+	const handle = `${feature}/${nn}`;
+	const rel = join(".scratch", feature, "issues", `${nn}-${slug}.md`);
 	const abs = join(dir, rel);
 	mkdirSync(dirname(abs), { recursive: true });
-	writeFileSync(abs, issueBody(handle, input.title, input.prose), "utf8");
+	writeFileSync(abs, issueBody(handle, title, prose), "utf8");
 	bd([
 		"create",
-		input.title,
+		title,
 		"--type",
-		input.type,
+		type,
 		"--silent",
 		"--metadata",
-		JSON.stringify({ handle, slug: input.slug }),
+		JSON.stringify({ handle, slug }),
 		"--labels",
-		labelsForCreate(input.type).join(","),
+		labelsForCreate(type).join(","),
 	]);
 }
