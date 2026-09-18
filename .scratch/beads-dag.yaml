@@ -6,10 +6,11 @@
 # not share one client. The provider still allows more than one (micu measured six then ten).
 #
 # model: xai/grok-4.6 was the operator's choice on 2026-09-16, but the xAI account ran out of credits:
-# drain 3a88033c failed five of six tickets with 403 "You have run out of credits". Moved to the highland
-# gateway (same key as openai/google here), probed working 2026-09-18 for glm-5.3, glm-5.3-flash and
-# gpt-6-astra. Unset, the runner takes its own default (micu/deepseek-flash as of 2026-09-15).
-model: highland/glm-5.3
+# drain 3a88033c failed five of six tickets with 403 "You have run out of credits". Operator then chose
+# packy/deepseek-flash at thinkingLevel high (2026-09-18); its thinkingLevelMap maps high to high and the
+# gateway probed working with thinking enabled. Unset, the runner takes its own default
+# (micu/deepseek-flash as of 2026-09-15).
+model: packy/deepseek-flash
 thinkingLevel: high
 concurrency: 1
 
