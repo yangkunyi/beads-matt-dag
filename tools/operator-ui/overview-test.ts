@@ -15,7 +15,8 @@
  * `blocks` and crossing `relates-to` / `discovered-from` go through that door; cross-domain `blocks`
  * and `parent-child` are refused with no write; the page is a React app with a shadcn-style kit;
  * the graph is React Flow projecting the store; a connect proposes into the door and a refusal does
- * not stay on the canvas; coordinates stay in the view.
+ * not stay on the canvas; coordinates stay in the view; issues sit in three domain lanes; a
+ * selection frames its neighbourhood and Show all opts into the full graph.
  *
  *   bun tools/operator-ui/overview-test.ts
  */
@@ -40,7 +41,7 @@ import { fetchLive, gitDirOf, parseArchonLog, RUN_LOCK_NAME, summariseArchonLog 
 import { applyOperatorAction, OperatorActionRefused } from "./actions";
 import { postOperatorAction } from "./client";
 import { planDelete, planDeleteAll } from "./delete";
-import { projectGraph, proposeConnect } from "./graph-view";
+import { DOMAIN_LANES, framedIssueIds, projectGraph, proposeConnect } from "./graph-view";
 import {
 	CLIENT_ASSETS,
 	clientAssets,
@@ -330,6 +331,10 @@ expect(
 	projected.edges.some((edge) => edge.source === "a" && edge.target === "c" && edge.relation === "blocks"),
 );
 expect(
+	"crossing relates-to still renders as handoff",
+	projected.edges.some((edge) => edge.source === "a" && edge.target === "b" && edge.relation === "relates-to"),
+);
+expect(
 	"every node has a view position",
 	projected.nodes.every((node) => Number.isFinite(node.position.x) && Number.isFinite(node.position.y)),
 );
@@ -337,9 +342,96 @@ expect(
 	"store issues do not carry coordinates",
 	overview.issues.every((item) => !("position" in item) && !("x" in item) && !("y" in item)),
 );
-const nodeA = projected.nodes.find((node) => node.id === "a");
-const nodeC = projected.nodes.find((node) => node.id === "c");
-expect("blocker sits to the left of its dependent", Boolean(nodeA && nodeC && nodeA.position.x < nodeC.position.x));
+expectEqual("three domain lanes", projected.lanes.map((lane) => lane.id), [...DOMAIN_LANES]);
+expect(
+	"lanes stack inquiry, development, experiments",
+	projected.lanes[0] !== undefined &&
+		projected.lanes[1] !== undefined &&
+		projected.lanes[2] !== undefined &&
+		projected.lanes[0].position.y < projected.lanes[1].position.y &&
+		projected.lanes[1].position.y < projected.lanes[2].position.y,
+);
+function inLane(id: string, domain: (typeof DOMAIN_LANES)[number]): boolean {
+	const node = projected.nodes.find((item) => item.id === id);
+	const lane = projected.lanes.find((item) => item.id === domain);
+	if (node === undefined || lane === undefined) return false;
+	return node.position.y >= lane.position.y && node.position.y < lane.position.y + lane.height;
+}
+expect("inquiry issue sits in the inquiry lane", inLane("a", "inquiry"));
+expect("development issue sits in the development lane", inLane("c", "development"));
+expect("experiment issue sits in the experiments lane", inLane("b", "experiment"));
+expectEqual(
+	"empty selection shows all — pinned",
+	[...framedIssueIds(overview)].sort(),
+	["a", "b", "c"],
+);
+expectEqual(
+	"empty selection ignores showAll because there is nothing to frame",
+	projectGraph(overview, { selected: [], showAll: false }).nodes.map((node) => node.id),
+	["a", "b", "c"],
+);
+const aroundC = projectGraph(overview, { selected: ["c"] });
+expectEqual(
+	"a selection frames the issue and one hop",
+	aroundC.nodes.map((node) => node.id).sort(),
+	["a", "c"],
+);
+expect("the two-hop experiment stays out of the neighbourhood", !aroundC.nodes.some((node) => node.id === "b"));
+expect(
+	"a hop edge remains in the neighbourhood",
+	aroundC.edges.some((edge) => edge.source === "a" && edge.target === "c"),
+);
+expect(
+	"a handoff out of the neighbourhood is dropped",
+	!aroundC.edges.some((edge) => edge.source === "a" && edge.target === "b"),
+);
+expectEqual(
+	"Show all with a selection is the full graph",
+	projectGraph(overview, { selected: ["c"], showAll: true }).nodes.map((node) => node.id),
+	["a", "b", "c"],
+);
+
+const layered = assembleOverview(
+	[
+		issue({ id: "q", title: "question", type: "decision", status: "open" }),
+		issue({ id: "t", title: "work", type: "task", status: "open", dependencies: [{ id: "q", type: "blocks" }] }),
+		issue({ id: "t2", title: "later", type: "task", status: "open", dependencies: [{ id: "t", type: "blocks" }] }),
+	],
+	new Map(),
+	() => [],
+);
+const layeredProjection = projectGraph(layered);
+const pos = (id: string) => layeredProjection.nodes.find((node) => node.id === id)?.position;
+const qPos = pos("q");
+const tPos = pos("t");
+const t2Pos = pos("t2");
+expect(
+	"intra-domain blocks still layer left to right inside a lane",
+	Boolean(tPos && t2Pos && tPos.x < t2Pos.x),
+);
+expect(
+	"cross-domain blocks do not decide a layer across lanes",
+	Boolean(qPos && tPos && t2Pos && tPos.x - qPos.x < (t2Pos.x - tPos.x) / 2),
+);
+expect(
+	"cross-domain blocks still render",
+	layeredProjection.edges.some((edge) => edge.source === "q" && edge.target === "t" && edge.relation === "blocks"),
+);
+const qLane = layeredProjection.lanes.find((lane) => lane.id === "inquiry");
+const tLane = layeredProjection.lanes.find((lane) => lane.id === "development");
+expect(
+	"the crossing pair occupy different lanes",
+	Boolean(
+		qPos &&
+			tPos &&
+			qLane &&
+			tLane &&
+			qPos.y >= qLane.position.y &&
+			qPos.y < qLane.position.y + qLane.height &&
+			tPos.y >= tLane.position.y &&
+			tPos.y < tLane.position.y + tLane.height,
+	),
+);
 
 // The filter rule, driven directly. Unchecking must survive a re-read: the live poll re-reads every five
 // seconds while a run is moving, so a rule that re-selects whatever the selection is missing would turn
@@ -1533,6 +1625,11 @@ const graphSrc = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "ui"
 expect("graph uses React Flow", graphSrc.includes("@xyflow/react"));
 expect("graph connect does not addEdge as the record", !/\baddEdge\b/.test(graphSrc));
 expect("graph connect proposes into operator-actions", graphSrc.includes("proposeConnect"));
+expect("graph offers a show-all control", graphSrc.includes("graph-show-all"));
+expect(
+	"graph frames a neighbourhood unless show-all is on",
+	graphSrc.includes("showAll") && graphSrc.includes("projectGraph"),
+);
 expect(
 	"a successful edge write re-reads the store instead of reloading",
 	graphSrc.includes("onWritten()") && !graphSrc.includes("location.reload"),

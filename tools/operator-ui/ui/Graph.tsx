@@ -1,11 +1,12 @@
 /**
- * React Flow as a view of the store graph. Positions live in this component. onConnect proposes
- * into the write door — same-domain `blocks`, cross-domain a pick of `relates-to` or
- * `discovered-from` — and never lands an edge on React state. A successful write re-reads the store
- * and the canvas keeps the coordinates already dragged; a refusal leaves the view unchanged.
- * Dragging a box selects the issues inside it; Shift adds to the selection. Delete on a node opens
- * confirm delete for the selected set; Delete on an edge still writes `remove-edge`. `fitView` runs
- * once on init, never after a write.
+ * React Flow as a view of the store graph. Positions live in this component. Issues sit in three
+ * domain lanes; the default frame is the neighbourhood of the selection, and Show all opts into the
+ * full graph. onConnect proposes into the write door — same-domain `blocks`, cross-domain a pick of
+ * `relates-to` or `discovered-from` — and never lands an edge on React state. A successful write
+ * re-reads the store and the canvas keeps the coordinates already dragged; a refusal leaves the view
+ * unchanged. Dragging a box selects the issues inside it; Shift adds to the selection. Delete on a
+ * node opens confirm delete for the selected set; Delete on an edge still writes `remove-edge`.
+ * `fitView` runs once on init, never after a write.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -16,6 +17,7 @@ import {
 	Controls,
 	Handle,
 	MarkerType,
+	Panel,
 	Position,
 	ReactFlow,
 	applyEdgeChanges,
@@ -28,12 +30,19 @@ import {
 	type NodeProps,
 } from "@xyflow/react";
 import { postOperatorAction } from "../client.ts";
-import { projectGraph, proposeConnect, type ViewNodeData } from "../graph-view.ts";
+import {
+	LANE_LABEL,
+	projectGraph,
+	proposeConnect,
+	type ViewNodeData,
+} from "../graph-view.ts";
 import { cn } from "./cn.ts";
-import { Button, Popover } from "./kit.tsx";
-import type { Overview } from "../model.ts";
+import { Button, Label, Popover } from "./kit.tsx";
+import type { Overview, OverviewDomain } from "../model.ts";
 
 type IssueNode = Node<ViewNodeData, "issue">;
+type LaneNode = Node<{ domain: OverviewDomain }, "lane">;
+type CanvasNode = IssueNode | LaneNode;
 type RelationEdge = Edge<{ relation: string }>;
 
 function IssueNodeView({ data, selected }: NodeProps<IssueNode>) {
@@ -56,24 +65,53 @@ function IssueNodeView({ data, selected }: NodeProps<IssueNode>) {
 	);
 }
 
-const nodeTypes = { issue: IssueNodeView };
+function LaneNodeView({ data }: NodeProps<LaneNode>) {
+	return (
+		<div className={cn("lane-band", `lane-${data.domain}`)}>
+			<span className="lane-label">{LANE_LABEL[data.domain]}</span>
+		</div>
+	);
+}
 
-function toFlow(overview: Overview, selected: string[]): { nodes: IssueNode[]; edges: RelationEdge[] } {
-	const projected = projectGraph(overview);
+const nodeTypes = { issue: IssueNodeView, lane: LaneNodeView };
+
+function toFlow(
+	overview: Overview,
+	selected: string[],
+	showAll: boolean,
+): { nodes: CanvasNode[]; edges: RelationEdge[] } {
+	const projected = projectGraph(overview, { selected, showAll });
 	const selectedSet = new Set(selected);
+	const lanes: LaneNode[] = projected.lanes.map((lane) => ({
+		id: `lane:${lane.id}`,
+		type: "lane" as const,
+		position: lane.position,
+		data: { domain: lane.id },
+		selectable: false,
+		draggable: false,
+		connectable: false,
+		focusable: false,
+		deletable: false,
+		zIndex: -1,
+		width: lane.width,
+		height: lane.height,
+		style: { width: lane.width, height: lane.height },
+	}));
+	const issues: IssueNode[] = projected.nodes.map((node) => ({
+		id: node.id,
+		type: "issue" as const,
+		position: node.position,
+		data: node.data,
+		selected: selectedSet.has(node.id),
+	}));
 	return {
-		nodes: projected.nodes.map((node) => ({
-			id: node.id,
-			type: "issue" as const,
-			position: node.position,
-			data: node.data,
-			selected: selectedSet.has(node.id),
-		})),
+		nodes: [...lanes, ...issues],
 		edges: projected.edges.map((edge) => ({
 			id: edge.id,
 			source: edge.source,
 			target: edge.target,
 			data: { relation: edge.relation },
+			className: edge.relation === "blocks" ? "edge-blocks" : "edge-handoff",
 			style: edge.relation === "blocks" ? undefined : { strokeDasharray: "6 4" },
 			markerEnd: { type: MarkerType.ArrowClosed },
 		})),
@@ -98,31 +136,31 @@ function GraphCanvas(props: {
 	const dragged = useRef<Record<string, { x: number; y: number }>>({});
 	const boxSelecting = useRef(false);
 	const fitted = useRef(false);
-	const projected = useMemo(() => toFlow(overview, selected), [overview, selected]);
-	const [nodes, setNodes] = useState<IssueNode[]>(projected.nodes);
+	const [showAll, setShowAll] = useState(false);
+	const projected = useMemo(() => toFlow(overview, selected, showAll), [overview, selected, showAll]);
+	const [nodes, setNodes] = useState<CanvasNode[]>(projected.nodes);
 	const [edges, setEdges] = useState<RelationEdge[]>(projected.edges);
 	const [pick, setPick] = useState<{ from: string; to: string } | null>(null);
 	const [status, setStatus] = useState("");
 
 	useEffect(() => {
 		setNodes(
-			projected.nodes.map((node) => ({
-				...node,
-				position: dragged.current[node.id] ?? node.position,
-			})),
+			projected.nodes.map((node) =>
+				node.type === "issue" ? { ...node, position: dragged.current[node.id] ?? node.position } : node,
+			),
 		);
 		setEdges(projected.edges);
 	}, [projected]);
 
 	const onNodesChange = useCallback(
-		(changes: NodeChange<IssueNode>[]) => {
+		(changes: NodeChange<CanvasNode>[]) => {
 			if (changes.some((change) => change.type === "remove")) onAskDelete?.();
 			const kept = changes.filter((change) => change.type !== "remove");
 			if (kept.length === 0) return;
 			setNodes((current) => {
 				const next = applyNodeChanges(kept, current);
 				for (const change of kept) {
-					if (change.type === "position" && change.position !== undefined) {
+					if (change.type === "position" && change.position !== undefined && !change.id.startsWith("lane:")) {
 						dragged.current[change.id] = change.position;
 					}
 				}
@@ -259,6 +297,17 @@ function GraphCanvas(props: {
 			>
 				<Background />
 				<Controls />
+				<Panel position="top-right" className="graph-frame-control">
+					<Label>
+						<input
+							id="graph-show-all"
+							type="checkbox"
+							checked={showAll}
+							onChange={() => setShowAll((on) => !on)}
+						/>{" "}
+						Show all
+					</Label>
+				</Panel>
 			</ReactFlow>
 			{pick === null ? null : (
 				<Popover label="Choose crossing kind" open className="right-4 top-4">
