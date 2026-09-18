@@ -9,13 +9,15 @@
  * is `bd dep relate` / `bd dep unrelate`. Crossing `discovered-from` is `bd dep add --type
  * discovered-from` / `bd dep remove`. Cross-domain `blocks` and `parent-child` are refused. Triage
  * moves one of the five labels, replacing the rest of the family; `wontfix` is a label, not a
- * close. Close, `reading:`, non-triage labels, and unknown intents are refused. `bd human respond`
- * is not used. Close, `reading:`, and other domain label acts stay the session's (ADR-0006).
+ * close. Answering a grill round is `bd comment` with the answers as data. Close, `reading:`,
+ * non-triage labels, and unknown intents are refused. `bd human respond` is not used. Close,
+ * `reading:`, and other domain label acts stay the session's (ADR-0006).
  */
 
 import { addComment } from "./comment";
 import { createIssue, parseCreateInput } from "./create";
 import { deleteIssue } from "./delete";
+import { parseAnswerRoundBody, serializeGrillAnswers } from "./round";
 import { domainOf } from "./model";
 import { planStart, type RunLauncher } from "./start";
 import type { BdWriteRunner } from "./store";
@@ -30,7 +32,16 @@ export class OperatorActionRefused extends Error {
 }
 
 const ISSUE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/;
-const ACCEPTED_INTENTS = new Set(["comment", "create", "start", "add-edge", "remove-edge", "triage", "delete"]);
+const ACCEPTED_INTENTS = new Set([
+	"comment",
+	"create",
+	"start",
+	"add-edge",
+	"remove-edge",
+	"triage",
+	"delete",
+	"answer-round",
+]);
 const EDGE_KINDS = new Set(["blocks", "relates-to", "discovered-from"]);
 
 export type OperatorIssue = {
@@ -261,8 +272,9 @@ export type OperatorActionExtras = {
  * Apply one tagged write. Accepted intents are `comment` (`bd comment`), `create` (body plus
  * `bd create`), `start` (launch that domain's existing run with the selected ids as the
  * allow-list; does not write the store), `add-edge` / `remove-edge` (store deps), `triage`
- * (one of the five labels, replacing the rest of the family), and `delete` (`bd delete --force`
- * after the door has refused `in_progress` and dependents; `--cascade` is never passed).
+ * (one of the five labels, replacing the rest of the family), `delete` (`bd delete --force`
+ * after the door has refused `in_progress` and dependents; `--cascade` is never passed), and
+ * `answer-round` (`bd comment` with the answers as data, so a re-read shows them).
  * Anything carrying `closed`, `reading:`, a non-triage label, or an unknown intent is refused
  * and the store is not written. Cross-domain `blocks` and `parent-child` are refused the same way.
  */
@@ -321,6 +333,15 @@ export function applyOperatorAction(bd: BdWriteRunner, raw: string, extras: Oper
 			addComment(bd, id, record.text.trim(), extras.actor);
 		} catch (error) {
 			asRefused(error, ["comment needs"]);
+		}
+		return;
+	}
+	if (intent === "answer-round") {
+		try {
+			const body = parseAnswerRoundBody(raw);
+			addComment(bd, body.id, serializeGrillAnswers(body.answers), extras.actor);
+		} catch (error) {
+			asRefused(error, ["answer-round needs", "comment needs"]);
 		}
 		return;
 	}

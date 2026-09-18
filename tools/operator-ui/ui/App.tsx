@@ -6,8 +6,8 @@
  *
  * Writes go through the tagged door: comments, create (type is the domain; needs-triage; no gate),
  * start (that domain's existing run with the selected ids as the allow-list), intra-domain `blocks`,
- * crossing `relates-to` / `discovered-from`, and one of the five triage labels replacing the rest of
- * the family. A write re-reads the store rather than reloading the page.
+ * crossing `relates-to` / `discovered-from`, one of the five triage labels replacing the rest of
+ * the family, and answering a grill round. A write re-reads the store rather than reloading the page.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
@@ -502,6 +502,78 @@ function NeighbourGroup(props: {
 	);
 }
 
+function answersFrom(round: OverviewIssue["round"]): Record<number, string> {
+	const out: Record<number, string> = {};
+	if (round === null) return out;
+	for (const question of round.questions) {
+		if (question.answer !== undefined && question.answer !== "") out[question.n] = question.answer;
+	}
+	return out;
+}
+
+/** The current grill round as choices. Null round renders nothing. */
+export function RoundForm(props: { endpoint: string | null; issue: OverviewIssue }) {
+	const { status, run } = useWrite("saved the round");
+	const round = props.issue.round;
+	const [selected, setSelected] = useState<Record<number, string>>(() => answersFrom(round));
+	if (round === null) return null;
+	const complete = round.questions.every((question) => (selected[question.n] ?? "") !== "");
+	function onSubmit(event: FormEvent) {
+		event.preventDefault();
+		if (round === null || props.endpoint === null || !complete) return;
+		const answers = round.questions.map((question) => ({
+			n: question.n,
+			choice: selected[question.n] ?? "",
+		}));
+		void run(postOperatorAction(props.endpoint, { intent: "answer-round", id: props.issue.id, answers }));
+	}
+	return (
+		<>
+			<h3>Grill round</h3>
+			<form id="grill-round" onSubmit={onSubmit}>
+				{round.questions.map((question) => (
+					<fieldset key={question.n} data-question={String(question.n)}>
+						<legend>
+							Q{question.n} {question.title}
+						</legend>
+						{question.body !== "" ? <p>{question.body}</p> : null}
+						{question.choices.map((choice) => {
+							const recommended = choice === question.recommended;
+							return (
+								<Label key={choice}>
+									<input
+										type="radio"
+										name={`q${question.n}`}
+										value={choice}
+										checked={selected[question.n] === choice}
+										onChange={() => setSelected((current) => ({ ...current, [question.n]: choice }))}
+									/>{" "}
+									{choice}
+									{recommended ? (
+										<span className="muted" data-recommended="true">
+											{" "}
+											recommended
+										</span>
+									) : null}
+								</Label>
+							);
+						})}
+					</fieldset>
+				))}
+				{props.endpoint ? (
+					<Button type="submit" disabled={!complete}>
+						Submit round
+					</Button>
+				) : null}
+				<p className="muted">One submit for the whole round. Answers are store data, not React-only.</p>
+				<p className="muted" id="grill-round-status">
+					{status}
+				</p>
+			</form>
+		</>
+	);
+}
+
 /** The selected issue's human face: store facts, neighbours as issues, the comment thread. Documents stay secondary. */
 export function IssueDetail(props: {
 	overview: PageOverview;
@@ -563,6 +635,9 @@ export function IssueDetail(props: {
 						<NeighbourGroup heading="Blocks" items={blocks} onSelect={props.onSelect} />
 						<NeighbourGroup heading="Crossing" items={crossing} onSelect={props.onSelect} />
 					</>
+				)}
+				{issue.round === null ? null : (
+					<RoundForm key={issue.id} endpoint={props.overview.commentEndpoint} issue={issue} />
 				)}
 				<h3>Comments</h3>
 				{issue.comments.length === 0 ? (

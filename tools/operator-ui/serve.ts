@@ -123,9 +123,9 @@ export type OverviewResponse = {
  * the store instead of reloading the page, POST /comment is the tagged write door. A comment intent
  * is `bd comment`. A create intent writes the body and `bd create`. A start intent launches that
  * domain's existing run with the selected ids as the allow-list. Edge intents are store deps.
- * A triage intent moves one of the five labels, replacing the rest of the family. `closed`,
- * `reading:`, non-triage labels, unknown intents, cross-domain `blocks`, and `parent-child`
- * are refused and do not write.
+ * A triage intent moves one of the five labels, replacing the rest of the family. Answering a
+ * grill round is `bd comment` with the answers as data. `closed`, `reading:`, non-triage labels,
+ * unknown intents, cross-domain `blocks`, and `parent-child` are refused and do not write.
  */
 export async function handleOverviewRequest(
 	req: { method?: string; url?: string; headers?: Record<string, string | string[] | undefined> },

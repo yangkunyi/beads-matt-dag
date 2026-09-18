@@ -56,6 +56,9 @@ below — if a term can only be explained by a command, it belongs in a spec.
   an executor and not a local editor. A write goes to the store; the view reloads from the store and
   keeps layout positions. Starting work still means starting the domain's existing run (drain,
   inquiry, experiment, or grill).
+- **grill round** — the current numbered questions on an issue, each with choices and a recommended
+  answer. The human face of grilling on the operator surface; the body stays the agent's brief. Not
+  the drain frontier.
 - **allow-list** — the ids one run may claim. It is this run's pool, not a label; it does not brake
   issues left out of the selection.
 
@@ -119,3 +122,4 @@ below — if a term can only be explained by a command, it belongs in a spec.
 | executor per issue | the domain's executor | Execution hangs on the domain, not on a node (ADR-0007) |
 | break (on delete) | refuse the delete | A dependent still pointing at the issue blocks delete; do not cascade or orphan |
 | local editor | operator surface | The canvas is a view; React state is not the graph (ADR-0007) |
+| quiz, poll | grill round | Grilling is numbered questions with a recommended answer, not a survey |

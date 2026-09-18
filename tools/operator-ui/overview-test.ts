@@ -16,7 +16,9 @@
  * and `parent-child` are refused with no write; the page is a React app with a shadcn-style kit;
  * the graph is React Flow projecting the store; a connect proposes into the door and a refusal does
  * not stay on the canvas; coordinates stay in the view; issues sit in three domain lanes; a
- * selection frames its neighbourhood and Show all opts into the full graph.
+ * selection frames its neighbourhood and Show all opts into the full graph; a selected issue's
+ * current grill round is data (questions, choices, recommended); answering it is a tagged write
+ * that lands as a store comment and survives a re-read; an issue with no round has no round form.
  *
  *   bun tools/operator-ui/overview-test.ts
  */
@@ -34,14 +36,17 @@ import {
 	issueDetail,
 	neighboursOf,
 	type LiveRun,
+	type OverviewIssue,
 	type StoreComment,
 	type StoreIssue,
 } from "./model";
 import { fetchLive, gitDirOf, parseArchonLog, RUN_LOCK_NAME, summariseArchonLog } from "./overlay";
 import { applyOperatorAction, OperatorActionRefused } from "./actions";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { postOperatorAction } from "./client";
 import { planDelete, planDeleteAll } from "./delete";
 import { DOMAIN_LANES, framedIssueIds, projectGraph, proposeConnect } from "./graph-view";
+import { roundFromComments, serializeGrillAnswers, serializeGrillRound } from "./round";
 import {
 	CLIENT_ASSETS,
 	clientAssets,
@@ -64,7 +69,7 @@ import {
 } from "./page";
 import type { RunLaunch } from "./start";
 import { MarkdownBody } from "./ui/markdown";
-import { commentFrom, IssueDetail, withNewlyOffered, type PageOverview } from "./ui/App.tsx";
+import { commentFrom, IssueDetail, RoundForm, withNewlyOffered, type PageOverview } from "./ui/App.tsx";
 import { createElement } from "react";
 import { renderToString } from "react-dom/server";
 import { createOverviewServer, handleOverviewRequest } from "./serve";
@@ -82,6 +87,13 @@ function expectEqual(label: string, actual: unknown, expected: unknown): void {
 	const a = JSON.stringify(actual);
 	const b = JSON.stringify(expected);
 	expect(label, a === b, { actual, expected });
+}
+
+function renderRound(target: OverviewIssue, endpoint: string | null = "/comment"): string {
+	const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+	return renderToString(
+		createElement(QueryClientProvider, { client }, createElement(RoundForm, { endpoint, issue: target })),
+	);
 }
 
 function issue(partial: Partial<StoreIssue> & Pick<StoreIssue, "id">): StoreIssue {
@@ -135,6 +147,38 @@ const comment: StoreComment = {
 	author: "op",
 	createdAt: "2026-09-16T00:00:00Z",
 	text: "leave this on the ticket",
+};
+
+const roundQuestions = [
+	{
+		n: 1,
+		title: "Scope",
+		body: "What stays in?",
+		choices: ["keep it", "drop it"],
+		recommended: "keep it",
+	},
+	{
+		n: 2,
+		title: "Name",
+		body: "What do we call it?",
+		choices: ["round", "quiz"],
+		recommended: "round",
+	},
+];
+const roundComment: StoreComment = {
+	id: "r1",
+	author: "agent",
+	createdAt: "2026-09-18T00:00:00Z",
+	text: serializeGrillRound(roundQuestions),
+};
+const answersComment: StoreComment = {
+	id: "r2",
+	author: "op",
+	createdAt: "2026-09-18T00:01:00Z",
+	text: serializeGrillAnswers([
+		{ n: 1, choice: "keep it" },
+		{ n: 2, choice: "round" },
+	]),
 };
 
 const files = new Map<string, string>([
@@ -201,6 +245,32 @@ expectEqual(
 		.map((neighbour) => ({ handle: neighbour.handle, title: neighbour.title })),
 	[{ handle: "drain/03", title: "the drain work" }],
 );
+expectEqual("an issue with no round has none", issueDetail(overview, "c")?.round, null);
+
+const grilled = assembleOverview(
+	[blocker],
+	new Map([
+		[
+			"a",
+			[roundComment, comment],
+		],
+	]),
+	(item) => documentsFor(item, probe),
+);
+expectEqual("round questions join onto the issue", grilled.issues[0]?.round?.questions.map((q) => q.n), [1, 2]);
+expectEqual("round choices are data", grilled.issues[0]?.round?.questions[0]?.choices, ["keep it", "drop it"]);
+expectEqual("recommended answer is on the question", grilled.issues[0]?.round?.questions[0]?.recommended, "keep it");
+expectEqual(
+	"round comments are not the conversation",
+	grilled.issues[0]?.comments.map((entry) => entry.text),
+	[comment.text],
+);
+
+const answered = assembleOverview([blocker], new Map([["a", [roundComment, answersComment]]]), () => []);
+expectEqual("a re-read shows the answers", answered.issues[0]?.round?.questions.map((q) => q.answer), [
+	"keep it",
+	"round",
+]);
 
 const names = issueNames(work);
 expect("work issue has names", Boolean(names));
@@ -350,6 +420,37 @@ expect(
 	"MarkdownBody still renders a heading when a comment has one",
 	renderToString(createElement(MarkdownBody, { text: "# the doc\n" })).includes("<h1>the doc</h1>"),
 );
+
+const grilledIssue = issueDetail(grilled, "a");
+expect("grilled issue is in the model", grilledIssue !== undefined);
+if (grilledIssue) {
+	const roundHtml = renderRound(grilledIssue);
+	expect("a selected issue with a round renders the form", roundHtml.includes('id="grill-round"'));
+	expect(
+		"the form renders each question's choices",
+		roundHtml.includes("keep it") &&
+			roundHtml.includes("drop it") &&
+			roundHtml.includes("What do we call it?") &&
+			roundHtml.includes("quiz"),
+	);
+	expectEqual(
+		"one recommended mark per question",
+		roundHtml.split('data-recommended="true"').length - 1,
+		2,
+	);
+	const q1 = roundHtml.slice(roundHtml.indexOf('data-question="1"'), roundHtml.indexOf('data-question="2"'));
+	expect("Q1 marks keep it as recommended", q1.includes("keep it") && q1.includes("recommended"));
+	expect(
+		"Q1 does not mark drop it as recommended",
+		q1.includes("drop it") && q1.indexOf("drop it") > q1.indexOf("recommended"),
+	);
+}
+const bareIssue = issueDetail(overview, "c");
+expect("bare issue is in the model", bareIssue !== undefined);
+if (bareIssue) {
+	const emptyRound = renderRound(bareIssue);
+	expect("an issue with no round does not show a round form", !emptyRound.includes('id="grill-round"'));
+}
 
 const projected = projectGraph(overview);
 expectEqual(
@@ -981,6 +1082,65 @@ expectEqual("comment intent passes the door's actor", writes, [
 	{ args: ["--actor", "bob", "comment", "from-bd", "--stdin"], stdin: "named" },
 ]);
 
+writes.length = 0;
+applyOperatorAction(
+	writeRunner,
+	JSON.stringify({
+		intent: "answer-round",
+		id: "from-bd",
+		answers: [
+			{ n: 1, choice: "keep it" },
+			{ n: 2, choice: "round" },
+		],
+	}),
+);
+expectEqual("answer-round is bd comment", writes, [
+	{
+		args: ["comment", "from-bd", "--stdin"],
+		stdin: serializeGrillAnswers([
+			{ n: 1, choice: "keep it" },
+			{ n: 2, choice: "round" },
+		]),
+	},
+]);
+expect(
+	"answer-round is not human respond, close, or a label",
+	writes.every(
+		(call) =>
+			call.args[0] === "comment" &&
+			!call.args.includes("human") &&
+			!call.args.includes("respond") &&
+			!call.args.includes("close") &&
+			!call.args.includes("label") &&
+			!call.args.includes("update"),
+	),
+);
+const reread = roundFromComments([
+	roundComment,
+	{ id: "written", author: "op", createdAt: "2026-09-18T00:02:00Z", text: writes[0]?.stdin ?? "" },
+]);
+expectEqual("written answers survive a re-read", reread.round?.questions.map((q) => q.answer), [
+	"keep it",
+	"round",
+]);
+
+writes.length = 0;
+applyOperatorAction(
+	writeRunner,
+	JSON.stringify({
+		intent: "answer-round",
+		id: "from-bd",
+		answers: [{ n: 1, choice: "keep it" }],
+	}),
+	{ actor: "bob" },
+);
+expectEqual("answer-round passes the door's actor", writes, [
+	{
+		args: ["--actor", "bob", "comment", "from-bd", "--stdin"],
+		stdin: serializeGrillAnswers([{ n: 1, choice: "keep it" }]),
+	},
+]);
+
 function refusedAction(raw: string, extras: { dir?: string; issues?: StoreIssue[] } = {}): { refused: boolean; message: string } {
 	try {
 		applyOperatorAction(writeRunner, raw, extras);
@@ -1283,6 +1443,18 @@ writes.length = 0;
 const missingIntent = refusedAction(JSON.stringify({ id: "from-bd", text: "leave this" }));
 expect("missing intent is refused", missingIntent.refused);
 expectEqual("missing intent does not write", writes, []);
+
+writes.length = 0;
+const emptyAnswers = refusedAction(JSON.stringify({ intent: "answer-round", id: "from-bd", answers: [] }));
+expect("empty answers are refused", emptyAnswers.refused);
+expectEqual("empty answers do not write", writes, []);
+
+writes.length = 0;
+const roundClosed = refusedAction(
+	JSON.stringify({ intent: "answer-round", id: "from-bd", answers: [{ n: 1, choice: "keep it" }], closed: true }),
+);
+expect("answer-round carrying closed is refused", roundClosed.refused);
+expectEqual("answer-round carrying closed does not write", writes, []);
 
 writes.length = 0;
 const humanRespond = refusedAction(JSON.stringify({ intent: "human-respond", id: "from-bd", text: "leave this" }));
@@ -1595,6 +1767,7 @@ const taggedWrites = [
 	{ intent: "remove-edge", from: "t1", to: "t2", type: "blocks" },
 	{ intent: "triage", id: "from-bd", label: "ready-for-agent" },
 	{ intent: "delete", id: "from-bd", confirm: true },
+	{ intent: "answer-round", id: "from-bd", answers: [{ n: 1, choice: "keep it" }] },
 ];
 const originalFetch = globalThis.fetch;
 const clientPosts: { method: string; contentType: string; body: unknown }[] = [];
@@ -1700,6 +1873,8 @@ expect(
 );
 expect("surface has a triage form", appSrc.includes('id="triage-form"'));
 expect("surface posts through the one client", appSrc.includes("postOperatorAction"));
+expect("surface has a grill round form", appSrc.includes('id="grill-round"'));
+expect("surface posts the round through the write door", appSrc.includes('intent: "answer-round"'));
 expect("surface offers the five triage labels", appSrc.includes("TRIAGE_LABELS"));
 expect("surface can mark wontfix as a label", appSrc.includes("wontfix"));
 expect("surface does not close from triage", !appSrc.includes("bd close") && !appSrc.includes('name="close"'));
@@ -1709,7 +1884,9 @@ expect(
 );
 expect(
 	"the inline status line survives the toast",
-	appSrc.includes('id="triage-status"') && appSrc.includes('id="reply-status"'),
+	appSrc.includes('id="triage-status"') &&
+		appSrc.includes('id="reply-status"') &&
+		appSrc.includes('id="grill-round-status"'),
 );
 expect(
 	"the palette is cmdk and posts only the door's intents",
@@ -1951,6 +2128,56 @@ const emptyPost = await handleOverviewRequest(
 );
 expectEqual("empty POST is 400", emptyPost.status, 400);
 expectEqual("empty POST does not write", doorWrites.length, 3);
+
+const roundWrites: { args: string[]; stdin: string | undefined }[] = [];
+const roundHandler = {
+	write: ((args: string[], stdin?: string) => {
+		roundWrites.push({ args, stdin });
+		return "";
+	}) satisfies BdWriteRunner,
+	page: () => renderPage(overview, { commentEndpoint: "/comment" }),
+};
+const answeredPost = await handleOverviewRequest(
+	{ method: "POST", url: "/comment" },
+	JSON.stringify({
+		intent: "answer-round",
+		id: "from-bd",
+		answers: [
+			{ n: 1, choice: "keep it" },
+			{ n: 2, choice: "round" },
+		],
+	}),
+	roundHandler,
+);
+expectEqual("POST answer-round is 204", answeredPost.status, 204);
+expectEqual("POST answer-round writes bd comment", roundWrites, [
+	{
+		args: ["comment", "from-bd", "--stdin"],
+		stdin: serializeGrillAnswers([
+			{ n: 1, choice: "keep it" },
+			{ n: 2, choice: "round" },
+		]),
+	},
+]);
+const emptyRoundPost = await handleOverviewRequest(
+	{ method: "POST", url: "/comment" },
+	JSON.stringify({ intent: "answer-round", id: "from-bd", answers: [] }),
+	roundHandler,
+);
+expectEqual("POST empty answers is 400", emptyRoundPost.status, 400);
+expectEqual("POST empty answers does not write", roundWrites.length, 1);
+const closedRoundPost = await handleOverviewRequest(
+	{ method: "POST", url: "/comment" },
+	JSON.stringify({
+		intent: "answer-round",
+		id: "from-bd",
+		answers: [{ n: 1, choice: "keep it" }],
+		closed: true,
+	}),
+	roundHandler,
+);
+expectEqual("POST answer-round carrying closed is 400", closedRoundPost.status, 400);
+expectEqual("POST answer-round carrying closed does not write", roundWrites.length, 1);
 const missing = await handleOverviewRequest({ method: "POST", url: "/close" }, "", handler);
 expectEqual("unknown path is 404", missing.status, 404);
 
