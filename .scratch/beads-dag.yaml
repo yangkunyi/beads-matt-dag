@@ -1,17 +1,15 @@
 # The pack's knobs for this Target (drain/scripts/config.ts).
 #
-# concurrency: 4 because each worker turn holds one request at a time and the provider must allow that
-# many at once. Measured 2026-09-15: the account used first (packy) allowed three concurrent requests and
-# a fan-out of four workers therefore died with 429 on the very first cycle, every turn losing its work;
-# the account in use now (micu, api-slb.micuapi.ai) answered six and then ten simultaneous requests with
-# no refusal, so four workers sit far below its ceiling. Raise it together with the account's allowance,
-# never one alone.
+# concurrency: 1 because this frontier is operator-ui tickets that all edit App.tsx / Graph.tsx /
+# overview-test.ts. Drain 8e15a783 ran four of them at once; workers left dirty trees and merge-before-stamp
+# recorded "nothing to merge" / unresolved conflict. Raise it again when the frontier is issues that do
+# not share one client. The provider still allows more than one (micu measured six then ten).
 #
 # model: operator asked 2026-09-16 to run the experiment-executor drain on grok 4.6 high.
 # Unset, the runner takes its own default (micu/deepseek-flash as of 2026-09-15).
 model: xai/grok-4.6
 thinkingLevel: high
-concurrency: 4
+concurrency: 1
 
 # The Target's post-merge act (pack README, "The post-merge act"): one command this repository runs
 # itself after a merge lands, so the machine's copies of the flow never describe work Main does not have.
