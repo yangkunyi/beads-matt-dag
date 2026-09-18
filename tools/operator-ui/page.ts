@@ -1,6 +1,6 @@
 /**
  * The overview as a self-contained HTML page: a React app with a shadcn-style kit, React Flow for
- * the DAG, the three filters, live overlay, and a click-for-detail panel.
+ * the DAG, the type / status / label / feature filters, live overlay, and a click-for-detail panel.
  *
  * All data is embedded. A static snapshot has no socket — a browser talking to that file is looking
  * at what `bd` already answered, and the client is inlined so the file stands alone. A served page
@@ -146,7 +146,12 @@ export function pageCarriesDetail(html: string, issue: OverviewIssue): boolean {
 }
 
 export function pageHasFilters(html: string): boolean {
-	return html.includes("<legend>Type</legend>") && html.includes("<legend>Status</legend>") && html.includes("<legend>Label</legend>");
+	return (
+		html.includes("<legend>Type</legend>") &&
+		html.includes("<legend>Status</legend>") &&
+		html.includes("<legend>Label</legend>") &&
+		html.includes("<legend>Feature</legend>")
+	);
 }
 
 /** A served page posts replies; a static snapshot does not. */

@@ -93,12 +93,25 @@ export type OverviewFilter = {
 	 * for unlabeled issues, so a filter of `{""}` is "unlabeled only".
 	 */
 	labels?: ReadonlySet<string>;
+	/**
+	 * When set and non-empty, the issue's feature must be in the set. Feature is the handle prefix
+	 * (`operator-ui` in `operator-ui/24`), not a store field. The empty string stands for no handle.
+	 */
+	features?: ReadonlySet<string>;
 };
 
 export function domainOf(type: string): OverviewDomain {
 	if (type === "decision") return "inquiry";
 	if (type === "experiment") return "experiment";
 	return "development";
+}
+
+/** Prefix of a handle (`operator-ui` in `operator-ui/24`). No handle means no feature. */
+export function featureOf(handle: string | undefined): string {
+	if (handle === undefined || handle === "") return "";
+	const slash = handle.indexOf("/");
+	if (slash <= 0) return "";
+	return handle.slice(0, slash);
 }
 
 export type StoreDependency = {
@@ -172,6 +185,10 @@ export function matchesFilter(issue: OverviewIssue, filter: OverviewFilter): boo
 	if (labels !== undefined && labels.size > 0) {
 		if (issue.labels.length === 0) return labels.has("");
 		if (!issue.labels.some((label) => labels.has(label))) return false;
+	}
+	const features = filter.features;
+	if (features !== undefined && features.size > 0 && !features.has(featureOf(issue.handle))) {
+		return false;
 	}
 	return true;
 }

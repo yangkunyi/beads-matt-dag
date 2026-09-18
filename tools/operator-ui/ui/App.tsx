@@ -69,6 +69,7 @@ function initialFilter(issues: OverviewIssue[]) {
 		types: choices.types,
 		statuses: choices.statuses,
 		labels: choices.labels.map((entry) => entry.value),
+		features: choices.features.map((entry) => entry.value),
 	};
 }
 
@@ -297,13 +298,32 @@ function Filters(props: {
 	types: Set<string>;
 	statuses: Set<string>;
 	labels: Set<string>;
+	features: Set<string>;
 	onTypes: (value: string) => void;
 	onStatuses: (value: string) => void;
 	onLabels: (value: string) => void;
+	onFeatures: (value: string) => void;
 }) {
 	const choices = filterChoices(props.issues);
 	return (
 		<section id="filters" aria-label="Filters">
+			<fieldset>
+				<legend>Feature</legend>
+				{choices.features.length === 0 ? (
+					<p className="muted">none</p>
+				) : (
+					choices.features.map((entry) => (
+						<Label key={entry.value || "(none)"}>
+							<input
+								type="checkbox"
+								checked={props.features.has(entry.value)}
+								onChange={() => props.onFeatures(entry.value)}
+							/>{" "}
+							{entry.label}
+						</Label>
+					))
+				)}
+			</fieldset>
 			<fieldset>
 				<legend>Type</legend>
 				{choices.types.length === 0 ? (
@@ -869,6 +889,7 @@ function Surface({ snapshot }: { snapshot: PageOverview }) {
 	const [types, toggleType] = useFilter(initialFilter(overview.issues).types);
 	const [statuses, toggleStatus] = useFilter(initialFilter(overview.issues).statuses);
 	const [labels, toggleLabel] = useFilter(initialFilter(overview.issues).labels);
+	const [features, toggleFeature] = useFilter(initialFilter(overview.issues).features);
 	const [creating, setCreating] = useState(false);
 	const [palette, setPalette] = useState(false);
 	const [askDelete, setAskDelete] = useState(false);
@@ -883,8 +904,8 @@ function Surface({ snapshot }: { snapshot: PageOverview }) {
 		return () => window.removeEventListener("keydown", onKey);
 	}, []);
 	const shown = useMemo(
-		() => filterOverview(overview, { types, statuses, labels }),
-		[overview, types, statuses, labels],
+		() => filterOverview(overview, { types, statuses, labels, features }),
+		[overview, types, statuses, labels, features],
 	);
 	const blocked = useMemo(() => blockedIds(overview), [overview]);
 	return (
@@ -921,9 +942,11 @@ function Surface({ snapshot }: { snapshot: PageOverview }) {
 				types={types}
 				statuses={statuses}
 				labels={labels}
+				features={features}
 				onTypes={toggleType}
 				onStatuses={toggleStatus}
 				onLabels={toggleLabel}
+				onFeatures={toggleFeature}
 			/>
 			<div id="layout">
 				<IssueList issues={shown.issues} blocked={blocked} selected={selected} onSelect={setSelected} />
