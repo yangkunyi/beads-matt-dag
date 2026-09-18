@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
 /**
  * The overview's seams: the graph is `bd`, never jsonl; the page filters by type / status / label / feature;
- * a selected issue carries status, comments and documents; a live drain / inquiry / experiment run
+ * a selected issue's default reading is the human face (handle, title, domain, status, labels,
+ * neighbours as issues, comment thread), with documents reachable and unoptimized; a live drain / inquiry / experiment run
  * overlays from the run lock, Archon status, artefacts and attempted — not a pack publish API;
  * an operator reply is `bd comment` on the selected issue, never `bd human respond`; the one
  * tagged write door refuses `closed`, `reading:`, and unknown intents without writing; create
@@ -30,6 +31,7 @@ import {
 	assembleOverview,
 	filterOverview,
 	issueDetail,
+	neighboursOf,
 	type LiveRun,
 	type StoreComment,
 	type StoreIssue,
@@ -61,7 +63,7 @@ import {
 } from "./page";
 import type { RunLaunch } from "./start";
 import { MarkdownBody } from "./ui/markdown";
-import { commentFrom, withNewlyOffered } from "./ui/App.tsx";
+import { commentFrom, IssueDetail, withNewlyOffered, type PageOverview } from "./ui/App.tsx";
 import { createElement } from "react";
 import { renderToString } from "react-dom/server";
 import { createOverviewServer, handleOverviewRequest } from "./serve";
@@ -167,6 +169,37 @@ expectEqual("domains follow type", overview.issues.map((item) => item.domain), [
 	"development",
 ]);
 expectEqual("comments join onto the issue", issueDetail(overview, "c")?.comments, [comment]);
+expectEqual(
+	"work is blocked by the decision as that issue",
+	neighboursOf(overview, "c")
+		.filter((neighbour) => neighbour.role === "blocked-by")
+		.map((neighbour) => ({ id: neighbour.id, handle: neighbour.handle, title: neighbour.title })),
+	[{ id: "a", handle: "inquiry/01", title: "the question" }],
+);
+expectEqual(
+	"work blocks nobody",
+	neighboursOf(overview, "c").filter((neighbour) => neighbour.role === "blocks"),
+	[],
+);
+expectEqual(
+	"experiment's crossing neighbour is the decision issue, not only its id",
+	neighboursOf(overview, "b")
+		.filter((neighbour) => neighbour.role === "crossing")
+		.map((neighbour) => ({
+			id: neighbour.id,
+			handle: neighbour.handle,
+			title: neighbour.title,
+			relation: neighbour.relation,
+		})),
+	[{ id: "a", handle: "inquiry/01", title: "the question", relation: "relates-to" }],
+);
+expectEqual(
+	"decision blocks the work as that issue",
+	neighboursOf(overview, "a")
+		.filter((neighbour) => neighbour.role === "blocks")
+		.map((neighbour) => ({ handle: neighbour.handle, title: neighbour.title })),
+	[{ handle: "drain/03", title: "the drain work" }],
+);
 
 const names = issueNames(work);
 expect("work issue has names", Boolean(names));
@@ -263,8 +296,8 @@ expect("the list has a row per issue in the head of the list", html.includes('da
 expect("a row carries the status word beside its icon", html.includes('aria-label="status open"') && html.includes(">in_progress<"));
 expect("a blocked dependent is marked in the list", html.includes('aria-label="blocked"'));
 
-// Markdown: a comment and a document read as prose, and raw HTML stays text. The detail pane renders
-// only for a selected issue, so this renders the body it uses rather than a whole page.
+// Markdown: a comment reads as prose, and raw HTML stays text. Documents stay unoptimized; the
+// detail pane's default reading is the human face, so this renders a comment rather than a body.
 const mdHtml = renderToString(createElement(MarkdownBody, { text: "**bold** and <b>raw</b>" }));
 expect("a comment body renders as markdown", mdHtml.includes("<strong>bold</strong>"));
 // React separates adjacent text nodes with an empty comment, so read the text, not the raw HTML.
@@ -281,8 +314,10 @@ expect(
 	"a script tag in a body stays text",
 	scriptText.includes("&lt;script&gt;alert(1)&lt;/script&gt;") && !scriptText.includes("<script>"),
 );
-const docHtml = renderToString(createElement(MarkdownBody, { text: "# the doc\n" }));
-expect("a document body renders as markdown", docHtml.includes("<h1>the doc</h1>"));
+expect(
+	"MarkdownBody still renders a heading when a comment has one",
+	renderToString(createElement(MarkdownBody, { text: "# the doc\n" })).includes("<h1>the doc</h1>"),
+);
 
 const projected = projectGraph(overview);
 expectEqual(
@@ -388,6 +423,36 @@ if (selected) {
 	expect("comment text is in the page", html.includes("leave this on the ticket"));
 	expect("document path is in the page", html.includes(join(".scratch", "drain", "issues", "03-the-drain-work.md")));
 }
+
+const pageOverview: PageOverview = {
+	...overview,
+	commentEndpoint: null,
+	overviewEndpoint: null,
+	actor: null,
+};
+const workFace = renderToString(createElement(IssueDetail, { overview: pageOverview, selected: ["c"] }));
+const faceAt = workFace.indexOf('id="issue-face"');
+const docsAt = workFace.indexOf('id="issue-documents"');
+expect("detail pane has a human face", faceAt >= 0 && docsAt > faceAt);
+const faceSlice = workFace.slice(faceAt, docsAt);
+const docsSlice = workFace.slice(docsAt);
+expect("face shows handle, title, domain, status, labels", faceSlice.includes("drain/03") && faceSlice.includes("the drain work") && faceSlice.includes("development") && faceSlice.includes("in_progress") && faceSlice.includes("ready-for-agent"));
+expect(
+	"neighbour is the blocking issue, not only its id",
+	faceSlice.includes("inquiry/01") && faceSlice.includes("the question") && faceSlice.includes('data-neighbour="a"'),
+);
+expect("face does not open the body", !faceSlice.includes("# drain work") && !faceSlice.includes("machine body"));
+expect("comments live in the face as conversation", faceSlice.includes("leave this on the ticket") && faceSlice.includes("data-from"));
+expect("comments are not a second document", !faceSlice.includes('class="doc"') && !faceSlice.includes("machine body"));
+expect("documents are reachable behind closed details", docsSlice.includes("<details") && !/<details[^>]*\sopen/.test(docsSlice));
+expect("documents are the unoptimized machine body", docsSlice.includes("machine body") && docsSlice.includes("# drain work"));
+expect("documents are not restyled markdown", !workFace.includes("<h1>drain work</h1>"));
+const experimentFace = renderToString(createElement(IssueDetail, { overview: pageOverview, selected: ["b"] }));
+expect(
+	"crossing neighbour is the other issue plus the relation",
+	experimentFace.includes("inquiry/01") && experimentFace.includes("the question") && experimentFace.includes("relates-to"),
+);
+expect("experiment record stays a reachable machine document", experimentFace.includes('data-doc-kind="record"'));
 
 const calls: string[][] = [];
 const listJson = JSON.stringify([
@@ -1554,6 +1619,13 @@ expect(
 	appSrc.includes('from "./message.tsx"') &&
 		appSrc.includes('from "./bubble.tsx"') &&
 		!appSrc.includes('className="comment"'),
+);
+expect(
+	"documents stay closed details of raw text, not restyled markdown",
+	appSrc.includes("machine body") &&
+		appSrc.includes("data-doc-kind") &&
+		appSrc.includes("<pre>{doc.text}</pre>") &&
+		!appSrc.includes("<MarkdownBody text={doc.text} />"),
 );
 const serveSrc = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "serve.ts"), "utf8");
 expect("the listener is Bun.serve, not node:http", serveSrc.includes("Bun.serve") && !serveSrc.includes("node:http"));

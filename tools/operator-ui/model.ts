@@ -206,6 +206,54 @@ export function issueDetail(overview: Overview, id: string): OverviewIssue | und
 	return overview.issues.find((issue) => issue.id === id);
 }
 
+/** How the selected issue sits next to another: blocked by it, blocking it, or a crossing link. */
+export type NeighbourRole = "blocked-by" | "blocks" | "crossing";
+
+/** A neighbour as an issue, never as a raw id alone. */
+export type IssueNeighbour = {
+	id: string;
+	handle: string | undefined;
+	title: string;
+	domain: OverviewDomain;
+	status: string;
+	relation: string;
+	role: NeighbourRole;
+};
+
+const CROSSING = new Set(["relates-to", "discovered-from"]);
+
+/**
+ * What the store already knows about where this issue sits: incoming `blocks`, outgoing `blocks`,
+ * and crossing `relates-to` / `discovered-from`. Each neighbour is the other issue.
+ */
+export function neighboursOf(overview: Overview, id: string): IssueNeighbour[] {
+	const byId = new Map(overview.issues.map((issue) => [issue.id, issue]));
+	const neighbours: IssueNeighbour[] = [];
+	const push = (otherId: string, relation: string, role: NeighbourRole) => {
+		const other = byId.get(otherId);
+		if (other === undefined) return;
+		neighbours.push({
+			id: other.id,
+			handle: other.handle,
+			title: other.title,
+			domain: other.domain,
+			status: other.status,
+			relation,
+			role,
+		});
+	};
+	for (const edge of overview.edges) {
+		if (edge.type === "blocks") {
+			if (edge.to === id) push(edge.from, edge.type, "blocked-by");
+			else if (edge.from === id) push(edge.to, edge.type, "blocks");
+		} else if (CROSSING.has(edge.type)) {
+			if (edge.to === id) push(edge.from, edge.type, "crossing");
+			else if (edge.from === id) push(edge.to, edge.type, "crossing");
+		}
+	}
+	return neighbours;
+}
+
 /** The three executors the overlay knows. Any other Archon workflow is not this page's live run. */
 export function kindOfWorkflow(workflow: string): LiveRunKind | undefined {
 	if (workflow === "beads-dag-drain") return "drain";

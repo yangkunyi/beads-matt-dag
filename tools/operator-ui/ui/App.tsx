@@ -1,6 +1,7 @@
 /**
- * The operator page: a windowed issue list, the React Flow graph, the live overlay, detail with
- * markdown comments and documents, and the write panels — comment, create, triage, start — plus a
+ * The operator page: a windowed issue list, the React Flow graph, the live overlay, detail whose
+ * default reading is the human face (store facts, neighbours as issues, the comment thread) with
+ * documents reachable and unoptimized, and the write panels — comment, create, triage, start — plus a
  * command palette. All of it is a view of the store snapshot embedded in the page.
  *
  * Writes go through the tagged door: comments, create (type is the domain; needs-triage; no gate),
@@ -35,7 +36,16 @@ import { postOperatorAction } from "../client.ts";
 import { TRIAGE_LABELS, type TriageLabel } from "../triage-labels.ts";
 import { planDeleteAll } from "../delete.ts";
 import { filterChoices } from "../graph-view.ts";
-import { filterOverview, issueDetail, type Overview, type OverviewDomain, type OverviewIssue } from "../model.ts";
+import {
+	filterOverview,
+	issueDetail,
+	neighboursOf,
+	type IssueNeighbour,
+	type Overview,
+	type OverviewDocument,
+	type OverviewDomain,
+	type OverviewIssue,
+} from "../model.ts";
 import { planStart } from "../start.ts";
 import { Bubble } from "./bubble.tsx";
 import { cn } from "./cn.ts";
@@ -422,9 +432,44 @@ function StartBar(props: {
 	);
 }
 
-function Detail(props: {
+function documentKindLabel(kind: OverviewDocument["kind"]): string {
+	return kind === "body" ? "machine body" : kind;
+}
+
+function NeighbourGroup(props: {
+	heading: string;
+	items: IssueNeighbour[];
+	onSelect?: (ids: string[]) => void;
+}) {
+	if (props.items.length === 0) return null;
+	return (
+		<>
+			<h3>{props.heading}</h3>
+			<ul className="neighbours">
+				{props.items.map((item) => (
+					<li key={`${item.role}:${item.relation}:${item.id}`}>
+						<button
+							type="button"
+							className="neighbour"
+							data-neighbour={item.id}
+							onClick={() => props.onSelect?.([item.id])}
+						>
+							<span className="handle">{item.handle || item.id}</span>
+							<span className="title">{item.title}</span>
+							{item.role === "crossing" ? <span className="muted">{item.relation}</span> : null}
+						</button>
+					</li>
+				))}
+			</ul>
+		</>
+	);
+}
+
+/** The selected issue's human face: store facts, neighbours as issues, the comment thread. Documents stay secondary. */
+export function IssueDetail(props: {
 	overview: PageOverview;
 	selected: string[];
+	onSelect?: (ids: string[]) => void;
 	onDeleted?: () => void;
 	asked?: boolean;
 	onAsked?: () => void;
@@ -441,64 +486,84 @@ function Detail(props: {
 	const live = props.overview.live;
 	const attempted = live !== null && live.attempted.includes(issue.id);
 	const DomainIcon = DOMAIN_ICON[issue.domain];
+	const neighbours = neighboursOf(props.overview, issue.id);
+	const blockedBy = neighbours.filter((neighbour) => neighbour.role === "blocked-by");
+	const blocks = neighbours.filter((neighbour) => neighbour.role === "blocks");
+	const crossing = neighbours.filter((neighbour) => neighbour.role === "crossing");
 	return (
 		<aside id="detail" className="card">
-			<h2>
-				<DomainIcon aria-hidden="true" size={14} className="inline align-[-2px]" /> {issue.handle || issue.id}
-			</h2>
-			<p className="title">{issue.title}</p>
-			<dl>
-				<dt>status</dt>
-				<dd>{issue.status}</dd>
-				<dt>type</dt>
-				<dd>
-					{issue.type} ({issue.domain})
-				</dd>
-				<dt>labels</dt>
-				<dd>{issue.labels.length > 0 ? issue.labels.join(", ") : "(none)"}</dd>
-				{attempted && live ? (
+			<div id="issue-face">
+				<h2>
+					<DomainIcon aria-hidden="true" size={14} className="inline align-[-2px]" /> {issue.handle || issue.id}
+				</h2>
+				<p className="title">{issue.title}</p>
+				<dl>
+					<dt>status</dt>
+					<dd>{issue.status}</dd>
+					<dt>type</dt>
+					<dd>
+						{issue.type} ({issue.domain})
+					</dd>
+					<dt>labels</dt>
+					<dd>{issue.labels.length > 0 ? issue.labels.join(", ") : "(none)"}</dd>
+					{attempted && live ? (
+						<>
+							<dt>live run</dt>
+							<dd>
+								{live.kind} · {live.id} · attempted
+							</dd>
+						</>
+					) : null}
+				</dl>
+				{neighbours.length === 0 ? (
 					<>
-						<dt>live run</dt>
-						<dd>
-							{live.kind} · {live.id} · attempted
-						</dd>
+						<h3>Neighbours</h3>
+						<p className="muted">No neighbours.</p>
 					</>
-				) : null}
-			</dl>
-			<h3>Comments</h3>
-			{issue.comments.length === 0 ? (
-				<p className="muted">No comments.</p>
-			) : (
-				issue.comments.map((comment) => {
-					const from = commentFrom(comment.author, props.overview.actor);
-					return (
-						<Message key={comment.id} from={from}>
-							<header className="muted text-xs">
-								{comment.author} · {comment.createdAt}
-							</header>
-							<MessageContent>
-								<Bubble from={from}>
-									<MarkdownBody text={comment.text} />
-								</Bubble>
-							</MessageContent>
-						</Message>
-					);
-				})
-			)}
-			<h3>Documents</h3>
-			{issue.documents.length === 0 ? (
-				<p className="muted">No documents (the issue has no handle/slug to name them).</p>
-			) : (
-				issue.documents.map((doc) => (
-					<article className="doc" key={doc.rel}>
-						<header>
-							{doc.kind} · {doc.rel}
-							{doc.exists ? "" : " · missing"}
-						</header>
-						{doc.exists && doc.text !== null ? <MarkdownBody text={doc.text} /> : null}
-					</article>
-				))
-			)}
+				) : (
+					<>
+						<NeighbourGroup heading="Blocked by" items={blockedBy} onSelect={props.onSelect} />
+						<NeighbourGroup heading="Blocks" items={blocks} onSelect={props.onSelect} />
+						<NeighbourGroup heading="Crossing" items={crossing} onSelect={props.onSelect} />
+					</>
+				)}
+				<h3>Comments</h3>
+				{issue.comments.length === 0 ? (
+					<p className="muted">No comments.</p>
+				) : (
+					issue.comments.map((comment) => {
+						const from = commentFrom(comment.author, props.overview.actor);
+						return (
+							<Message key={comment.id} from={from}>
+								<header className="muted text-xs">
+									{comment.author} · {comment.createdAt}
+								</header>
+								<MessageContent>
+									<Bubble from={from}>
+										<MarkdownBody text={comment.text} />
+									</Bubble>
+								</MessageContent>
+							</Message>
+						);
+					})
+				)}
+			</div>
+			<section id="issue-documents">
+				<h3>Documents</h3>
+				{issue.documents.length === 0 ? (
+					<p className="muted">No documents (the issue has no handle/slug to name them).</p>
+				) : (
+					issue.documents.map((doc) => (
+						<details className="doc" data-doc-kind={doc.kind} key={doc.rel}>
+							<summary>
+								{documentKindLabel(doc.kind)} · {doc.rel}
+								{doc.exists ? "" : " · missing"}
+							</summary>
+							{doc.exists && doc.text !== null ? <pre>{doc.text}</pre> : null}
+						</details>
+					))
+				)}
+			</section>
 			{props.overview.commentEndpoint ? (
 				<TriageForm
 					endpoint={props.overview.commentEndpoint}
@@ -974,9 +1039,10 @@ function Surface({ snapshot }: { snapshot: PageOverview }) {
 					writeEndpoint={overview.commentEndpoint}
 					onWritten={onWritten}
 				/>
-				<Detail
+				<IssueDetail
 					overview={overview}
 					selected={selected}
+					onSelect={setSelected}
 					onDeleted={() => setSelected([])}
 					asked={askDelete}
 					onAsked={() => setAskDelete(false)}
