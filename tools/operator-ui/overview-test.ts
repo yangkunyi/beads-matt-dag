@@ -251,6 +251,20 @@ expectEqual(
 	projectGraph(byFeature).nodes.map((node) => node.id),
 	["c"],
 );
+const byFeatureHtml = renderPage(byFeature);
+expect(
+	"grouping honours the feature filter",
+	byFeatureHtml.includes('data-feature="drain"') &&
+		!byFeatureHtml.includes('data-feature="inquiry"') &&
+		!byFeatureHtml.includes('data-feature="lab"'),
+);
+expect(
+	"a filtered list still has issue-row on the remaining issue",
+	byFeatureHtml.includes('id="issue-list"') &&
+		byFeatureHtml.includes('class="issue-row ') &&
+		byFeatureHtml.includes('data-issue="c"') &&
+		!byFeatureHtml.includes('data-issue="a"'),
+);
 const byFeatures = filterOverview(overview, { features: new Set(["inquiry", "lab"]) });
 expectEqual("feature filter keeps each selected feature", byFeatures.issues.map((item) => item.id), ["a", "b"]);
 
@@ -279,6 +293,11 @@ expectEqual(
 	filterOverview(unlabeled, { features: new Set(["drain"]) }).issues.map((item) => item.id),
 	[],
 );
+const unlabeledHtml = renderPage(unlabeled);
+expect(
+	"a missing handle groups under none",
+	unlabeledHtml.includes('data-feature="none"') && unlabeledHtml.includes('data-issue="u"'),
+);
 
 const html = renderPage(overview);
 expect("page has type/status/label/feature filters", pageHasFilters(html));
@@ -294,6 +313,18 @@ expect("graph is React Flow", pageGraphIsReactFlow(html));
 expect("page carries the DAG nodes", html.includes('"id":"a"') && html.includes('"id":"c"'));
 expect("page carries the windowed issue list", pageCarriesList(html));
 expect("the list has a row per issue in the head of the list", html.includes('data-issue="a"') && html.includes('data-issue="c"'));
+expect(
+	"the list groups rows by feature",
+	html.includes('id="issue-list"') &&
+		html.includes('class="feature-group ') &&
+		html.includes('data-feature="inquiry"') &&
+		html.includes('data-feature="lab"') &&
+		html.includes('data-feature="drain"'),
+);
+expect(
+	"grouped issue rows still carry issue-row",
+	html.includes('class="issue-row ') && html.includes('data-issue="a"') && html.includes('data-issue="c"'),
+);
 expect("a row carries the status word beside its icon", html.includes('aria-label="status open"') && html.includes(">in_progress<"));
 expect("a blocked dependent is marked in the list", html.includes('aria-label="blocked"'));
 
@@ -1710,6 +1741,10 @@ expect(
 expect(
 	"the list columns are react-table",
 	appSrc.includes('from "@tanstack/react-table"') && appSrc.includes("useReactTable"),
+);
+expect(
+	"the list groups by feature with react-table",
+	appSrc.includes("getGroupedRowModel") && appSrc.includes('grouping: ["feature"]'),
 );
 expect(
 	"comments render as Message / Bubble, not a bare article.comment",
