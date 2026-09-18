@@ -1,6 +1,7 @@
 /**
  * The overview as a self-contained HTML page: a React app with a shadcn-style kit, React Flow for
- * the DAG, the type / status / label / feature filters, live overlay, and a click-for-detail panel.
+ * the DAG, the type / status / label / feature filters, live overlay, and a click-for-detail panel whose
+ * default reading is the human face, not the documents.
  *
  * All data is embedded. A static snapshot has no socket — a browser talking to that file is looking
  * at what `bd` already answered, and the client is inlined so the file stands alone. A served page

@@ -1,6 +1,6 @@
 /**
- * Markdown bodies: an operator's comment and a document the issue names are both markdown, and both
- * read as prose rather than as preformatted text.
+ * Markdown bodies: an operator's comment is markdown and reads as prose rather than as preformatted
+ * text. Git documents stay unoptimized on the detail pane; they do not go through this.
  *
  * Raw HTML in a body stays text. No raw-HTML plugin, no dangerouslySetInnerHTML: a body cannot
  * inject markup into the operator's page.

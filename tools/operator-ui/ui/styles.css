@@ -308,6 +308,36 @@ html, body {
 }
 #detail article { margin-bottom: 10px; }
 #detail article header { color: hsl(var(--muted-foreground)); font-size: 12px; }
+#detail .neighbours {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+}
+#detail .neighbour {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  padding: 4px 6px;
+  cursor: pointer;
+}
+#detail .neighbour:hover { background: hsl(var(--muted)); }
+#detail .neighbour .handle { color: hsl(var(--muted-foreground)); font-size: 12px; }
+#detail details.doc {
+  margin-bottom: 10px;
+}
+#detail details.doc summary {
+  cursor: pointer;
+  color: hsl(var(--muted-foreground));
+  font-size: 12px;
+}
 #reply-form .btn { margin-top: 8px; }
 .triage-actions {
   display: flex;
@@ -347,7 +377,7 @@ html, body {
 #issue-list .issue-row .handle { color: hsl(var(--muted-foreground)); font-size: 12px; }
 #issue-list .issue-row .title { min-width: 0; flex: 0 1 auto; }
 
-/* Markdown bodies: a comment and a document read as prose, not as preformatted text. */
+/* Markdown bodies: a comment reads as prose. Documents stay unoptimized in a pre. */
 .md { font-size: 13px; line-height: 1.55; }
 .md > :first-child { margin-top: 0; }
 .md > :last-child { margin-bottom: 0; }
