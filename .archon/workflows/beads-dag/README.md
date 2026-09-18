@@ -171,8 +171,10 @@ After the registration the node runs one agent turn under the `experiment` role,
 check in the node itself: the record must exist at the ticket's own path, hold an attempts-table row, and
 hold the four labelled closing lines (`measured:`, `reference:`, `covered:`, `reading:`). Missing anything
 leaves the ticket open with `attempt N failed: record incomplete — <what is missing>` and nothing else
-happens. Only a complete record closes the ticket: the close, the `reading:none` label and the comment are
-one act, and the record is committed as one path-scoped commit under the Main lock.
+happens. Only a complete record closes the ticket: the unread marker, then the close — two store writes,
+and in that order, so a failure between them leaves a ticket the next run retries rather than one that is
+closed with no marker for the sweep to find — and the record is committed as one path-scoped commit under
+the Main lock.
 
 The run's last node is not a reader and not a draft report. It releases the Target run lock this run's
 `open` took, and writes attempted, closed-on-record, and failed — from the run's `attempted-ids.json` and

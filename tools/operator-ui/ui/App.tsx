@@ -50,25 +50,63 @@ export type PageOverview = Overview & {
 function initialFilter(issues: OverviewIssue[]) {
 	const choices = filterChoices(issues);
 	return {
-		types: new Set(choices.types),
-		statuses: new Set(choices.statuses),
-		labels: new Set(choices.labels.map((entry) => entry.value)),
+		types: choices.types,
+		statuses: choices.statuses,
+		labels: choices.labels.map((entry) => entry.value),
 	};
 }
 
-function toggle(set: Set<string>, value: string): Set<string> {
-	const next = new Set(set);
-	if (next.has(value)) next.delete(value);
-	else next.add(value);
-	return next;
+/**
+ * A filter's next choice set: the values it has seen, and the values selected, after the store offers
+ * `offered` again.
+ *
+ * Only a value the store has **never** offered is added. That single rule is what makes unchecking
+ * stick, and it is why the two sets cannot be one: a value missing from `selected` looks the same
+ * whether the operator turned it off or the store has never had it, so `seen` is the only thing that
+ * tells them apart. Returns undefined when there is nothing new, so a caller does not set state for a
+ * re-read that changed no choice.
+ */
+export function withNewlyOffered(
+	seen: ReadonlySet<string>,
+	selected: ReadonlySet<string>,
+	offered: ReadonlyArray<string>,
+): { seen: Set<string>; selected: Set<string> } | undefined {
+	const newlyOffered = offered.filter((value) => !seen.has(value));
+	if (newlyOffered.length === 0) return undefined;
+	const nextSeen = new Set(seen);
+	const nextSelected = new Set(selected);
+	for (const value of newlyOffered) {
+		nextSeen.add(value);
+		nextSelected.add(value);
+	}
+	return { seen: nextSeen, selected: nextSelected };
 }
 
-/** `current` plus anything the store has since grown; the same set back when nothing is new. */
-function withNewValues(current: Set<string>, values: ReadonlyArray<string>): Set<string> {
-	if (values.every((value) => current.has(value))) return current;
-	const next = new Set(current);
-	for (const value of values) next.add(value);
-	return next;
+/**
+ * One filter's choice set.
+ *
+ * A value the store offers for the first time is selected, so an issue the operator has just created is
+ * not hidden by a filter set that predates it. A value the operator unchecks leaves the selection but
+ * stays in `seen`, so a re-read — or the live poll, every five seconds while a run is moving — does not
+ * put it back.
+ */
+function useFilter(offered: ReadonlyArray<string>): [Set<string>, (value: string) => void] {
+	const [state, setState] = useState(() => ({ seen: new Set(offered), selected: new Set(offered) }));
+	const next = withNewlyOffered(state.seen, state.selected, offered);
+	if (next !== undefined) {
+		// Adjusting state during render, before anything commits: React discards this render and runs
+		// again, and the second pass finds nothing new, so this cannot loop.
+		setState(next);
+	}
+	const toggle = useCallback((value: string) => {
+		setState((current) => {
+			const selected = new Set(current.selected);
+			if (selected.has(value)) selected.delete(value);
+			else selected.add(value);
+			return { seen: current.seen, selected };
+		});
+	}, []);
+	return [state.selected, toggle];
 }
 
 /**
@@ -218,9 +256,9 @@ function Filters(props: {
 	types: Set<string>;
 	statuses: Set<string>;
 	labels: Set<string>;
-	onTypes: (next: Set<string>) => void;
-	onStatuses: (next: Set<string>) => void;
-	onLabels: (next: Set<string>) => void;
+	onTypes: (value: string) => void;
+	onStatuses: (value: string) => void;
+	onLabels: (value: string) => void;
 }) {
 	const choices = filterChoices(props.issues);
 	return (
@@ -235,7 +273,7 @@ function Filters(props: {
 							<input
 								type="checkbox"
 								checked={props.types.has(type)}
-								onChange={() => props.onTypes(toggle(props.types, type))}
+								onChange={() => props.onTypes(type)}
 							/>{" "}
 							{type}
 						</Label>
@@ -252,7 +290,7 @@ function Filters(props: {
 							<input
 								type="checkbox"
 								checked={props.statuses.has(status)}
-								onChange={() => props.onStatuses(toggle(props.statuses, status))}
+								onChange={() => props.onStatuses(status)}
 							/>{" "}
 							{status}
 						</Label>
@@ -269,7 +307,7 @@ function Filters(props: {
 							<input
 								type="checkbox"
 								checked={props.labels.has(entry.value)}
-								onChange={() => props.onLabels(toggle(props.labels, entry.value))}
+								onChange={() => props.onLabels(entry.value)}
 							/>{" "}
 							{entry.label}
 						</Label>
@@ -501,7 +539,17 @@ function CreateForm({
 	const { status, run } = useWrite("created the issue");
 	function onSubmit(event: FormEvent) {
 		event.preventDefault();
-		void run(postCreate(endpoint, { type, feature, title, prose }));
+		// Close and clear only when the store took it. Leaving the form up after a refusal is the point
+		// of the inline status; leaving it up after a success invites a second identical issue, because
+		// the fields still hold the first one. This used to be a page reload's job.
+		void run(postCreate(endpoint, { type, feature, title, prose })).then((created) => {
+			if (!created) return;
+			setType("");
+			setFeature("");
+			setTitle("");
+			setProse("");
+			onClose();
+		});
 	}
 	return (
 		<Dialog
@@ -687,19 +735,11 @@ function Surface({ snapshot }: { snapshot: PageOverview }) {
 	const overview = query.data;
 	const onWritten = useWritten();
 	const [selected, setSelected] = useState<string[]>([]);
-	const [types, setTypes] = useState(() => initialFilter(overview.issues).types);
-	const [statuses, setStatuses] = useState(() => initialFilter(overview.issues).statuses);
-	const [labels, setLabels] = useState(() => initialFilter(overview.issues).labels);
+	const [types, toggleType] = useFilter(initialFilter(overview.issues).types);
+	const [statuses, toggleStatus] = useFilter(initialFilter(overview.issues).statuses);
+	const [labels, toggleLabel] = useFilter(initialFilter(overview.issues).labels);
 	const [creating, setCreating] = useState(false);
 	const [palette, setPalette] = useState(false);
-	// A re-read can bring a type, status or label the filters have never seen. Add it, so an issue
-	// the operator has just created is not hidden by a filter set that predates it.
-	useEffect(() => {
-		const choices = filterChoices(overview.issues);
-		setTypes((current) => withNewValues(current, choices.types));
-		setStatuses((current) => withNewValues(current, choices.statuses));
-		setLabels((current) => withNewValues(current, choices.labels.map((entry) => entry.value)));
-	}, [overview.issues]);
 	useEffect(() => {
 		const onKey = (event: KeyboardEvent) => {
 			if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
@@ -749,9 +789,9 @@ function Surface({ snapshot }: { snapshot: PageOverview }) {
 				types={types}
 				statuses={statuses}
 				labels={labels}
-				onTypes={setTypes}
-				onStatuses={setStatuses}
-				onLabels={setLabels}
+				onTypes={toggleType}
+				onStatuses={toggleStatus}
+				onLabels={toggleLabel}
 			/>
 			<div id="layout">
 				<IssueList issues={shown.issues} blocked={blocked} selected={selected} onSelect={setSelected} />

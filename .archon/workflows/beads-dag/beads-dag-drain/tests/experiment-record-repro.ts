@@ -23,7 +23,7 @@
  * The turn itself is driven twice more through the fake Pi SDK (`record-complete`, `record-incomplete`),
  * so the node runs end to end with the real default runner - no provider, no live model.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { runExperiment } from "../../beads-dag-experiment-run/scripts/run.ts";
@@ -51,6 +51,7 @@ import {
   withTarget,
   writeStoreConfig,
   writeStubDvc,
+  writeTargetConfig,
 } from "./target.ts";
 
 const UNREAD = READING_NONE_LABEL;
@@ -72,6 +73,26 @@ for (const name of TOUCHED_ENV) savedEnv[name] = process.env[name];
 function write(root: string, rel: string, body: string): void {
   mkdirSync(dirname(join(root, rel)), { recursive: true });
   writeFileSync(join(root, rel), body);
+}
+
+/** A store that refuses one verb: a `bd` that fails that subcommand and passes the rest through to the real one. */
+function writeRefusingStore(binDir: string, verb: string): string {
+  mkdirSync(binDir, { recursive: true });
+  const wrapper = join(binDir, "bd");
+  writeFileSync(
+    wrapper,
+    [
+      "#!/bin/sh",
+      `if [ "$1" = "${verb}" ]; then`,
+      `  echo "this store refuses ${verb}" >&2`,
+      "  exit 1",
+      "fi",
+      `exec "${storeBinary()}" "$@"`,
+      "",
+    ].join("\n"),
+  );
+  chmodSync(wrapper, 0o755);
+  return wrapper;
 }
 
 /** The stub runner: it records the options it was handed, does what the case asks, and returns an answer. */
@@ -378,6 +399,54 @@ try {
     expectEqual("as a result, not an error", r.status, 0);
     expectEqual("the ticket is closed", storeIssue(root, ticket.id).status, "closed");
     expectEqual("with the unread reading", storeState(root, ticket.id, READING), READING_UNREAD);
+  });
+
+  // ---- The unread marker is written before the close, and a store that refuses it leaves a ticket the
+  // next run retries. The other order fails differently and worse: the ticket would already be `closed`
+  // with no marker, so the sweep (`bd list -t experiment -s closed -l reading:none`) could never find it
+  // and the result would be lost with nobody to tell. Both writes are idempotent, so the retry is cheap.
+  await withTarget(async (root, artifacts) => {
+    installExperimentTools(root);
+    const ticket = publishExperiment(root, {
+      title: "a marker the store refuses",
+      handle: "exp/10",
+      slug: "a-marker-the-store-refuses",
+    });
+    const recordRel = experimentRecordRel("exp/10", "a-marker-the-store-refuses");
+    gitC(root, "add", "-A");
+    gitC(root, "commit", "-m", "lab setup");
+    const code = gitC(root, "rev-parse", "HEAD");
+    const prevPath = process.env.PATH;
+    const prevDvc = process.env.DVC_BIN;
+    const bin = join(artifacts, "bin");
+    writeStubDvc(bin);
+    // The store is named by absolute path in the config, so the refusal is arranged there rather than on
+    // PATH: one verb fails, every other command reaches the real store.
+    writeTargetConfig(root, `store: ${writeRefusingStore(bin, "set-state")}\n`);
+    process.env.PATH = envWithRunTool(bin).PATH;
+    process.env.DVC_BIN = "";
+    try {
+      const outcome = await runExperiment(root, "exp/10", {
+        artifactsDir: artifacts,
+        runAgent: stub([], { sessionFile: "", answer: { kind: "text", text: "ran" }, lastError: undefined }, () => {
+          write(root, recordRel, completeRecord(code));
+        }),
+      });
+      expectEqual("a refused unread marker fails the node", outcome, FAILED);
+      expectEqual("and does not leave the ticket closed", storeIssue(root, ticket.id).status, "open");
+      expectEqual("so the sweep never claims it was read", unreadSweep(root), []);
+      expect(
+        "and the ticket carries the failure",
+        storeComments(root, ticket.id).some((entry) =>
+          /attempt 1 failed: the record could not be closed out/.test(entry.text),
+        ),
+        JSON.stringify(storeComments(root, ticket.id)),
+      );
+    } finally {
+      process.env.PATH = prevPath;
+      if (prevDvc === undefined) delete process.env.DVC_BIN;
+      else process.env.DVC_BIN = prevDvc;
+    }
   });
 
   // ---- The tracker contract and the experiment-domain document carry the four literal labels. ----

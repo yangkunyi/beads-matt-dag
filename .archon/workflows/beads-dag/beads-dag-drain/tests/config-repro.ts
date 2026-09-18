@@ -21,6 +21,7 @@ import {
   DEFAULT_VERIFY_TIMEOUT_MS,
   configLine,
   loadConfig,
+  parseConfigText,
   type ConfigKey,
   type PackConfig,
 } from "../../scripts/config.ts";
@@ -282,6 +283,48 @@ try {
     expect("with the reader's own error", /invalid concurrency in .*beads-dag\.yaml: nope/.test(opened.stderr), opened.stderr);
     expect("and no configuration line", !opened.stderr.includes("beads-dag: config:"), opened.stderr);
   });
+
+  // The refusal contract, case by case, driven straight from the text: `parseConfigText` names the file
+  // in its messages and reads no filesystem, so the shape of every refusal is pinned here. The runtime's
+  // parser reads the YAML; these are the refusals we kept on top of it, and the line numbers come from
+  // our own scan because the platform parser has none.
+  {
+    const file = "/tmp/beads-dag.yaml";
+    const refusal = (text: string): string => {
+      try {
+        parseConfigText(text, file);
+      } catch (e) {
+        return e instanceof Error ? e.message : String(e);
+      }
+      return "(accepted)";
+    };
+    expectEqual(
+      "a nested value is refused, naming the file and the key's line",
+      refusal("concurrency: 4\n# a comment\nstore:\n  binary: /opt/bd\n"),
+      `cannot read ${file} at line 3: "store" must be a single scalar, not a nested value`,
+    );
+    expectEqual(
+      "a bare key is refused, naming the file and the key's line",
+      refusal("concurrency: 4\npostMerge:\n"),
+      `cannot read ${file} at line 2: "postMerge" has no value`,
+    );
+    expectEqual(
+      "a duplicate key is refused at its second line",
+      refusal("concurrency: 4\nrunner: pi\nconcurrency: 8\n"),
+      `cannot read ${file} at line 3: duplicate key "concurrency"`,
+    );
+    expect(
+      "a syntax error names the file and cannot name a line",
+      refusal("concurrency: [1,\n").startsWith(`cannot read ${file}: `),
+      refusal("concurrency: [1,\n"),
+    );
+    const unknown = parseConfigText("concurrency: 8\nnotAKey: 1\n# store is not set\n", file);
+    expectEqual("an unknown key is ignored, not refused", unknown.config.concurrency, 8);
+    expectEqual("and only the keys the text set are recorded", [...unknown.fromFile], ["concurrency"]);
+    const empty = parseConfigText("# nothing but a comment\n", file);
+    expectEqual("a file with no keys keeps the defaults", empty.config.concurrency, 4);
+    expectEqual("and records nothing as coming from the file", [...empty.fromFile], []);
+  }
 
   console.log(JSON.stringify({ ok: true }));
 } catch (e) {

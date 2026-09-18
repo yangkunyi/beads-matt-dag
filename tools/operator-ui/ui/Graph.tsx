@@ -126,11 +126,13 @@ function GraphCanvas(props: {
 					onWritten();
 				})
 				.catch((error: unknown) => {
-					setPick(null);
 					const reason = error instanceof Error ? error.message : String(error);
 					setStatus(reason);
 					toast.error(reason);
-				});
+				})
+				// Either way the choice is spent: the edge landed, or the door refused it and said why. A
+				// picker left open after a success let the operator post the same crossing twice.
+				.finally(() => setPick(null));
 		},
 		[writeEndpoint, onWritten],
 	);

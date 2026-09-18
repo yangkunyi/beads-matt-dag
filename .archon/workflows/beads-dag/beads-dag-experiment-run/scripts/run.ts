@@ -24,9 +24,12 @@
  * hold an attempts-table row, and hold the four labelled closing lines (`measured:`, `reference:`,
  * `covered:`, `reading:`). Missing anything leaves the ticket open with
  * `attempt N failed: record incomplete — <what is missing>` and nothing else happens. Only a complete
- * record closes the ticket: the close, then `set-state reading=none` for the unread marker (event bead
- * as source of truth, cache label as lookup; ADR-0005: both in the store), and the record (plus
- * `dvc.lock` when the collection wrote it) is committed as one path-scoped commit under the Main lock.
+ * record closes the ticket: the unread marker, then the close (event bead as source of truth, cache
+ * label as lookup; ADR-0005: both in the store), and the record (plus `dvc.lock` when the collection
+ * wrote it) is committed as one path-scoped commit under the Main lock. The marker goes first because
+ * the two are separate store writes and the order decides which half-state a failure leaves: a marked
+ * ticket that never closed is retried by the next run, while a closed ticket with no marker is invisible
+ * to the session's sweep and its result is lost in silence.
  *
  * The run's *name* is the ticket's own: `<NN>-<slug>` (`ticket.ts`), the record's basename.
  */
@@ -216,14 +219,23 @@ export async function runExperiment(target: string, issueHandle: string, opts: R
   }
 
   commentIssue(store, target, issue.id, recordedLine(recordRel, commit));
-  closeRecordedIssue(store, target, issue.id);
-  // The unread reading is its own write: one `set-state`, with this run as actor. The event bead and
-  // the cache label are both in the store (ADR-0005); the record's `reading:` line is already in the
-  // committed document.
-  stampUnreadReading(store, target, issue.id, {
-    reason: "record closed",
-    actor: runIdentity(opts.artifactsDir),
-  });
+  // The unread marker, then the close. Two separate store writes, and the order is the whole point: a
+  // marked ticket that did not close is caught below, handed back, and retried, while a closed ticket
+  // that was never marked is invisible to the session's sweep (`bd list -t experiment -s closed -l
+  // reading:none`) and its result disappears without anyone noticing. Both writes are idempotent, so a
+  // retry costs one turn and nothing else.
+  try {
+    stampUnreadReading(store, target, issue.id, {
+      reason: "record closed",
+      actor: runIdentity(opts.artifactsDir),
+    });
+    closeRecordedIssue(store, target, issue.id);
+  } catch (e) {
+    const reason = `the record could not be closed out: ${e instanceof Error ? e.message : String(e)}`;
+    recordFailedAttempt(store, target, issue.id, reason, { giveBackTheClaim: true });
+    console.error(`${names.handle}: ${reason}`);
+    return FAILED;
+  }
   console.error(`${names.handle}: record closed (${recordRel} at ${commit})`);
   return CLOSED;
 }

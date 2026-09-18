@@ -65,6 +65,7 @@ import {
 } from "./page";
 import type { RunLaunch } from "./start";
 import { MarkdownBody } from "./ui/markdown";
+import { withNewlyOffered } from "./ui/App.tsx";
 import { createElement } from "react";
 import { renderToString } from "react-dom/server";
 import { createOverviewServer, handleOverviewRequest } from "./serve";
@@ -287,6 +288,65 @@ expect(
 const nodeA = projected.nodes.find((node) => node.id === "a");
 const nodeC = projected.nodes.find((node) => node.id === "c");
 expect("blocker sits to the left of its dependent", Boolean(nodeA && nodeC && nodeA.position.x < nodeC.position.x));
+
+// The filter rule, driven directly. Unchecking must survive a re-read: the live poll re-reads every five
+// seconds while a run is moving, so a rule that re-selects whatever the selection is missing would turn
+// the operator's own choice back on under them.
+const afterUncheck = { seen: new Set(["open", "closed"]), selected: new Set(["closed"]) };
+expectEqual(
+	"a re-read that offers nothing new changes nothing",
+	withNewlyOffered(afterUncheck.seen, afterUncheck.selected, ["open", "closed"]),
+	undefined,
+);
+const grew = withNewlyOffered(afterUncheck.seen, afterUncheck.selected, ["open", "closed", "in_progress"]);
+expectEqual("a value the store has never offered is selected", [...(grew?.selected ?? [])].sort(), [
+	"closed",
+	"in_progress",
+]);
+expect(
+	"and a value the operator unchecked stays unchecked",
+	grew !== undefined && !grew.selected.has("open") && grew.seen.has("open"),
+	JSON.stringify(grew && [...grew.selected]),
+);
+
+// A `blocks` cycle. d3-dag refuses a cyclic graph, and the fallback for that is a single column — which
+// would cost the whole graph its shape because one pair of issues points at each other. Only the edge
+// that closes the loop is set aside; everything else keeps its columns.
+const cycled = assembleOverview(
+	[
+		issue({ id: "p", title: "p", type: "task", status: "open" }),
+		issue({ id: "q", title: "q", type: "task", status: "open", dependencies: [{ id: "p", type: "blocks" }] }),
+		issue({ id: "r", title: "r", type: "task", status: "open", dependencies: [{ id: "q", type: "blocks" }] }),
+		// `p` is blocked by `r`, which closes the loop p -> q -> r -> p.
+		issue({ id: "s", title: "s", type: "task", status: "open" }),
+	],
+	new Map(),
+	() => [],
+);
+const cycledProjection = projectGraph({
+	...cycled,
+	edges: [...cycled.edges.filter((edge) => edge.type === "blocks"), { from: "r", to: "p", type: "blocks" }],
+});
+const positionOf = (id: string) => cycledProjection.nodes.find((node) => node.id === id)?.position;
+const p = positionOf("p");
+const q = positionOf("q");
+const r = positionOf("r");
+expect(
+	"a cycle still lays out every node",
+	cycledProjection.nodes.every((node) => Number.isFinite(node.position.x) && Number.isFinite(node.position.y)),
+);
+expect(
+	"and does not collapse the graph to one column",
+	p !== undefined && q !== undefined && r !== undefined && p.x !== q.x && q.x !== r.x,
+);
+expect(
+	"the unclosed part of the loop keeps its order",
+	Boolean(p && q && r && p.x < q.x && q.x < r.x),
+);
+expect(
+	"the edge that closed the loop is still projected",
+	cycledProjection.edges.some((edge) => edge.source === "r" && edge.target === "p" && edge.relation === "blocks"),
+);
 expectEqual(
 	"same-domain connect proposes blocks",
 	proposeConnect("c", "d", "development", "development"),

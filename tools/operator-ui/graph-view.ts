@@ -64,13 +64,57 @@ export function filterChoices(issues: ReadonlyArray<OverviewIssue>): {
 }
 
 /**
+ * The `blocks` edges a layout can use: those among the shown issues, minus the ones that close a cycle.
+ *
+ * d3-dag refuses a cyclic graph outright, and the old hand-rolled layering survived one: it pinned the
+ * cycle's own nodes at layer 0 and laid out the rest, while falling back to a single column drops the
+ * whole graph because one pair of issues points at each other. A depth-first walk that sets aside the
+ * edges back to a node still on the stack keeps every other column intact. The set-aside edge still
+ * renders — it just does not decide a layer.
+ */
+function acyclicBlocks(ids: ReadonlyArray<string>, blocks: ReadonlyArray<{ from: string; to: string }>): { from: string; to: string }[] {
+	const out = new Map<string, { from: string; to: string }[]>();
+	for (const id of ids) out.set(id, []);
+	for (const block of blocks) out.get(block.from)?.push(block);
+	const OPEN = 1;
+	const DONE = 2;
+	const state = new Map<string, number>();
+	const kept: { from: string; to: string }[] = [];
+	for (const root of ids) {
+		if (state.has(root)) continue;
+		// An explicit stack rather than recursion: a Target's graph is small, and this is exactly the kind
+		// of walk that would fail on the graph that finally mattered.
+		const frames = [{ id: root, next: 0 }];
+		state.set(root, OPEN);
+		while (frames.length > 0) {
+			const frame = frames[frames.length - 1]!;
+			const edges = out.get(frame.id) ?? [];
+			if (frame.next >= edges.length) {
+				state.set(frame.id, DONE);
+				frames.pop();
+				continue;
+			}
+			const edge = edges[frame.next++]!;
+			const seen = state.get(edge.to);
+			if (seen === OPEN) continue;
+			kept.push(edge);
+			if (seen === DONE) continue;
+			state.set(edge.to, OPEN);
+			frames.push({ id: edge.to, next: 0 });
+		}
+	}
+	return kept;
+}
+
+/**
  * Layered positions from `blocks` edges only, via d3-dag's dagre-compatible sugiyama layout, which
  * minimises edge crossings. Relates-to / discovered-from do not pull a node into a later column.
  * The numbers live in the view; they are never written back.
  *
- * d3-dag refuses a cyclic graph and a node it was given no size for, so a snapshot it will not take
- * falls back to a plain column rather than taking the page down: this is a view, and one that
- * declines to draw is worse than one drawn crudely.
+ * d3-dag refuses a node it was given no size for, so a snapshot it will not take falls back to a plain
+ * column rather than taking the page down: this is a view, and one that declines to draw is worse than
+ * one drawn crudely. A cycle is not one of those cases — it is handled above, so one bad edge does not
+ * cost the whole graph its shape.
  */
 export function layoutPositions(
 	issues: ReadonlyArray<{ id: string }>,
@@ -83,11 +127,10 @@ export function layoutPositions(
 		grf.setGraph({ rankdir: "LR", nodesep: GAP_Y, ranksep: GAP_X });
 		grf.setDefaultEdgeLabel(() => ({}));
 		for (const id of ids) grf.setNode(id, { width: NODE_W, height: NODE_H });
-		for (const edge of edges) {
-			if (edge.type !== "blocks") continue;
-			if (!idSet.has(edge.from) || !idSet.has(edge.to)) continue;
-			grf.setEdge(edge.from, edge.to);
-		}
+		const blocks = edges.filter(
+			(edge) => edge.type === "blocks" && idSet.has(edge.from) && idSet.has(edge.to),
+		);
+		for (const edge of acyclicBlocks(ids, blocks)) grf.setEdge(edge.from, edge.to);
 		dagre.layout(grf);
 		const positions = new Map<string, { x: number; y: number }>();
 		for (const id of ids) {
