@@ -20,26 +20,6 @@ export type DeletePlan =
 	| { ok: true; id: string }
 	| { ok: false; reason: string };
 
-export function parseDeleteBody(raw: string): { id: string } {
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(raw);
-	} catch {
-		throw new Error("delete body is not JSON");
-	}
-	if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-		throw new Error("delete body is not an object");
-	}
-	const record = parsed as Record<string, unknown>;
-	if (record.confirm !== true) throw new Error("delete needs confirm");
-	if (typeof record.id !== "string" || record.id.trim() === "") {
-		throw new Error("delete needs an issue id");
-	}
-	const id = record.id.trim();
-	if (!ISSUE_ID.test(id)) throw new Error("delete needs an issue id");
-	return { id };
-}
-
 export function planDelete(id: string, issues: ReadonlyArray<DeleteIssue>): DeletePlan {
 	if (!ISSUE_ID.test(id)) return { ok: false, reason: "delete needs an issue id" };
 	const issue = issues.find((entry) => entry.id === id);

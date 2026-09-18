@@ -13,13 +13,13 @@
  * is not used. Close, `reading:`, and other domain label acts stay the session's (ADR-0006).
  */
 
-import { addComment, parseCommentBody } from "./comment";
-import { createIssue, parseCreateBody } from "./create";
-import { deleteIssue, parseDeleteBody } from "./delete";
+import { addComment } from "./comment";
+import { createIssue, parseCreateInput } from "./create";
+import { deleteIssue } from "./delete";
 import { domainOf } from "./model";
 import { planStart, type RunLauncher } from "./start";
 import type { BdWriteRunner } from "./store";
-import { applyTriage, isTriageLabel, parseTriageBody } from "./triage";
+import { applyTriage, isTriageLabel } from "./triage";
 
 /** Client-side refusal: the store is not written. */
 export class OperatorActionRefused extends Error {
@@ -222,6 +222,13 @@ function applyRemoveEdge(
 	bd(["dep", "remove", to, from]);
 }
 
+function issueIdOf(record: Record<string, unknown>, need: string): string {
+	if (typeof record.id !== "string" || !ISSUE_ID.test(record.id.trim())) {
+		throw new OperatorActionRefused(need);
+	}
+	return record.id.trim();
+}
+
 function asRefused(error: unknown, prefixes: string[]): never {
 	if (error instanceof OperatorActionRefused) throw error;
 	const message = error instanceof Error ? error.message : String(error);
@@ -269,7 +276,7 @@ export function applyOperatorAction(bd: BdWriteRunner, raw: string, extras: Oper
 	refuseUnknownIntent(intent);
 	if (intent === "create") {
 		try {
-			const input = parseCreateBody(raw);
+			const input = parseCreateInput(record);
 			const dir = extras.dir;
 			if (dir === undefined || dir === "") {
 				throw new OperatorActionRefused("create needs a target");
@@ -296,26 +303,35 @@ export function applyOperatorAction(bd: BdWriteRunner, raw: string, extras: Oper
 		return;
 	}
 	if (intent === "delete") {
+		if (record.confirm !== true) throw new OperatorActionRefused("delete needs confirm");
+		const id = issueIdOf(record, "delete needs an issue id");
 		try {
-			const body = parseDeleteBody(raw);
-			deleteIssue(bd, body.id, extras.issues ?? []);
+			deleteIssue(bd, id, extras.issues ?? []);
 		} catch (error) {
 			asRefused(error, ["delete needs"]);
 		}
 		return;
 	}
 	if (intent === "comment") {
+		const id = issueIdOf(record, "comment needs an issue id");
+		if (typeof record.text !== "string" || record.text.trim() === "") {
+			throw new OperatorActionRefused("comment needs some text");
+		}
 		try {
-			const comment = parseCommentBody(raw);
-			addComment(bd, comment.id, comment.text, extras.actor);
+			addComment(bd, id, record.text.trim(), extras.actor);
 		} catch (error) {
 			asRefused(error, ["comment needs"]);
 		}
 		return;
 	}
+	const id = issueIdOf(record, "triage needs an issue id");
+	if (typeof record.label !== "string" || record.label.trim() === "") {
+		throw new OperatorActionRefused("triage needs a label");
+	}
+	const label = record.label.trim();
+	if (!isTriageLabel(label)) throw new OperatorActionRefused("non-triage label");
 	try {
-		const triage = parseTriageBody(raw);
-		applyTriage(bd, triage.id, triage.label);
+		applyTriage(bd, id, label);
 	} catch (error) {
 		asRefused(error, ["triage needs"]);
 	}

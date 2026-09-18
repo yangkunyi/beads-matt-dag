@@ -36,12 +36,7 @@ import {
 } from "./model";
 import { fetchLive, gitDirOf, parseArchonLog, RUN_LOCK_NAME, summariseArchonLog } from "./overlay";
 import { applyOperatorAction, OperatorActionRefused } from "./actions";
-import { commentWriteBody } from "./client-comment";
-import { createWriteBody } from "./client-create";
-import { edgeWriteBody } from "./client-edge";
-import { startWriteBody } from "./client-start";
-import { triageWriteBody } from "./client-triage";
-import { addComment, parseCommentBody } from "./comment";
+import { postOperatorAction } from "./client";
 import { planDelete, planDeleteAll } from "./delete";
 import { projectGraph, proposeConnect } from "./graph-view";
 import {
@@ -773,38 +768,6 @@ const writeRunner: BdWriteRunner = (args, stdin) => {
 	if (args[0] === "list") return listStdout;
 	return "";
 };
-addComment(writeRunner, "from-bd", "operator reply");
-expectEqual("reply is bd comment", writes, [{ args: ["comment", "from-bd", "--stdin"], stdin: "operator reply" }]);
-expect(
-	"reply is not human respond, close, or a label",
-	writes.every(
-		(call) =>
-			call.args[0] === "comment" &&
-			!call.args.includes("human") &&
-			!call.args.includes("respond") &&
-			!call.args.includes("close") &&
-			!call.args.includes("label") &&
-			!call.args.includes("update"),
-	),
-);
-
-writes.length = 0;
-let refused = false;
-try {
-	addComment(writeRunner, "from-bd", "   ");
-} catch {
-	refused = true;
-}
-expect("empty reply is refused", refused);
-expectEqual("empty reply does not write", writes, []);
-
-writes.length = 0;
-addComment(writeRunner, "from-bd", "named", "alice");
-expectEqual("reply with an actor is bd --actor comment", writes, [
-	{ args: ["--actor", "alice", "comment", "from-bd", "--stdin"], stdin: "named" },
-]);
-
-writes.length = 0;
 applyOperatorAction(writeRunner, JSON.stringify({ intent: "comment", id: "from-bd", text: "leave this" }));
 expectEqual("comment intent is bd comment", writes, [{ args: ["comment", "from-bd", "--stdin"], stdin: "leave this" }]);
 expect(
@@ -857,6 +820,11 @@ writes.length = 0;
 const smuggledActor = refusedAction(JSON.stringify({ intent: "comment", id: "from-bd", text: "x", actor: "eve" }));
 expect("body actor is refused", smuggledActor.refused);
 expectEqual("body actor does not write", writes, []);
+
+writes.length = 0;
+const emptyComment = refusedAction(JSON.stringify({ intent: "comment", id: "from-bd", text: "   " }));
+expect("empty comment is refused", emptyComment.refused);
+expectEqual("empty comment does not write", writes, []);
 
 const deletable = [issue({ id: "from-bd", status: "open" })];
 expectEqual("an open issue with no dependents can be deleted", planDelete("from-bd", deletable), {
@@ -1296,14 +1264,6 @@ const ideaField = refusedAction(
 expect("idea:* field is refused", ideaField.refused);
 expectEqual("idea:* field does not write", writes, []);
 
-let badBody = false;
-try {
-	parseCommentBody("not-json");
-} catch {
-	badBody = true;
-}
-expect("non-JSON comment body is refused", badBody);
-
 writes.length = 0;
 const badWrite = refusedAction("not-json");
 expect("non-JSON write is refused", badWrite.refused);
@@ -1439,30 +1399,69 @@ expect(
 		!servedHtml.includes('name="labels"') &&
 		!servedHtml.includes("bd human"),
 );
+const taggedWrites = [
+	{ intent: "comment", id: "from-bd", text: "leave this" },
+	{ intent: "create", type: "task", feature: "drain", title: "the work", prose: "" },
+	{ intent: "start", ids: ["c", "d"] },
+	{ intent: "add-edge", from: "t1", to: "t2", type: "blocks" },
+	{ intent: "remove-edge", from: "t1", to: "t2", type: "blocks" },
+	{ intent: "triage", id: "from-bd", label: "ready-for-agent" },
+	{ intent: "delete", id: "from-bd", confirm: true },
+];
+const originalFetch = globalThis.fetch;
+const clientPosts: { method: string; contentType: string; body: unknown }[] = [];
+globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+	const headers = new Headers(init?.headers);
+	clientPosts.push({
+		method: init?.method ?? "GET",
+		contentType: headers.get("content-type") ?? "",
+		body: JSON.parse(String(init?.body ?? "null")),
+	});
+	return new Response("", { status: 204 });
+}) as typeof fetch;
+try {
+	for (const body of taggedWrites) {
+		await postOperatorAction("/comment", body);
+	}
+} finally {
+	globalThis.fetch = originalFetch;
+}
 expectEqual(
-	"comment write body is the tagged intent",
-	commentWriteBody("from-bd", "leave this"),
-	JSON.stringify({ intent: "comment", id: "from-bd", text: "leave this" }),
+	"one client post is POST json",
+	clientPosts.map((entry) => ({ method: entry.method, contentType: entry.contentType })),
+	taggedWrites.map(() => ({ method: "POST", contentType: "application/json" })),
 );
-expectEqual(
-	"add-edge write body is the tagged intent",
-	edgeWriteBody("add-edge", "t1", "t2", "blocks"),
-	JSON.stringify({ intent: "add-edge", from: "t1", to: "t2", type: "blocks" }),
+expectEqual("one client post carries every tagged write", clientPosts.map((entry) => entry.body), taggedWrites);
+globalThis.fetch = (async () => new Response("closed is refused", { status: 400 })) as unknown as typeof fetch;
+let clientRefusal = "";
+try {
+	await postOperatorAction("/comment", { intent: "comment", id: "from-bd", text: "leave this", closed: true });
+} catch (error) {
+	clientRefusal = error instanceof Error ? error.message : String(error);
+} finally {
+	globalThis.fetch = originalFetch;
+}
+expect("one client post surfaces the door's refusal", clientRefusal.includes("closed is refused"));
+const clientDir = dirname(fileURLToPath(import.meta.url));
+const clientSrc = readFileSync(join(clientDir, "client.ts"), "utf8");
+expect(
+	"the client post does not pull the door or the store",
+	!clientSrc.includes("./store") && !clientSrc.includes("./actions") && !clientSrc.includes("child_process"),
 );
-expectEqual(
-	"remove-edge write body is the tagged intent",
-	edgeWriteBody("remove-edge", "t1", "t2", "blocks"),
-	JSON.stringify({ intent: "remove-edge", from: "t1", to: "t2", type: "blocks" }),
-);
-expectEqual(
-	"create write body is the tagged intent",
-	createWriteBody({ type: "task", feature: "drain", title: "the work" }),
-	JSON.stringify({ intent: "create", type: "task", feature: "drain", title: "the work", prose: "" }),
-);
-expectEqual(
-	"triage write body is the tagged intent",
-	triageWriteBody("from-bd", "ready-for-agent"),
-	JSON.stringify({ intent: "triage", id: "from-bd", label: "ready-for-agent" }),
+function perIntentClientGone(name: string): boolean {
+	const path = join(clientDir, name);
+	if (!existsSync(path)) return true;
+	const text = readFileSync(path, "utf8");
+	return !text.includes("export function") && !text.includes("JSON.stringify") && !text.includes("fetch(");
+}
+expect(
+	"per-intent client modules are gone",
+	perIntentClientGone("client-comment.ts") &&
+		perIntentClientGone("client-create.ts") &&
+		perIntentClientGone("client-delete.ts") &&
+		perIntentClientGone("client-edge.ts") &&
+		perIntentClientGone("client-start.ts") &&
+		perIntentClientGone("client-triage.ts"),
 );
 expect("served page offers the comment door", pageOffersReply(servedHtml));
 const graphSrc = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "ui", "Graph.tsx"), "utf8");
@@ -1502,10 +1501,12 @@ expect(
 );
 expect(
 	"confirm delete takes the selected set",
-	appSrc.includes("planDeleteAll") && appSrc.includes("postDelete"),
+	appSrc.includes("planDeleteAll") &&
+		appSrc.includes('intent: "delete"') &&
+		appSrc.includes("confirm: true"),
 );
 expect("surface has a triage form", appSrc.includes('id="triage-form"'));
-expect("surface posts triage through the write door", appSrc.includes("postTriage"));
+expect("surface posts through the one client", appSrc.includes("postOperatorAction"));
 expect("surface offers the five triage labels", appSrc.includes("TRIAGE_LABELS"));
 expect("surface can mark wontfix as a label", appSrc.includes("wontfix"));
 expect("surface does not close from triage", !appSrc.includes("bd close") && !appSrc.includes('name="close"'));
@@ -1519,7 +1520,7 @@ expect(
 );
 expect(
 	"the palette is cmdk and posts only the door's intents",
-	appSrc.includes('from "cmdk"') && appSrc.includes("postTriage") && appSrc.includes("postStart"),
+	appSrc.includes('from "cmdk"') && appSrc.includes("postOperatorAction"),
 );
 expect(
 	"the palette opens on Cmd or Ctrl K",
@@ -1558,16 +1559,24 @@ const serveSrc = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "ser
 expect("the listener is Bun.serve, not node:http", serveSrc.includes("Bun.serve") && !serveSrc.includes("node:http"));
 expect(
 	"delete is a tagged intent behind confirm, not a canvas key",
-	appSrc.includes("postDelete") &&
+	appSrc.includes('intent: "delete"') &&
+		appSrc.includes("confirm: true") &&
 		readFileSync(join(dirname(fileURLToPath(import.meta.url)), "ui", "Graph.tsx"), "utf8").includes('change.type !== "remove"'),
-);
-expect(
-	"delete never passes --cascade",
-	readFileSync(join(dirname(fileURLToPath(import.meta.url)), "delete.ts"), "utf8").includes('["delete", id, "--force"]') &&
-		!readFileSync(join(dirname(fileURLToPath(import.meta.url)), "delete.ts"), "utf8").includes('"--cascade"'),
 );
 const listSrc = appSrc.slice(appSrc.indexOf("function IssueList"), appSrc.indexOf("function Filters"));
 expect("the list exists and only selects: no write goes out from it", listSrc.length > 0 && !listSrc.includes("post"));
+expect("create form stays in the page module", appSrc.includes("function CreateForm"));
+expect(
+	"the page does not import a per-intent client",
+	!appSrc.includes("client-comment") &&
+		!appSrc.includes("client-create") &&
+		!appSrc.includes("client-delete") &&
+		!appSrc.includes("client-edge") &&
+		!appSrc.includes("client-start") &&
+		!appSrc.includes("client-triage") &&
+		graphSrc.includes("postOperatorAction") &&
+		!graphSrc.includes("client-edge"),
+);
 const kitSrc = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "ui", "kit.tsx"), "utf8");
 expect("a dialog closes on Escape", kitSrc.includes("Escape"));
 const familySrc = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "triage-labels.ts"), "utf8");
@@ -2168,11 +2177,6 @@ expect(
 	) && writes.length === 0,
 );
 expectEqual("unselected gated issue is not written", writes, []);
-expectEqual(
-	"start write body is the tagged intent",
-	startWriteBody(["c", "d"]),
-	JSON.stringify({ intent: "start", ids: ["c", "d"] }),
-);
 
 const startLaunches: RunLaunch[] = [];
 const startHandler = {

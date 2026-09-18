@@ -27,7 +27,7 @@ import {
 	type NodeChange,
 	type NodeProps,
 } from "@xyflow/react";
-import { postEdge } from "../client-edge.ts";
+import { postOperatorAction } from "../client.ts";
 import { projectGraph, proposeConnect, type ViewNodeData } from "../graph-view.ts";
 import { cn } from "./cn.ts";
 import { Button, Popover } from "./kit.tsx";
@@ -136,7 +136,7 @@ function GraphCanvas(props: {
 		(intent: "add-edge" | "remove-edge", from: string, to: string, type: string) => {
 			if (writeEndpoint === null) return;
 			setStatus("");
-			void postEdge(writeEndpoint, intent, from, to, type)
+			void postOperatorAction(writeEndpoint, { intent, from, to, type })
 				.then(() => {
 					onWritten();
 				})
