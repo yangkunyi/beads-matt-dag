@@ -5,9 +5,11 @@
 # recorded "nothing to merge" / unresolved conflict. Raise it again when the frontier is issues that do
 # not share one client. The provider still allows more than one (micu measured six then ten).
 #
-# model: operator asked 2026-09-16 to run the experiment-executor drain on grok 4.6 high.
-# Unset, the runner takes its own default (micu/deepseek-flash as of 2026-09-15).
-model: xai/grok-4.6
+# model: xai/grok-4.6 was the operator's choice on 2026-09-16, but the xAI account ran out of credits:
+# drain 3a88033c failed five of six tickets with 403 "You have run out of credits". Moved to the highland
+# gateway (same key as openai/google here), probed working 2026-09-18 for glm-5.3, glm-5.3-flash and
+# gpt-6-astra. Unset, the runner takes its own default (micu/deepseek-flash as of 2026-09-15).
+model: highland/glm-5.3
 thinkingLevel: high
 concurrency: 1
 
