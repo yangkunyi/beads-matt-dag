@@ -29,8 +29,8 @@ import { isAbsolute, join } from "node:path";
 import { git, gitOrThrow, revParse } from "./git.ts";
 import { withMainLock } from "./lock.ts";
 
-/** The two domains that land documents: a reading's commit, and an experiment's. */
-export type DocumentVerb = "read" | "record";
+/** The domains that land documents: a reading's commit, an experiment's, and a grill run's glossary. */
+export type DocumentVerb = "read" | "record" | "grill";
 
 /** The subject one ticket's document commit carries: `<verb>: <handle> <slug>`. */
 export function documentSubject(verb: DocumentVerb, handle: string, slug: string): string {

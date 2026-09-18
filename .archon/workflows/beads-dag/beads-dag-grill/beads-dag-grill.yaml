@@ -1,0 +1,42 @@
+name: beads-dag-grill
+description: |
+  Grill one seed issue on this Target: write the next round onto that issue and stop for answers.
+  A later turn that sees answers writes the next round or records that the frontier is empty. Not
+  drain and not the inquiry reading run. Not an Archon approval gate. Follow-up issues wait for
+  /to-tickets after Done; this run does not publish development tickets. Install this pack folder as
+  ~/.archon/workflows/beads-dag; a symlink to a checkout is the intended install. The Target does not
+  commit .archon/.
+worktree:
+  enabled: false
+inputs:
+  seed:
+    required: true
+    description: Seed issue id (the node the human created)
+  config:
+    default: .scratch/beads-dag.yaml
+    description: Path to YAML with model, thinkingLevel, concurrency, runner
+nodes:
+  - id: open
+    script: open
+    runtime: bun
+    always_run: true
+    with:
+      config: $INPUTS.config
+      seed: $INPUTS.seed
+  - id: grill
+    script: grill
+    runtime: bun
+    # One grill turn: GRILL_WALL_MS (1 h) in roles.ts, with the runner's own kill after it, plus the
+    # document commit. The contract test computes the same margin.
+    timeout: 3800000
+    depends_on: [open]
+    with:
+      config: $INPUTS.config
+      seed: $INPUTS.seed
+  - id: report
+    script: report
+    runtime: bun
+    depends_on: [grill]
+    with:
+      config: $INPUTS.config
+      seed: $INPUTS.seed

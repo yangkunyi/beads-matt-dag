@@ -1,7 +1,7 @@
 /**
  * The opening node's lock-and-release shell.
  *
- * Drain, inquiry, and experiment `open` keep their own leftover repair and premises, and plug into
+ * Drain, inquiry, experiment, and grill `open` keep their own leftover repair and premises, and plug into
  * this for the work they share. The shell takes the Target run lock before anything else (so a
  * second run's refusal writes nothing at all), prints the configuration line, runs the leftover
  * repair and premises the executor passes in, and releases the lock if that work fails. The lock

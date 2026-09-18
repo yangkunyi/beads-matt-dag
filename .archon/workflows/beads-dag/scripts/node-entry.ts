@@ -20,6 +20,8 @@ type NodeEnv = {
    * is today's. A present set, empty included, is the ids this run may claim.
    */
   allowList: AllowList;
+  /** INPUTS_SEED: the seed issue id a grill run writes onto, "" for a node that has no seed. */
+  seedId: string;
 };
 
 type NodeOpts = {
@@ -27,6 +29,8 @@ type NodeOpts = {
   issue?: boolean;
   /** Require ARTIFACTS_DIR. */
   artifacts?: boolean;
+  /** Require INPUTS_SEED: only the grill run's nodes do. */
+  seed?: boolean;
   /**
    * The node's step. Its return value is the node's whole stdout, so a handler hands back a
    * node-outcomes token: the token plus exactly one trailing newline (nodeLine).
@@ -53,10 +57,19 @@ export async function runNode(opts: NodeOpts): Promise<void> {
     const target = process.cwd();
     const issueHandle = opts.issue ? requireEnv("INPUTS_ISSUE") : "";
     const artifactsDir = opts.artifacts ? requireEnv("ARTIFACTS_DIR") : "";
+    const seedId = opts.seed ? requireEnv("INPUTS_SEED") : "";
     const { config, provenance } = loadConfig(target, process.env.INPUTS_CONFIG);
     const allowList = parseAllowList(process.env.INPUTS_ALLOW_LIST);
     process.stdout.write(
-      await opts.run({ target, issueHandle, artifactsDir, config, configProvenance: provenance, allowList }),
+      await opts.run({
+        target,
+        issueHandle,
+        artifactsDir,
+        config,
+        configProvenance: provenance,
+        allowList,
+        seedId,
+      }),
     );
   } catch (e) {
     console.error(e instanceof Error ? e.message : String(e));

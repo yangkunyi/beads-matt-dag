@@ -7,8 +7,8 @@
  * disagree with the role it runs. The workflow's own timeout is the other half of that agreement: it
  * has to outlast the wall clock declared here or the runner kills a turn the agent is still on.
  *
- * `role` here is an agent role (implement, conflict, read, experiment, and the two drain-end readers,
- * review and summary). It is not a triage label: different axis, different word.
+ * `role` here is an agent role (implement, conflict, read, experiment, grill, and the two drain-end
+ * readers, review and summary). It is not a triage label: different axis, different word.
  */
 import type { PackAgentOpts } from "./agent.ts";
 import type { PackConfig } from "./config.ts";
@@ -16,6 +16,8 @@ import {
   conflictPersona,
   experimentPersona,
   experimentTask,
+  grillPersona,
+  grillTask,
   implementPersona,
   readPersona,
   readTask,
@@ -57,6 +59,13 @@ export const READ_WALL_MS = 60 * 60 * 1000;
 export const EXPERIMENT_WALL_MS = 4 * 60 * 60 * 1000;
 
 /**
+ * How long one grill turn may run. A grill is one round - the griller writes the next frontier onto the
+ * seed and stops for answers - and it is its own constant because a grill turn is neither an
+ * implementation turn nor a reading. The grill node's timeout is read against it.
+ */
+export const GRILL_WALL_MS = 60 * 60 * 1000;
+
+/**
  * What each role is called with: the role's own arguments and nothing else. The handle keys the issue
  * roles' sessions; the body's path is the issue roles' whole brief. The reading role's arguments add the
  * two paths its brief carries, and the drain-end readers' arguments are what their brief is built from -
@@ -76,6 +85,12 @@ export type RoleShape = {
    * role's arguments add - the document the node checks and commits.
    */
   experiment: { handle: string; bodyPath: string; recordRel: string };
+  /**
+   * One seed's next grilling round. The body's path is the issue roles' whole brief; the seed id and
+   * the next round number are what this role's arguments add - the issue the round is written onto,
+   * and which round this turn is.
+   */
+  grill: { handle: string; bodyPath: string; seedId: string; nextRound: number };
   /** One axis of the drain-end review, over the range this run merged. */
   review: { axisIndex: number; base: string; axis: string; head: string; log: string };
   /** The one report over the review, for the human who reads the run afterwards. */
@@ -130,6 +145,14 @@ export const ROLES: { [K in AgentRole]: RoleSpec<RoleShape[K]> } = {
     persona: () => experimentPersona(),
     prompt: (args) => experimentTask(args.bodyPath, args.recordRel),
     wallMs: EXPERIMENT_WALL_MS,
+  },
+  grill: {
+    // One seed, one session: the handle keys it, so a later turn that sees answers continues the
+    // grilling it started, and two seeds never share a conversation.
+    sessionKey: (args) => args.handle,
+    persona: () => grillPersona(),
+    prompt: (args) => grillTask(args.bodyPath, args.seedId, args.nextRound),
+    wallMs: GRILL_WALL_MS,
   },
   review: {
     // One session per axis and per run's artifacts: a fresh run's review does not resume a previous
