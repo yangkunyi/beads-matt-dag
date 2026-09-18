@@ -633,6 +633,7 @@ function fakePiSource(mode: string): string {
     "  const cwd = opts.cwd;",
     "  const saw = () => ({",
     "    cwd, sessionFile: file, model: opts.model, thinkingLevel: opts.thinkingLevel,",
+    "    excludeTools: opts.excludeTools,",
     "    customTools: (opts.customTools ?? []).map((tool) => tool && tool.kind),",
     "  });",
     "  record(saw());",

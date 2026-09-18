@@ -1,10 +1,11 @@
 /**
- * The live overlay's I/O: the Target lock, Archon workflow status, the run's artefacts, attempted.
+ * The live overlay's I/O: the Target lock, Archon workflow status, the run's artefacts, attempted,
+ * and Archon's own `logs/<run-id>.jsonl`.
  *
  * Nothing here publishes. The pack already writes `beads-dag-run.lock`, `run-lock.json`,
- * `attempted-ids.json`, `summary.md` / `report.md`, and Archon already answers `workflow status`.
- * This module reads those four and joins them; it does not import the pack and does not add a fifth
- * file for the UI to consume.
+ * `attempted-ids.json`, `summary.md` / `report.md`, Archon already answers `workflow status`, and
+ * Archon already writes the run JSONL. This module reads those and joins them; it does not import
+ * the pack and does not add a file of its own for the UI to consume.
  */
 
 import { accessSync, constants, existsSync, readFileSync, statSync } from "node:fs";
@@ -16,6 +17,7 @@ import {
 	type LiveArchonRun,
 	type LiveArtifacts,
 	type LiveLock,
+	type LiveLog,
 	type LiveReport,
 	type LiveRun,
 } from "./model";
@@ -156,6 +158,77 @@ export function artifactsDirFor(outputRoot: string, runId: string): string {
 	return join(outputRoot, "artifacts", "runs", runId);
 }
 
+/** Archon's per-run event log: `<output_root>/logs/<run-id>.jsonl`. */
+export function logPathFor(outputRoot: string, runId: string): string {
+	return join(outputRoot, "logs", `${runId}.jsonl`);
+}
+
+export type ArchonLogEvent = {
+	type: string;
+	step?: string;
+	ts?: string;
+	workflow_id?: string;
+};
+
+/** One JSON object per line. A bad line is skipped, never a throw. */
+export function parseArchonLog(body: string): ArchonLogEvent[] {
+	const events: ArchonLogEvent[] = [];
+	for (const line of body.split("\n")) {
+		if (line.trim() === "") continue;
+		let parsed: unknown;
+		try {
+			parsed = JSON.parse(line);
+		} catch {
+			continue;
+		}
+		if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) continue;
+		const row = parsed as Record<string, unknown>;
+		const type = text(row.type);
+		if (type === undefined) continue;
+		events.push({
+			type,
+			step: text(row.step),
+			ts: text(row.ts),
+			workflow_id: text(row.workflow_id),
+		});
+	}
+	return events;
+}
+
+/** The current step is the last `node_start` that has not yet `node_complete`d. */
+export function summariseArchonLog(events: readonly ArchonLogEvent[], runId: string): LiveLog | null {
+	const ours = events.filter((event) => event.workflow_id === undefined || event.workflow_id === runId);
+	if (ours.length === 0) return null;
+	const last = ours[ours.length - 1];
+	if (last === undefined) return null;
+	let currentStep: string | undefined;
+	for (const event of ours) {
+		if (event.type === "node_start" && event.step !== undefined) currentStep = event.step;
+		if (event.type === "node_complete" && event.step !== undefined && event.step === currentStep) {
+			currentStep = undefined;
+		}
+		if (event.type === "workflow_complete") currentStep = undefined;
+	}
+	return {
+		rel: `logs/${runId}.jsonl`,
+		lastType: last.type,
+		lastStep: last.step,
+		currentStep,
+	};
+}
+
+function readArchonLog(outputRoot: string, runId: string): LiveLog | null {
+	const path = logPathFor(outputRoot, runId);
+	if (!existsSync(path)) return null;
+	let raw: string;
+	try {
+		raw = readFileSync(path, "utf8");
+	} catch {
+		return null;
+	}
+	return summariseArchonLog(parseArchonLog(raw), runId);
+}
+
 export function readArtifacts(artifactsDir: string): LiveArtifacts {
 	return {
 		dir: artifactsDir,
@@ -277,17 +350,19 @@ export function fetchLive(target: string, opts: FetchLiveOpts = {}): LiveRun | n
 	if (matched === undefined || kindOfWorkflow(matched.run.workflow) === undefined) return null;
 
 	let artifacts = opts.artifacts;
-	if (artifacts === undefined) {
-		const outputRoot = matched.outputRoot;
-		if (outputRoot !== undefined && outputRoot !== "") {
-			const dir = artifactsDirFor(outputRoot, matched.run.id);
+	let log: LiveLog | null = null;
+	if (matched.outputRoot !== undefined && matched.outputRoot !== "") {
+		if (artifacts === undefined) {
+			const dir = artifactsDirFor(matched.outputRoot, matched.run.id);
 			if (existsSync(dir)) artifacts = readArtifacts(dir);
 		}
+		log = readArchonLog(matched.outputRoot, matched.run.id);
 	}
 
 	return assembleLive({
 		lock,
 		archon: archonRows.map((row) => row.run),
 		artifacts,
+		log,
 	});
 }

@@ -63,6 +63,12 @@ function isIdeaToken(value: string): boolean {
 	return value === "idea" || value.startsWith("idea:");
 }
 
+function refuseIdentityInBody(record: Record<string, unknown>): void {
+	if ("author" in record || "actor" in record) {
+		throw new OperatorActionRefused("comment author is the door's, not the body's");
+	}
+}
+
 function refuseClosedOrReading(record: Record<string, unknown>): void {
 	for (const key of Object.keys(record)) {
 		if (isClosedToken(key)) throw new OperatorActionRefused("closed is refused");
@@ -222,13 +228,15 @@ function asRefused(error: unknown, prefixes: string[]): never {
 	throw error;
 }
 
-/** Create needs the target dir. Start needs the graph (for domain) and a launcher. Edges need the graph. Comment and triage ignore these. */
+/** Create needs the target dir. Start needs the graph (for domain) and a launcher. Edges need the graph. Comment takes the door's actor, never a body field. */
 export type OperatorActionExtras = {
 	/** Target root. Create writes the body file here. */
 	dir?: string;
 	launchRun?: RunLauncher;
 	issues?: ReadonlyArray<OperatorIssue>;
 	targetHeld?: boolean;
+	/** Stamped on `bd comment` as `--actor`. Absent, the store's own fallback applies. */
+	actor?: string;
 };
 
 /**
@@ -241,6 +249,7 @@ export type OperatorActionExtras = {
  */
 export function applyOperatorAction(bd: BdWriteRunner, raw: string, extras: OperatorActionExtras = {}): void {
 	const record = asObject(raw);
+	refuseIdentityInBody(record);
 	refuseClosedOrReading(record);
 	refuseNonTriageLabelWrite(record);
 	const intent = intentOf(record);
@@ -276,7 +285,7 @@ export function applyOperatorAction(bd: BdWriteRunner, raw: string, extras: Oper
 	if (intent === "comment") {
 		try {
 			const comment = parseCommentBody(raw);
-			addComment(bd, comment.id, comment.text);
+			addComment(bd, comment.id, comment.text, extras.actor);
 		} catch (error) {
 			asRefused(error, ["comment needs"]);
 		}

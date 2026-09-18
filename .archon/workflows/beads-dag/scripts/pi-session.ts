@@ -125,6 +125,7 @@ export type PiSdkModule = {
     sessionManager: PiSessionManager;
     resourceLoader: { reload(): Promise<void> };
     tools?: string[];
+    excludeTools?: string[];
     customTools: unknown[];
   }): Promise<{ session: PiSession }>;
   DefaultResourceLoader: new (opts: { cwd: string; agentDir: string }) => { reload(): Promise<void> };
@@ -324,6 +325,8 @@ async function startPiSession(opts: PackAgentOpts) {
     modelRuntime,
     sessionManager,
     resourceLoader,
+    // The SDK's default bash has no spawn hook; the custom one does. Drop the default.
+    excludeTools: ["bash"],
     customTools: [piBashTool(pi, opts)],
   });
 

@@ -11,6 +11,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { createColumnHelper, flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table";
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Command } from "cmdk";
 import {
@@ -36,16 +37,28 @@ import { postTriage, TRIAGE_LABELS, type TriageLabel } from "../client-triage.ts
 import { filterChoices } from "../graph-view.ts";
 import { filterOverview, issueDetail, type Overview, type OverviewDomain, type OverviewIssue } from "../model.ts";
 import { planStart } from "../start.ts";
+import { Bubble } from "./bubble.tsx";
 import { cn } from "./cn.ts";
 import { Graph } from "./Graph.tsx";
 import { Button, Dialog, Input, Label, Select, Textarea } from "./kit.tsx";
 import { MarkdownBody } from "./markdown.tsx";
+import { Message, MessageContent, type MessageFrom } from "./message.tsx";
 
 export type PageOverview = Overview & {
 	commentEndpoint: string | null;
 	/** Where a write re-reads the snapshot. Null on a static page, which has nothing to re-read. */
 	overviewEndpoint: string | null;
+	/** The door's actor. Null on a snapshot, which has no door. */
+	actor: string | null;
 };
+
+/** The operator is the door's actor; anyone else on the comment is not. Named authors on a snapshot are the operator. */
+export function commentFrom(author: string, actor: string | null | undefined): MessageFrom {
+	const name = author.trim();
+	if (name === "") return "assistant";
+	if (actor !== undefined && actor !== null && actor !== "") return name === actor ? "user" : "assistant";
+	return "user";
+}
 
 function initialFilter(issues: OverviewIssue[]) {
 	const choices = filterChoices(issues);
@@ -181,9 +194,17 @@ const ROW_H = 30;
 /** Rows to render when there is no viewport to measure: the server, and the client's first paint. */
 const ROWS_WITHOUT_VIEWPORT = 40;
 
+const issueColumns = createColumnHelper<OverviewIssue>();
+const ISSUE_COLUMNS = [
+	issueColumns.accessor((row) => row.handle || row.id, { id: "handle", header: "handle" }),
+	issueColumns.accessor("title", { header: "title" }),
+	issueColumns.accessor("status", { header: "status" }),
+	issueColumns.accessor("domain", { header: "domain" }),
+];
+
 /**
- * The read surface: what is in the store, not its shape. Windowed with react-virtual, so a few
- * hundred issues do not become a few hundred rows. It selects; it never writes.
+ * The read surface: what is in the store, not its shape. Columns from react-table, windowed with
+ * react-virtual, so a few hundred issues do not become a few hundred rows. It selects; it never writes.
  */
 function IssueList(props: {
 	issues: OverviewIssue[];
@@ -191,9 +212,16 @@ function IssueList(props: {
 	selected: string[];
 	onSelect: (ids: string[]) => void;
 }) {
+	const table = useReactTable({
+		data: props.issues,
+		columns: ISSUE_COLUMNS,
+		getCoreRowModel: getCoreRowModel(),
+		getRowId: (row) => row.id,
+	});
+	const tableRows = table.getRowModel().rows;
 	const viewport = useRef<HTMLDivElement>(null);
 	const virtualizer = useVirtualizer({
-		count: props.issues.length,
+		count: tableRows.length,
 		getScrollElement: () => viewport.current,
 		estimateSize: () => ROW_H,
 		overscan: 10,
@@ -204,22 +232,32 @@ function IssueList(props: {
 	const rows =
 		measured.length > 0
 			? measured
-			: props.issues
+			: tableRows
 					.slice(0, ROWS_WITHOUT_VIEWPORT)
 					.map((_, index) => ({ index, key: index, start: index * ROW_H, size: ROW_H }));
 	const selectedSet = new Set(props.selected);
 	return (
 		<section id="issue-list" className="card" aria-label="Issues">
+			<div className="issue-list-head flex gap-2 px-2 text-xs">
+				{table.getHeaderGroups().map((group) =>
+					group.headers.map((header) => (
+						<span key={header.id} className="muted">
+							{flexRender(header.column.columnDef.header, header.getContext())}
+						</span>
+					)),
+				)}
+			</div>
 			<div ref={viewport} className="max-h-96 overflow-auto">
-				<div style={{ height: virtualizer.getTotalSize() || props.issues.length * ROW_H, position: "relative" }}>
+				<div style={{ height: virtualizer.getTotalSize() || tableRows.length * ROW_H, position: "relative" }}>
 					{rows.map((row) => {
-						const issue = props.issues[row.index];
-						if (issue === undefined) return null;
+						const tableRow = tableRows[row.index];
+						if (tableRow === undefined) return null;
+						const issue = tableRow.original;
 						const DomainIcon = DOMAIN_ICON[issue.domain];
 						const isSelected = selectedSet.has(issue.id);
 						return (
 							<button
-								key={row.key}
+								key={tableRow.id}
 								type="button"
 								data-issue={issue.id}
 								aria-pressed={isSelected}
@@ -326,6 +364,7 @@ function LiveBanner({ overview }: { overview: Overview }) {
 		<section id="live" className="card" aria-label="Live run">
 			<p id="live-meta">
 				<strong>Live {live.kind}</strong> · {live.id} · {live.status} · {n} attempted
+				{live.log?.currentStep ? ` · step ${live.log.currentStep}` : ""}
 			</p>
 			<details id="live-report-wrap">
 				<summary id="live-report-summary">
@@ -407,15 +446,21 @@ function Detail(props: {
 			{issue.comments.length === 0 ? (
 				<p className="muted">No comments.</p>
 			) : (
-				issue.comments.map((comment) => (
-					<article className="comment" key={comment.id}>
-						<header>
-							<MessageSquare aria-hidden="true" size={12} className="inline align-[-1px]" /> {comment.author} ·{" "}
-							{comment.createdAt}
-						</header>
-						<MarkdownBody text={comment.text} />
-					</article>
-				))
+				issue.comments.map((comment) => {
+					const from = commentFrom(comment.author, props.overview.actor);
+					return (
+						<Message key={comment.id} from={from}>
+							<header className="muted text-xs">
+								{comment.author} · {comment.createdAt}
+							</header>
+							<MessageContent>
+								<Bubble from={from}>
+									<MarkdownBody text={comment.text} />
+								</Bubble>
+							</MessageContent>
+						</Message>
+					);
+				})
 			)}
 			<h3>Documents</h3>
 			{issue.documents.length === 0 ? (

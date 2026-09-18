@@ -226,6 +226,7 @@ try {
       expectEqual("the session ran where the node said", seen.cwd, work);
       expectEqual("the session's prompt is the persona and the brief", seen.prompt, "PERSONA\n\ndo it");
       expectEqual("the session mounts the pack's bash tool", seen.customTools, ["bash"]);
+      expectEqual("the SDK's default bash is excluded so the hooked one is the only bash", seen.excludeTools, ["bash"]);
       expectEqual("the thinking level travels", seen.thinkingLevel, "high");
 
       // The reader's own rule, on a hand-written session: thinking never becomes the answer.

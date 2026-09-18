@@ -3,7 +3,7 @@
  * Serve the Target's beads graph as a React page so an operator can comment or create without a
  * session, and a same-domain selection can start that domain's existing run.
  *
- *   bun tools/operator-ui/serve.ts [--dir <target>] [--store <bd>] [--archon <bin>] [--port <n>] [--host <addr>]
+ *   bun tools/operator-ui/serve.ts [--dir <target>] [--store <bd>] [--archon <bin>] [--actor <name>] [--port <n>] [--host <addr>]
  *
  * The graph is `bd list` / `bd show`, never `.beads/issues.jsonl`. The page is a React app with a
  * shadcn-style kit; React Flow projects the store. The client is two cached assets (`/app.js`,
@@ -18,10 +18,11 @@
  * `reading:`, and other domain labels stay the session's.
  */
 
-import http from "node:http";
+import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { applyOperatorAction, OperatorActionRefused, type OperatorIssue } from "./actions";
+import { resolveCommentActor } from "./comment";
 import { documentsFor } from "./documents";
 import { assembleOverview, type Overview } from "./model";
 import { fetchLive, makeArchonRunner, resolveArchon, targetRunHeld } from "./overlay";
@@ -29,11 +30,12 @@ import { clientAssets, renderPage, type ClientAssets } from "./page";
 import { launchWithArchon, type RunLauncher } from "./start";
 import { fetchStore, makeRunner, makeWriteRunner, resolveBd, type BdWriteRunner } from "./store";
 
-const USAGE = `usage: bun tools/operator-ui/serve.ts [--dir <target>] [--store <bd>] [--archon <bin>] [--port <n>] [--host <addr>]
+const USAGE = `usage: bun tools/operator-ui/serve.ts [--dir <target>] [--store <bd>] [--archon <bin>] [--actor <name>] [--port <n>] [--host <addr>]
 
   --dir <target>    the Target whose store is read and commented (default: the working directory)
   --store <bd>      the store binary (default: store: in .scratch/beads-dag.yaml, then PATH)
   --archon <bin>    the Archon binary (default: PATH); used only to read workflow status
+  --actor <name>    stamped on bd comment as --actor (default: BEADS_ACTOR, then git user.name, then $USER)
   --port <n>        listen port (default: 8765)
   --host <addr>     listen address (default: 127.0.0.1)
 
@@ -85,6 +87,8 @@ function unknownFlags(argv: string[], known: string[]): string[] {
 
 export type OverviewHandler = {
 	write: BdWriteRunner;
+	/** Stamped on bd comment as --actor. Absent, the store's own fallback applies. */
+	actor?: string;
 	page: () => string;
 	/** The same overview the page embeds, as JSON: what a write re-reads instead of reloading. Absent when nothing can produce one, and then /overview is a 404 like any other unknown path. */
 	overview?: () => string;
@@ -166,6 +170,7 @@ export async function handleOverviewRequest(
 				launchRun: handler.launchRun,
 				issues: handler.issues?.() ?? [],
 				targetHeld: handler.targetHeld?.() ?? false,
+				actor: handler.actor,
 			});
 			return { status: 204, headers: {}, body: "" };
 		} catch (error) {
@@ -185,6 +190,8 @@ export type ServeOptions = {
 	dir: string;
 	store: string;
 	archon?: string;
+	/** Stamped on bd comment as --actor. Absent, the store's own fallback applies. */
+	actor?: string;
 	write?: BdWriteRunner;
 	page?: () => string;
 	overview?: () => string;
@@ -200,19 +207,21 @@ function buildOverview(dir: string, store: string, archon?: string): Overview {
 	return assembleOverview(fetched.issues, fetched.commentsById, (issue) => documentsFor(issue, dir), live);
 }
 
-function buildPage(dir: string, store: string, archon?: string): string {
+function buildPage(dir: string, store: string, archon?: string, actor?: string): string {
 	return renderPage(buildOverview(dir, store, archon), {
 		commentEndpoint: "/comment",
 		overviewEndpoint: "/overview",
 		cacheClient: true,
+		actor,
 	});
 }
 
-function buildOverviewJson(dir: string, store: string, archon?: string): string {
+function buildOverviewJson(dir: string, store: string, archon?: string, actor?: string): string {
 	return JSON.stringify({
 		...buildOverview(dir, store, archon),
 		commentEndpoint: "/comment",
 		overviewEndpoint: "/overview",
+		actor: actor ?? null,
 	});
 }
 
@@ -224,41 +233,85 @@ function defaultLaunchRun(dir: string, archon?: string): RunLauncher {
 	};
 }
 
-export function createOverviewServer(options: ServeOptions): http.Server {
+/** The listener the live-socket tests drive: listen / address / close / once("error"). */
+export type OverviewServer = {
+	listen(port: number, host?: string, listeningListener?: () => void): OverviewServer;
+	address(): { port: number; address: string; family: string } | null;
+	close(callback?: (err?: Error) => void): OverviewServer;
+	once(event: "error", listener: (err: Error) => void): OverviewServer;
+};
+
+export function createOverviewServer(options: ServeOptions): OverviewServer {
 	const write = options.write ?? makeWriteRunner(options.store, options.dir);
-	const page = options.page ?? (() => buildPage(options.dir, options.store, options.archon));
-	const overviewJson = options.overview ?? (() => buildOverviewJson(options.dir, options.store, options.archon));
+	const actor = options.actor;
+	const page = options.page ?? (() => buildPage(options.dir, options.store, options.archon, actor));
+	const overviewJson =
+		options.overview ?? (() => buildOverviewJson(options.dir, options.store, options.archon, actor));
 	const assets = options.assets ?? (() => clientAssets());
 	const dir = options.dir;
 	const issues = options.issues ?? (() => fetchStore(makeRunner(options.store, options.dir)).issues);
 	const targetHeld = options.targetHeld ?? (() => targetRunHeld(options.dir));
 	const launchRun = options.launchRun ?? defaultLaunchRun(options.dir, options.archon);
-	return http.createServer((req, res) => {
-		const chunks: Buffer[] = [];
-		req.on("data", (chunk: Buffer | string) => {
-			chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
-		});
-		req.on("end", () => {
-			const raw = Buffer.concat(chunks).toString("utf8");
-			void handleOverviewRequest({ method: req.method, url: req.url, headers: req.headers }, raw, {
-				write,
-				page,
-				overview: overviewJson,
-				assets,
-				dir,
-				launchRun,
-				issues,
-				targetHeld,
-			}).then((out) => {
-				res.writeHead(out.status, out.headers);
-				res.end(out.body);
-			});
-		});
-		req.on("error", () => {
-			res.writeHead(400, { "content-type": "text/plain; charset=utf-8" });
-			res.end("bad request");
-		});
-	});
+	const handler: OverviewHandler = {
+		write,
+		actor,
+		page,
+		overview: overviewJson,
+		assets,
+		dir,
+		launchRun,
+		issues,
+		targetHeld,
+	};
+	let server: ReturnType<typeof Bun.serve> | undefined;
+	let onError: ((err: Error) => void) | undefined;
+	const api: OverviewServer = {
+		once(event, listener) {
+			if (event === "error") onError = listener;
+			return api;
+		},
+		listen(port, host, listeningListener) {
+			try {
+				server = Bun.serve({
+					port,
+					hostname: host ?? "127.0.0.1",
+					async fetch(req) {
+						const url = new URL(req.url);
+						const headers: Record<string, string | string[] | undefined> = {};
+						req.headers.forEach((value, key) => {
+							headers[key.toLowerCase()] = value;
+						});
+						const raw = req.method === "GET" || req.method === "HEAD" ? "" : await req.text();
+						const out = await handleOverviewRequest(
+							{ method: req.method, url: `${url.pathname}${url.search}`, headers },
+							raw,
+							handler,
+						);
+						return new Response(out.body, { status: out.status, headers: out.headers });
+					},
+				});
+				listeningListener?.();
+			} catch (error) {
+				onError?.(error instanceof Error ? error : new Error(String(error)));
+			}
+			return api;
+		},
+		address() {
+			if (server === undefined || server.port === undefined) return null;
+			return { port: server.port, address: server.hostname ?? "127.0.0.1", family: "IPv4" };
+		},
+		close(callback) {
+			try {
+				server?.stop(true);
+				server = undefined;
+				callback?.();
+			} catch (error) {
+				callback?.(error instanceof Error ? error : new Error(String(error)));
+			}
+			return api;
+		},
+	};
+	return api;
 }
 
 function invokedDirectly(): boolean {
@@ -280,7 +333,7 @@ function main(): void {
 		process.stdout.write(USAGE + "\n");
 		process.exit(0);
 	}
-	const extra = unknownFlags(argv, ["--dir", "--store", "--archon", "--port", "--host", "--help", "-h"]);
+	const extra = unknownFlags(argv, ["--dir", "--store", "--archon", "--actor", "--port", "--host", "--help", "-h"]);
 	if (extra.length > 0) throw new UsageError(`unknown argument: ${extra.join(" ")}`);
 	const dir = resolve(flag(argv, "--dir") ?? process.cwd());
 	const store = resolveBd(dir, flag(argv, "--store"));
@@ -288,7 +341,13 @@ function main(): void {
 	if (archonFlag !== undefined) resolveArchon(dir, archonFlag);
 	const host = flag(argv, "--host") ?? "127.0.0.1";
 	const port = parsePort(flag(argv, "--port"));
-	const server = createOverviewServer({ dir, store, archon: archonFlag });
+	const gitName = spawnSync("git", ["-C", dir, "config", "user.name"], { encoding: "utf8" });
+	const actor = resolveCommentActor(
+		flag(argv, "--actor"),
+		process.env,
+		gitName.status === 0 ? gitName.stdout.trim() : undefined,
+	);
+	const server = createOverviewServer({ dir, store, archon: archonFlag, actor });
 	server.listen(port, host, () => {
 		const address = server.address();
 		const actual = typeof address === "object" && address !== null ? address.port : port;

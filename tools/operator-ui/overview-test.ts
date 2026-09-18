@@ -34,7 +34,7 @@ import {
 	type StoreComment,
 	type StoreIssue,
 } from "./model";
-import { fetchLive, gitDirOf, RUN_LOCK_NAME } from "./overlay";
+import { fetchLive, gitDirOf, parseArchonLog, RUN_LOCK_NAME, summariseArchonLog } from "./overlay";
 import { applyOperatorAction, OperatorActionRefused } from "./actions";
 import { commentWriteBody } from "./client-comment";
 import { createWriteBody } from "./client-create";
@@ -65,7 +65,7 @@ import {
 } from "./page";
 import type { RunLaunch } from "./start";
 import { MarkdownBody } from "./ui/markdown";
-import { withNewlyOffered } from "./ui/App.tsx";
+import { commentFrom, withNewlyOffered } from "./ui/App.tsx";
 import { createElement } from "react";
 import { renderToString } from "react-dom/server";
 import { createOverviewServer, handleOverviewRequest } from "./serve";
@@ -478,6 +478,7 @@ const drainLive: LiveRun = {
 	artifactsDir: join("artifacts", "runs", "run-drain"),
 	attempted: ["c"],
 	report: { rel: "summary.md", text: "drain last report: merged one" },
+	log: null,
 };
 expectEqual(
 	"no lock means no overlay",
@@ -595,6 +596,39 @@ expect(
 expect("overlay reads the run-lock record", overlaySrc.includes("run-lock.json"));
 expect("overlay reads attempted", overlaySrc.includes("attempted-ids.json"));
 expect("overlay reads Archon workflow status", overlaySrc.includes("workflow") && overlaySrc.includes("status"));
+expect(
+	"overlay reads Archon's run JSONL, not a log of its own",
+	overlaySrc.includes("logs") && overlaySrc.includes(".jsonl") && !overlaySrc.includes("events.jsonl"),
+);
+
+const logEvents = parseArchonLog(
+	[
+		JSON.stringify({ type: "workflow_start", workflow_id: "run-drain", ts: "t0" }),
+		"not json",
+		JSON.stringify({ type: "node_start", step: "open", workflow_id: "run-drain", ts: "t1" }),
+		JSON.stringify({ type: "exec_output", step: "open", workflow_id: "run-drain" }),
+		JSON.stringify({ nope: true }),
+		JSON.stringify({ type: "node_start", step: "pick", workflow_id: "run-drain", ts: "t2" }),
+	].join("\n"),
+);
+expectEqual(
+	"a bad log line is skipped",
+	logEvents.map((event) => event.type),
+	["workflow_start", "node_start", "exec_output", "node_start"],
+);
+expectEqual(
+	"the current step is the last node_start not yet complete",
+	summariseArchonLog(logEvents, "run-drain"),
+	{ rel: "logs/run-drain.jsonl", lastType: "node_start", lastStep: "pick", currentStep: "pick" },
+);
+expectEqual("an empty log is no log", summariseArchonLog([], "run-drain"), null);
+expectEqual(
+	"a named operator comment is a user post",
+	commentFrom("op", "op"),
+	"user",
+);
+expectEqual("any other author is an assistant post", commentFrom("agent", "op"), "assistant");
+expectEqual("an empty author is an assistant post", commentFrom("", "op"), "assistant");
 
 const liveTmp = mkdtempSync(join(tmpdir(), "operator-ui-live-"));
 const inited = spawnSync("git", ["-C", liveTmp, "init", "-q"], { encoding: "utf8" });
@@ -635,6 +669,19 @@ expectEqual("fetchLive last report from artefacts", fetchedLive?.report, {
 	text: "drain last report: merged one\n",
 });
 expectEqual("fetchLive artefacts dir", fetchedLive?.artifactsDir, artifactsDir);
+expectEqual("a missing Archon log is no log, not a failed overlay", fetchedLive?.log, null);
+
+mkdirSync(join(liveTmp, "logs"), { recursive: true });
+writeFileSync(
+	join(liveTmp, "logs", `${runId}.jsonl`),
+	`${JSON.stringify({ type: "workflow_start", workflow_id: runId })}
+${JSON.stringify({ type: "node_start", step: "open", workflow_id: runId })}
+`,
+);
+const fetchedWithLog = fetchLive(liveTmp, { archonRunner: () => statusJson });
+expectEqual("fetchLive joins Archon's run JSONL", fetchedWithLog?.log?.rel, `logs/${runId}.jsonl`);
+expectEqual("fetchLive current step is the last node_start", fetchedWithLog?.log?.currentStep, "open");
+expectEqual("the log does not drop the last report", fetchedWithLog?.report?.rel, "summary.md");
 
 writeFileSync(join(gitDir ?? liveTmp, RUN_LOCK_NAME), `2147483646\n${runId}\n`);
 expectEqual("a dead lock holder is not in progress", fetchLive(liveTmp, { archonRunner: () => statusJson }), null);
@@ -724,6 +771,12 @@ expect("empty reply is refused", refused);
 expectEqual("empty reply does not write", writes, []);
 
 writes.length = 0;
+addComment(writeRunner, "from-bd", "named", "alice");
+expectEqual("reply with an actor is bd --actor comment", writes, [
+	{ args: ["--actor", "alice", "comment", "from-bd", "--stdin"], stdin: "named" },
+]);
+
+writes.length = 0;
 applyOperatorAction(writeRunner, JSON.stringify({ intent: "comment", id: "from-bd", text: "leave this" }));
 expectEqual("comment intent is bd comment", writes, [{ args: ["comment", "from-bd", "--stdin"], stdin: "leave this" }]);
 expect(
@@ -738,6 +791,16 @@ expect(
 			!call.args.includes("update"),
 	),
 );
+
+writes.length = 0;
+applyOperatorAction(
+	writeRunner,
+	JSON.stringify({ intent: "comment", id: "from-bd", text: "named" }),
+	{ actor: "bob" },
+);
+expectEqual("comment intent passes the door's actor", writes, [
+	{ args: ["--actor", "bob", "comment", "from-bd", "--stdin"], stdin: "named" },
+]);
 
 function refusedAction(raw: string, extras: { dir?: string; issues?: StoreIssue[] } = {}): { refused: boolean; message: string } {
 	try {
@@ -756,6 +819,16 @@ const closedField = refusedAction(JSON.stringify({ intent: "comment", id: "from-
 expect("closed field is refused", closedField.refused);
 expect("closed field names closed", closedField.message.includes("closed"));
 expectEqual("closed field does not write", writes, []);
+
+writes.length = 0;
+const smuggledAuthor = refusedAction(JSON.stringify({ intent: "comment", id: "from-bd", text: "x", author: "eve" }));
+expect("body author is refused", smuggledAuthor.refused);
+expect("body author names the door", smuggledAuthor.message.includes("door"));
+expectEqual("body author does not write", writes, []);
+writes.length = 0;
+const smuggledActor = refusedAction(JSON.stringify({ intent: "comment", id: "from-bd", text: "x", actor: "eve" }));
+expect("body actor is refused", smuggledActor.refused);
+expectEqual("body actor does not write", writes, []);
 
 writes.length = 0;
 const closeField = refusedAction(JSON.stringify({ intent: "comment", id: "from-bd", text: "leave this", close: true }));
@@ -1347,6 +1420,18 @@ expect(
 	"the list is windowed with react-virtual",
 	appSrc.includes('from "@tanstack/react-virtual"') && appSrc.includes("useVirtualizer"),
 );
+expect(
+	"the list columns are react-table",
+	appSrc.includes('from "@tanstack/react-table"') && appSrc.includes("useReactTable"),
+);
+expect(
+	"comments render as Message / Bubble, not a bare article.comment",
+	appSrc.includes('from "./message.tsx"') &&
+		appSrc.includes('from "./bubble.tsx"') &&
+		!appSrc.includes('className="comment"'),
+);
+const serveSrc = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "serve.ts"), "utf8");
+expect("the listener is Bun.serve, not node:http", serveSrc.includes("Bun.serve") && !serveSrc.includes("node:http"));
 const listSrc = appSrc.slice(appSrc.indexOf("function IssueList"), appSrc.indexOf("function Filters"));
 expect("the list exists and only selects: no write goes out from it", listSrc.length > 0 && !listSrc.includes("post"));
 const kitSrc = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "ui", "kit.tsx"), "utf8");
@@ -1435,9 +1520,21 @@ expectEqual("POST /comment is 204", posted.status, 204);
 expectEqual("POST /comment writes only bd comment", doorWrites, [
 	{ args: ["comment", "from-bd", "--stdin"], stdin: "operator reply" },
 ]);
+doorWrites.length = 0;
+const postedActor = await handleOverviewRequest(
+	{ method: "POST", url: "/comment" },
+	JSON.stringify({ intent: "comment", id: "from-bd", text: "named" }),
+	{ ...handler, actor: "carol" },
+);
+expectEqual("POST with the door's actor is 204", postedActor.status, 204);
+expectEqual("POST stamps --actor", doorWrites, [
+	{ args: ["--actor", "carol", "comment", "from-bd", "--stdin"], stdin: "named" },
+]);
 expect(
 	"POST /comment is not human respond",
-	doorWrites.every((call) => call.args[0] === "comment" && !call.args.includes("human") && !call.args.includes("respond")),
+	doorWrites.every(
+		(call) => call.args.includes("comment") && !call.args.includes("human") && !call.args.includes("respond"),
+	),
 );
 const closedPost = await handleOverviewRequest(
 	{ method: "POST", url: "/comment" },

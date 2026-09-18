@@ -41,10 +41,37 @@ export function parseCommentBody(raw: string): CommentBody {
 	return { id, text: record.text.trim() };
 }
 
-/** Write the reply. The only store command is `bd comment <id> --stdin`. */
-export function addComment(bd: BdWriteRunner, id: string, text: string): void {
+/**
+ * Who the door will stamp as author: `--actor` on the process, else `BEADS_ACTOR`, else git
+ * user.name, else `$USER`. Empty is absence — the store's own fallback then applies.
+ */
+export function resolveCommentActor(
+	explicit: string | undefined,
+	env: NodeJS.ProcessEnv = process.env,
+	gitName?: string,
+): string | undefined {
+	for (const candidate of [explicit, env.BEADS_ACTOR, gitName, env.USER]) {
+		const value = candidate?.trim();
+		if (value) return value;
+	}
+	return undefined;
+}
+
+/**
+ * Write the reply. The only store command is `bd comment <id> --stdin`. When the door names an
+ * actor, that is `bd --actor <name> comment <id> --stdin` — the global flag, not a body field.
+ */
+export function addComment(bd: BdWriteRunner, id: string, text: string, actor?: string): void {
 	if (!ISSUE_ID.test(id) || text.trim() === "") {
 		throw new Error(text.trim() === "" ? "comment needs some text" : "comment needs an issue id");
 	}
-	bd(["comment", id, "--stdin"], text.trim());
+	const name = actor?.trim();
+	if (name !== undefined && name !== "" && name.startsWith("-")) {
+		throw new Error("comment needs an actor");
+	}
+	const args =
+		name !== undefined && name !== ""
+			? ["--actor", name, "comment", id, "--stdin"]
+			: ["comment", id, "--stdin"];
+	bd(args, text.trim());
 }

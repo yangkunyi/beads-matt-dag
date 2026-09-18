@@ -85,6 +85,8 @@ export type RenderPageOptions = {
 	commentEndpoint?: string;
 	/** When set, a write re-reads this for a fresh snapshot instead of reloading the page. Absent on a static snapshot. */
 	overviewEndpoint?: string;
+	/** The door's actor, so a comment can tell a human operator from anyone else. Absent on a snapshot. */
+	actor?: string;
 	/**
 	 * Fetch the client from `CLIENT_ASSETS` rather than inlining it. A served page wants this: the
 	 * client is the same bytes for every issue and every request. A snapshot does not, because it is
@@ -98,6 +100,7 @@ export function renderPage(overview: Overview, options: RenderPageOptions = {}):
 		...overview,
 		commentEndpoint: options.commentEndpoint ?? null,
 		overviewEndpoint: options.overviewEndpoint ?? null,
+		actor: options.actor ?? null,
 	};
 	const app = renderToString(createElement(App, { overview: data }));
 	const json = JSON.stringify(data).replace(/</g, "\\u003c");

@@ -57,6 +57,14 @@ export type LiveReport = {
  * A live drain / inquiry / experiment run, as the overlay reads it: the Target lock, Archon status,
  * the run's artefacts directory, and attempted. Absent when nothing holds the Target.
  */
+/** Archon's run JSONL, joined as another fact of the same live run. Absent when the file is missing. */
+export type LiveLog = {
+	rel: string;
+	lastType: string;
+	lastStep?: string;
+	currentStep?: string;
+};
+
 export type LiveRun = {
 	kind: LiveRunKind;
 	id: string;
@@ -66,6 +74,7 @@ export type LiveRun = {
 	artifactsDir: string | undefined;
 	attempted: string[];
 	report: LiveReport | null;
+	log: LiveLog | null;
 };
 
 export type Overview = {
@@ -220,6 +229,8 @@ export type LiveRunFacts = {
 	lock: LiveLock | undefined;
 	archon: ReadonlyArray<LiveArchonRun>;
 	artifacts: LiveArtifacts | undefined;
+	/** Archon's logs/<run-id>.jsonl, already parsed. Absent is no log, not a failed overlay. */
+	log?: LiveLog | null;
 };
 
 function pickReport(kind: LiveRunKind, reports: ReadonlyArray<LiveReport>): LiveReport | null {
@@ -253,5 +264,6 @@ export function assembleLive(facts: LiveRunFacts): LiveRun | null {
 		artifactsDir: artifacts?.dir,
 		attempted: artifacts?.attempted ?? [],
 		report: pickReport(kind, artifacts?.reports ?? []),
+		log: facts.log ?? null,
 	};
 }

@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@tanstack/react-query": "^5.103.1",
+    "@tanstack/react-table": "8",
     "@tanstack/react-virtual": "^3.14.13",
     "@xyflow/react": "^12.11.6",
     "bun-plugin-tailwind": "^0.1.2",
