@@ -400,8 +400,13 @@ html, body {
 /* The header's write buttons: the palette and the create dialog live behind them. */
 .page-actions { display: flex; gap: 8px; margin-top: 10px; }
 
-/* The read surface: one dense row per issue, windowed. It selects; it never writes. */
+/* The read surface: one dense row per issue, grouped by feature, windowed. It selects; it never writes. */
 #issue-list { padding: 8px; }
+#issue-list .feature-group {
+  font-size: 12px;
+  font-weight: 650;
+  color: hsl(var(--muted-foreground));
+}
 #issue-list .issue-row {
   border: 0;
   border-radius: 6px;

@@ -12,7 +12,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { createColumnHelper, flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table";
+import {
+	createColumnHelper,
+	flexRender,
+	getCoreRowModel,
+	getGroupedRowModel,
+	useReactTable,
+} from "@tanstack/react-table";
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Command } from "cmdk";
 import {
@@ -37,6 +43,7 @@ import { TRIAGE_LABELS, type TriageLabel } from "../triage-labels.ts";
 import { planDeleteAll } from "../delete.ts";
 import { filterChoices } from "../graph-view.ts";
 import {
+	featureOf,
 	filterOverview,
 	issueDetail,
 	neighboursOf,
@@ -207,15 +214,26 @@ const ROWS_WITHOUT_VIEWPORT = 40;
 
 const issueColumns = createColumnHelper<OverviewIssue>();
 const ISSUE_COLUMNS = [
+	issueColumns.accessor((row) => featureOf(row.handle), { id: "feature", header: "feature" }),
 	issueColumns.accessor((row) => row.handle || row.id, { id: "handle", header: "handle" }),
 	issueColumns.accessor("title", { header: "title" }),
 	issueColumns.accessor("status", { header: "status" }),
 	issueColumns.accessor("domain", { header: "domain" }),
 ];
 
+function compareFeature(a: OverviewIssue, b: OverviewIssue): number {
+	const fa = featureOf(a.handle);
+	const fb = featureOf(b.handle);
+	if (fa === fb) return 0;
+	if (fa === "") return 1;
+	if (fb === "") return -1;
+	return fa.localeCompare(fb);
+}
+
 /**
- * The read surface: what is in the store, not its shape. Columns from react-table, windowed with
- * react-virtual, so a few hundred issues do not become a few hundred rows. It selects; it never writes.
+ * The read surface: what is in the store, not its shape. Columns from react-table, grouped by
+ * feature, windowed with react-virtual, so a few hundred issues do not become a few hundred rows.
+ * It selects; it never writes. The canvas is for dependency.
  */
 function IssueList(props: {
 	issues: OverviewIssue[];
@@ -223,13 +241,18 @@ function IssueList(props: {
 	selected: string[];
 	onSelect: (ids: string[]) => void;
 }) {
+	const data = useMemo(() => [...props.issues].sort(compareFeature), [props.issues]);
 	const table = useReactTable({
-		data: props.issues,
+		data,
 		columns: ISSUE_COLUMNS,
+		state: { grouping: ["feature"] },
+		groupedColumnMode: "remove",
 		getCoreRowModel: getCoreRowModel(),
+		getGroupedRowModel: getGroupedRowModel(),
 		getRowId: (row) => row.id,
 	});
-	const tableRows = table.getRowModel().rows;
+	// Group headers plus their issues, always open: scanning the list is the working view.
+	const tableRows = table.getRowModel().rows.flatMap((row) => (row.getIsGrouped() ? [row, ...row.subRows] : [row]));
 	const viewport = useRef<HTMLDivElement>(null);
 	const virtualizer = useVirtualizer({
 		count: tableRows.length,
@@ -263,6 +286,20 @@ function IssueList(props: {
 					{rows.map((row) => {
 						const tableRow = tableRows[row.index];
 						if (tableRow === undefined) return null;
+						if (tableRow.getIsGrouped()) {
+							const feature = String(tableRow.groupingValue ?? "");
+							const label = feature === "" ? "none" : feature;
+							return (
+								<div
+									key={tableRow.id}
+									className="feature-group absolute inset-x-0 flex items-center px-2"
+									data-feature={label}
+									style={{ top: row.start, height: row.size }}
+								>
+									{label}
+								</div>
+							);
+						}
 						const issue = tableRow.original;
 						const DomainIcon = DOMAIN_ICON[issue.domain];
 						const isSelected = selectedSet.has(issue.id);
