@@ -3,10 +3,12 @@
  * into the write door — same-domain `blocks`, cross-domain a pick of `relates-to` or
  * `discovered-from` — and never lands an edge on React state. A successful write re-reads the store
  * and the canvas keeps the coordinates already dragged; a refusal leaves the view unchanged.
- * Shift-click adds to the selection so start can take more than one id.
+ * Dragging a box selects the issues inside it; Shift adds to the selection. Delete on a node opens
+ * confirm delete for the selected set; Delete on an edge still writes `remove-edge`. `fitView` runs
+ * once on init, never after a write.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Lightbulb, Link2 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -78,15 +80,24 @@ function toFlow(overview: Overview, selected: string[]): { nodes: IssueNode[]; e
 	};
 }
 
+function sameIdSet(left: readonly string[], right: readonly string[]): boolean {
+	if (left.length !== right.length) return false;
+	const rightSet = new Set(right);
+	return left.every((id) => rightSet.has(id));
+}
+
 function GraphCanvas(props: {
 	overview: Overview;
 	selected: string[];
 	onSelect: (ids: string[]) => void;
+	onAskDelete?: () => void;
 	writeEndpoint: string | null;
 	onWritten: () => void;
 }) {
-	const { overview, selected, onSelect, writeEndpoint, onWritten } = props;
+	const { overview, selected, onSelect, onAskDelete, writeEndpoint, onWritten } = props;
 	const dragged = useRef<Record<string, { x: number; y: number }>>({});
+	const boxSelecting = useRef(false);
+	const fitted = useRef(false);
 	const projected = useMemo(() => toFlow(overview, selected), [overview, selected]);
 	const [nodes, setNodes] = useState<IssueNode[]>(projected.nodes);
 	const [edges, setEdges] = useState<RelationEdge[]>(projected.edges);
@@ -103,19 +114,23 @@ function GraphCanvas(props: {
 		setEdges(projected.edges);
 	}, [projected]);
 
-	const onNodesChange = useCallback((changes: NodeChange<IssueNode>[]) => {
-		const kept = changes.filter((change) => change.type !== "remove");
-		if (kept.length === 0) return;
-		setNodes((current) => {
-			const next = applyNodeChanges(kept, current);
-			for (const change of kept) {
-				if (change.type === "position" && change.position !== undefined) {
-					dragged.current[change.id] = change.position;
+	const onNodesChange = useCallback(
+		(changes: NodeChange<IssueNode>[]) => {
+			if (changes.some((change) => change.type === "remove")) onAskDelete?.();
+			const kept = changes.filter((change) => change.type !== "remove");
+			if (kept.length === 0) return;
+			setNodes((current) => {
+				const next = applyNodeChanges(kept, current);
+				for (const change of kept) {
+					if (change.type === "position" && change.position !== undefined) {
+						dragged.current[change.id] = change.position;
+					}
 				}
-			}
-			return next;
-		});
-	}, []);
+				return next;
+			});
+		},
+		[onAskDelete],
+	);
 
 	const writeEdge = useCallback(
 		(intent: "add-edge" | "remove-edge", from: string, to: string, type: string) => {
@@ -164,31 +179,59 @@ function GraphCanvas(props: {
 			if (kept.length > 0) {
 				setEdges((current) => applyEdgeChanges(kept, current));
 			}
+			const selectedSet = new Set(selected);
 			for (const change of changes) {
 				if (change.type !== "remove") continue;
 				const edge = edges.find((item) => item.id === change.id);
 				const relation = edge?.data?.relation;
 				if (edge === undefined || relation === undefined) continue;
+				// A node Delete also removes connected edges in React Flow; those are not an edge write.
+				if (selectedSet.has(edge.source) || selectedSet.has(edge.target)) continue;
 				writeEdge("remove-edge", edge.source, edge.target, relation);
 			}
 		},
-		[edges, writeEdge],
+		[edges, selected, writeEdge],
 	);
 
-	const onNodeClick = useCallback(
-		(event: MouseEvent, node: IssueNode) => {
-			if (event.shiftKey) {
-				onSelect(selected.includes(node.id) ? selected.filter((id) => id !== node.id) : [...selected, node.id]);
-				return;
-			}
-			onSelect([node.id]);
+	const onSelectionChange = useCallback(
+		({ nodes: next }: { nodes: Array<{ id: string }>; edges: unknown[] }) => {
+			const ids = next.map((node) => node.id);
+			if (sameIdSet(ids, selected)) return;
+			onSelect(ids);
 		},
 		[onSelect, selected],
 	);
 
+	const onSelectionStart = useCallback(() => {
+		boxSelecting.current = true;
+	}, []);
+
+	const onSelectionEnd = useCallback(() => {
+		// React Flow also fires onPaneClick at the end of a box drag; keep the flag through that click.
+		requestAnimationFrame(() => {
+			boxSelecting.current = false;
+		});
+	}, []);
+
 	const onPaneClick = useCallback(() => {
+		if (boxSelecting.current) return;
 		onSelect([]);
 	}, [onSelect]);
+
+	const onInit = useCallback((instance: { fitView: () => void }) => {
+		if (fitted.current) return;
+		fitted.current = true;
+		instance.fitView();
+	}, []);
+
+	const onBeforeDelete = useCallback(
+		async ({ nodes: removing }: { nodes: Array<{ id: string }>; edges: unknown[] }) => {
+			if (removing.length === 0) return true;
+			onAskDelete?.();
+			return false;
+		},
+		[onAskDelete],
+	);
 
 	const writable = writeEndpoint !== null;
 
@@ -200,13 +243,18 @@ function GraphCanvas(props: {
 				onNodesChange={onNodesChange}
 				onEdgesChange={onEdgesChange}
 				onConnect={onConnect}
-				onNodeClick={onNodeClick}
+				onSelectionChange={onSelectionChange}
+				onSelectionStart={onSelectionStart}
+				onSelectionEnd={onSelectionEnd}
 				onPaneClick={onPaneClick}
+				onInit={onInit}
+				onBeforeDelete={onBeforeDelete}
 				nodeTypes={nodeTypes}
-				fitView
 				deleteKeyCode={writable ? ["Backspace", "Delete"] : null}
 				multiSelectionKeyCode="Shift"
-				selectionOnDrag={false}
+				selectionKeyCode={null}
+				selectionOnDrag
+				panOnDrag={[1, 2]}
 				nodesConnectable={writable}
 			>
 				<Background />
@@ -243,6 +291,7 @@ export function Graph(props: {
 	overview: Overview;
 	selected: string[];
 	onSelect: (ids: string[]) => void;
+	onAskDelete?: () => void;
 	writeEndpoint: string | null;
 	onWritten: () => void;
 }) {

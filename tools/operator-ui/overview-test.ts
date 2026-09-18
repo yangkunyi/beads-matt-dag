@@ -42,7 +42,7 @@ import { edgeWriteBody } from "./client-edge";
 import { startWriteBody } from "./client-start";
 import { triageWriteBody } from "./client-triage";
 import { addComment, parseCommentBody } from "./comment";
-import { planDelete } from "./delete";
+import { planDelete, planDeleteAll } from "./delete";
 import { projectGraph, proposeConnect } from "./graph-view";
 import {
 	CLIENT_ASSETS,
@@ -863,6 +863,14 @@ expectEqual("an open issue with no dependents can be deleted", planDelete("from-
 	ok: true,
 	id: "from-bd",
 });
+expectEqual("an open set with no dependents can be deleted", planDeleteAll(["from-bd"], deletable), {
+	ok: true,
+	id: "from-bd",
+});
+expectEqual("an empty set is not a delete", planDeleteAll([], deletable), {
+	ok: false,
+	reason: "delete needs an issue id",
+});
 writes.length = 0;
 applyOperatorAction(
 	writeRunner,
@@ -890,6 +898,30 @@ const blockedDelete = refusedAction(JSON.stringify({ intent: "delete", id: "from
 });
 expect("a dependent blocks delete", blockedDelete.refused && blockedDelete.message.includes("dependents"));
 expectEqual("a dependent delete does not write", writes, []);
+expectEqual(
+	"a set containing in_progress is refused",
+	planDeleteAll(
+		["open-one", "claimed"],
+		[issue({ id: "open-one", status: "open" }), issue({ id: "claimed", status: "in_progress" })],
+	),
+	{ ok: false, reason: "in_progress is refused" },
+);
+expectEqual(
+	"a set containing a blocker of an outsider is refused",
+	planDeleteAll(
+		["from-bd"],
+		[issue({ id: "from-bd" }), issue({ id: "child", dependencies: [{ id: "from-bd", type: "blocks" }] })],
+	),
+	{ ok: false, reason: "issue has dependents" },
+);
+expectEqual(
+	"a set of two open issues with no dependents can be deleted",
+	planDeleteAll(
+		["from-bd", "other"],
+		[issue({ id: "from-bd", status: "open" }), issue({ id: "other", status: "open" })],
+	),
+	{ ok: true, id: "from-bd" },
+);
 
 writes.length = 0;
 const cascadeBody = refusedAction(JSON.stringify({ intent: "delete", id: "from-bd", confirm: true, cascade: true }), {
@@ -1453,6 +1485,24 @@ expect(
 expect(
 	"a refused remove is not applied onto React edges",
 	graphSrc.includes('change.type !== "remove"') && graphSrc.includes("writeEdge(\"remove-edge\""),
+);
+expect(
+	"dragging a box selects the issues inside it",
+	graphSrc.includes("selectionOnDrag") && !graphSrc.includes("selectionOnDrag={false}"),
+);
+expect("Shift adds to the box selection", graphSrc.includes('multiSelectionKeyCode="Shift"'));
+expect("box selection is reported to the page", graphSrc.includes("onSelectionChange"));
+expect(
+	"an edge write does not refit the canvas",
+	!/^\s*fitView\s*$/m.test(graphSrc) && graphSrc.includes("fitView()"),
+);
+expect(
+	"Delete on selected nodes opens confirm delete",
+	graphSrc.includes("onAskDelete") && appSrc.includes("onAskDelete"),
+);
+expect(
+	"confirm delete takes the selected set",
+	appSrc.includes("planDeleteAll") && appSrc.includes("postDelete"),
 );
 expect("surface has a triage form", appSrc.includes('id="triage-form"'));
 expect("surface posts triage through the write door", appSrc.includes("postTriage"));

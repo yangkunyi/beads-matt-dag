@@ -36,7 +36,7 @@ import { postCreate } from "../client-create.ts";
 import { postDelete } from "../client-delete.ts";
 import { postStart } from "../client-start.ts";
 import { postTriage, TRIAGE_LABELS, type TriageLabel } from "../client-triage.ts";
-import { planDelete } from "../delete.ts";
+import { planDeleteAll } from "../delete.ts";
 import { filterChoices } from "../graph-view.ts";
 import { filterOverview, issueDetail, type Overview, type OverviewDomain, type OverviewIssue } from "../model.ts";
 import { planStart } from "../start.ts";
@@ -513,7 +513,7 @@ function Detail(props: {
 			{props.overview.commentEndpoint ? (
 				<DeleteForm
 					endpoint={props.overview.commentEndpoint}
-					issue={issue}
+					ids={props.selected}
 					issues={props.overview.issues}
 					onDeleted={props.onDeleted}
 					asked={props.asked}
@@ -596,31 +596,37 @@ function ReplyForm(props: { endpoint: string; id: string }) {
 
 function DeleteForm(props: {
 	endpoint: string;
-	issue: OverviewIssue;
+	ids: string[];
 	issues: OverviewIssue[];
 	onDeleted?: () => void;
 	asked?: boolean;
 	onAsked?: () => void;
 }) {
 	const [open, setOpen] = useState(false);
-	const { status, run } = useWrite("deleted the issue");
-	const plan = planDelete(props.issue.id, props.issues);
+	const many = props.ids.length > 1;
+	const { status, run } = useWrite(many ? "deleted the issues" : "deleted the issue");
+	const plan = planDeleteAll(props.ids, props.issues);
+	const refusal = plan.ok ? "" : plan.reason;
 	useEffect(() => {
 		if (!props.asked) return;
-		if (plan.ok) setOpen(true);
+		if (refusal === "") setOpen(true);
+		else toast.error(refusal);
 		props.onAsked?.();
-	}, [props.asked, plan.ok, props.onAsked]);
+	}, [props.asked, refusal, props.onAsked]);
 	return (
 		<>
 			<h3>Delete</h3>
-			<p className="muted">Removes the issue from the store. Not a close. Abandoned work stays wontfix.</p>
+			<p className="muted">
+				Removes {many ? "the selected issues" : "the issue"} from the store. Not a close. Abandoned work stays
+				wontfix.
+			</p>
 			<Button
 				id="delete-open"
 				disabled={!plan.ok}
 				onClick={() => setOpen(true)}
 			>
 				<Trash2 aria-hidden="true" size={14} />
-				Delete
+				{many ? `Delete ${props.ids.length}` : "Delete"}
 			</Button>
 			{plan.ok ? null : <p className="muted">{plan.reason}</p>}
 			<p className="muted" id="delete-status">
@@ -630,14 +636,24 @@ function DeleteForm(props: {
 				id="delete"
 				open={open}
 				onClose={() => setOpen(false)}
-				title="Delete this issue?"
-				description="This removes it from the store. It cannot be undone. It is not closed."
+				title={many ? `Delete ${props.ids.length} issues?` : "Delete this issue?"}
+				description={
+					many
+						? "This removes them from the store. It cannot be undone. It is not closed."
+						: "This removes it from the store. It cannot be undone. It is not closed."
+				}
 			>
 				<form
 					id="delete-form"
 					onSubmit={(event) => {
 						event.preventDefault();
-						void run(postDelete(props.endpoint, props.issue.id)).then((ok) => {
+						void run(
+							(async () => {
+								for (const id of props.ids) {
+									await postDelete(props.endpoint, id);
+								}
+							})(),
+						).then((ok) => {
 							if (!ok) return;
 							setOpen(false);
 							props.onDeleted?.();
@@ -818,16 +834,19 @@ function Palette(props: {
 								<Play aria-hidden="true" size={14} /> Start {plan.kind}
 							</Command.Item>
 						) : null}
-						{issue !== undefined && planDelete(issue.id, props.overview.issues).ok ? (
+						{planDeleteAll(props.selected, props.overview.issues).ok ? (
 							<Command.Item
 								className={item}
-								value={`delete ${issue.handle ?? ""} ${issue.id}`}
+								value={`delete ${issue?.handle ?? ""} ${props.selected.join(" ")}`}
 								onSelect={() => {
 									props.onClose();
 									props.onAskDelete();
 								}}
 							>
-								<Trash2 aria-hidden="true" size={14} /> Delete {issue.handle || issue.id}
+								<Trash2 aria-hidden="true" size={14} />{" "}
+								{props.selected.length > 1
+									? `Delete ${props.selected.length} issues`
+									: `Delete ${issue?.handle || issue?.id}`}
 							</Command.Item>
 						) : null}
 						{issue === undefined
@@ -954,6 +973,7 @@ function Surface({ snapshot }: { snapshot: PageOverview }) {
 					overview={shown}
 					selected={selected}
 					onSelect={setSelected}
+					onAskDelete={overview.commentEndpoint ? () => setAskDelete(true) : undefined}
 					writeEndpoint={overview.commentEndpoint}
 					onWritten={onWritten}
 				/>

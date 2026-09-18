@@ -52,6 +52,18 @@ export function planDelete(id: string, issues: ReadonlyArray<DeleteIssue>): Dele
 	return { ok: true, id };
 }
 
+/** One plan for a set: the first refusal wins, never cascade. */
+export function planDeleteAll(ids: ReadonlyArray<string>, issues: ReadonlyArray<DeleteIssue>): DeletePlan {
+	if (ids.length === 0) return { ok: false, reason: "delete needs an issue id" };
+	for (const id of ids) {
+		const plan = planDelete(id, issues);
+		if (!plan.ok) return plan;
+	}
+	const first = ids[0];
+	if (first === undefined) return { ok: false, reason: "delete needs an issue id" };
+	return { ok: true, id: first };
+}
+
 /** The only store command is `bd delete <id> --force`. Never `--cascade`. */
 export function deleteIssue(bd: BdWriteRunner, id: string, issues: ReadonlyArray<DeleteIssue>): void {
 	const plan = planDelete(id, issues);
