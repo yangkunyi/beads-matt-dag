@@ -15,6 +15,7 @@
 
 import { addComment, parseCommentBody } from "./comment";
 import { createIssue, parseCreateBody } from "./create";
+import { deleteIssue, parseDeleteBody } from "./delete";
 import { domainOf } from "./model";
 import { planStart, type RunLauncher } from "./start";
 import type { BdWriteRunner } from "./store";
@@ -29,12 +30,13 @@ export class OperatorActionRefused extends Error {
 }
 
 const ISSUE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/;
-const ACCEPTED_INTENTS = new Set(["comment", "create", "start", "add-edge", "remove-edge", "triage"]);
+const ACCEPTED_INTENTS = new Set(["comment", "create", "start", "add-edge", "remove-edge", "triage", "delete"]);
 const EDGE_KINDS = new Set(["blocks", "relates-to", "discovered-from"]);
 
 export type OperatorIssue = {
 	id: string;
 	type: string;
+	status?: string;
 	dependencies?: ReadonlyArray<{ id: string; type: string }>;
 };
 
@@ -66,6 +68,12 @@ function isIdeaToken(value: string): boolean {
 function refuseIdentityInBody(record: Record<string, unknown>): void {
 	if ("author" in record || "actor" in record) {
 		throw new OperatorActionRefused("comment author is the door's, not the body's");
+	}
+}
+
+function refuseCascadeOrForce(record: Record<string, unknown>): void {
+	if ("cascade" in record || "force" in record) {
+		throw new OperatorActionRefused("cascade and force are refused");
 	}
 }
 
@@ -221,7 +229,10 @@ function asRefused(error: unknown, prefixes: string[]): never {
 		prefixes.some((prefix) => message.startsWith(prefix)) ||
 		message.includes("not JSON") ||
 		message.includes("not an object") ||
-		message === "non-triage label"
+		message === "non-triage label" ||
+		message === "in_progress is refused" ||
+		message === "issue has dependents" ||
+		message === "unknown issue"
 	) {
 		throw new OperatorActionRefused(message);
 	}
@@ -242,14 +253,16 @@ export type OperatorActionExtras = {
 /**
  * Apply one tagged write. Accepted intents are `comment` (`bd comment`), `create` (body plus
  * `bd create`), `start` (launch that domain's existing run with the selected ids as the
- * allow-list; does not write the store), `add-edge` / `remove-edge` (store deps), and `triage`
- * (one of the five labels, replacing the rest of the family). Anything carrying `closed`,
- * `reading:`, a non-triage label, or an unknown intent is refused and the store is not written.
- * Cross-domain `blocks` and `parent-child` are refused the same way.
+ * allow-list; does not write the store), `add-edge` / `remove-edge` (store deps), `triage`
+ * (one of the five labels, replacing the rest of the family), and `delete` (`bd delete --force`
+ * after the door has refused `in_progress` and dependents; `--cascade` is never passed).
+ * Anything carrying `closed`, `reading:`, a non-triage label, or an unknown intent is refused
+ * and the store is not written. Cross-domain `blocks` and `parent-child` are refused the same way.
  */
 export function applyOperatorAction(bd: BdWriteRunner, raw: string, extras: OperatorActionExtras = {}): void {
 	const record = asObject(raw);
 	refuseIdentityInBody(record);
+	refuseCascadeOrForce(record);
 	refuseClosedOrReading(record);
 	refuseNonTriageLabelWrite(record);
 	const intent = intentOf(record);
@@ -280,6 +293,15 @@ export function applyOperatorAction(bd: BdWriteRunner, raw: string, extras: Oper
 	}
 	if (intent === "remove-edge") {
 		applyRemoveEdge(bd, record, extras.issues ?? []);
+		return;
+	}
+	if (intent === "delete") {
+		try {
+			const body = parseDeleteBody(raw);
+			deleteIssue(bd, body.id, extras.issues ?? []);
+		} catch (error) {
+			asRefused(error, ["delete needs"]);
+		}
 		return;
 	}
 	if (intent === "comment") {

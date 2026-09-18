@@ -27,13 +27,16 @@ import {
 	Play,
 	Plus,
 	Tag,
+	Trash2,
 	type LucideIcon,
 } from "lucide-react";
 import { Toaster, toast } from "sonner";
 import { postComment } from "../client-comment.ts";
 import { postCreate } from "../client-create.ts";
+import { postDelete } from "../client-delete.ts";
 import { postStart } from "../client-start.ts";
 import { postTriage, TRIAGE_LABELS, type TriageLabel } from "../client-triage.ts";
+import { planDelete } from "../delete.ts";
 import { filterChoices } from "../graph-view.ts";
 import { filterOverview, issueDetail, type Overview, type OverviewDomain, type OverviewIssue } from "../model.ts";
 import { planStart } from "../start.ts";
@@ -405,6 +408,9 @@ function StartBar(props: {
 function Detail(props: {
 	overview: PageOverview;
 	selected: string[];
+	onDeleted?: () => void;
+	asked?: boolean;
+	onAsked?: () => void;
 }) {
 	const focused = props.selected.length === 0 ? undefined : props.selected[props.selected.length - 1];
 	const issue = focused === undefined ? undefined : issueDetail(props.overview, focused);
@@ -484,6 +490,16 @@ function Detail(props: {
 				/>
 			) : null}
 			{props.overview.commentEndpoint ? <ReplyForm endpoint={props.overview.commentEndpoint} id={issue.id} /> : null}
+			{props.overview.commentEndpoint ? (
+				<DeleteForm
+					endpoint={props.overview.commentEndpoint}
+					issue={issue}
+					issues={props.overview.issues}
+					onDeleted={props.onDeleted}
+					asked={props.asked}
+					onAsked={props.onAsked}
+				/>
+			) : null}
 		</aside>
 	);
 }
@@ -554,6 +570,63 @@ function ReplyForm(props: { endpoint: string; id: string }) {
 					{status}
 				</p>
 			</form>
+		</>
+	);
+}
+
+function DeleteForm(props: {
+	endpoint: string;
+	issue: OverviewIssue;
+	issues: OverviewIssue[];
+	onDeleted?: () => void;
+	asked?: boolean;
+	onAsked?: () => void;
+}) {
+	const [open, setOpen] = useState(false);
+	const { status, run } = useWrite("deleted the issue");
+	const plan = planDelete(props.issue.id, props.issues);
+	useEffect(() => {
+		if (!props.asked) return;
+		if (plan.ok) setOpen(true);
+		props.onAsked?.();
+	}, [props.asked, plan.ok, props.onAsked]);
+	return (
+		<>
+			<h3>Delete</h3>
+			<p className="muted">Removes the issue from the store. Not a close. Abandoned work stays wontfix.</p>
+			<Button
+				id="delete-open"
+				disabled={!plan.ok}
+				onClick={() => setOpen(true)}
+			>
+				<Trash2 aria-hidden="true" size={14} />
+				Delete
+			</Button>
+			{plan.ok ? null : <p className="muted">{plan.reason}</p>}
+			<p className="muted" id="delete-status">
+				{status}
+			</p>
+			<Dialog
+				id="delete"
+				open={open}
+				onClose={() => setOpen(false)}
+				title="Delete this issue?"
+				description="This removes it from the store. It cannot be undone. It is not closed."
+			>
+				<form
+					id="delete-form"
+					onSubmit={(event) => {
+						event.preventDefault();
+						void run(postDelete(props.endpoint, props.issue.id)).then((ok) => {
+							if (!ok) return;
+							setOpen(false);
+							props.onDeleted?.();
+						});
+					}}
+				>
+					<Button type="submit">Confirm delete</Button>
+				</form>
+			</Dialog>
 		</>
 	);
 }
@@ -669,6 +742,7 @@ function Palette(props: {
 	selected: string[];
 	onSelect: (ids: string[]) => void;
 	onCreate: () => void;
+	onAskDelete: () => void;
 }) {
 	const endpoint = props.overview.commentEndpoint ?? "";
 	const focused = props.selected.length === 0 ? undefined : props.selected[props.selected.length - 1];
@@ -722,6 +796,18 @@ function Palette(props: {
 								}}
 							>
 								<Play aria-hidden="true" size={14} /> Start {plan.kind}
+							</Command.Item>
+						) : null}
+						{issue !== undefined && planDelete(issue.id, props.overview.issues).ok ? (
+							<Command.Item
+								className={item}
+								value={`delete ${issue.handle ?? ""} ${issue.id}`}
+								onSelect={() => {
+									props.onClose();
+									props.onAskDelete();
+								}}
+							>
+								<Trash2 aria-hidden="true" size={14} /> Delete {issue.handle || issue.id}
 							</Command.Item>
 						) : null}
 						{issue === undefined
@@ -785,6 +871,7 @@ function Surface({ snapshot }: { snapshot: PageOverview }) {
 	const [labels, toggleLabel] = useFilter(initialFilter(overview.issues).labels);
 	const [creating, setCreating] = useState(false);
 	const [palette, setPalette] = useState(false);
+	const [askDelete, setAskDelete] = useState(false);
 	useEffect(() => {
 		const onKey = (event: KeyboardEvent) => {
 			if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
@@ -847,7 +934,13 @@ function Surface({ snapshot }: { snapshot: PageOverview }) {
 					writeEndpoint={overview.commentEndpoint}
 					onWritten={onWritten}
 				/>
-				<Detail overview={overview} selected={selected} />
+				<Detail
+					overview={overview}
+					selected={selected}
+					onDeleted={() => setSelected([])}
+					asked={askDelete}
+					onAsked={() => setAskDelete(false)}
+				/>
 			</div>
 			{overview.commentEndpoint ? (
 				<CreateForm endpoint={overview.commentEndpoint} open={creating} onClose={() => setCreating(false)} />
@@ -860,6 +953,7 @@ function Surface({ snapshot }: { snapshot: PageOverview }) {
 					selected={selected}
 					onSelect={setSelected}
 					onCreate={() => setCreating(true)}
+					onAskDelete={() => setAskDelete(true)}
 				/>
 			) : null}
 			<Toaster richColors closeButton position="bottom-right" />

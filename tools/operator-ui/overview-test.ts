@@ -42,6 +42,7 @@ import { edgeWriteBody } from "./client-edge";
 import { startWriteBody } from "./client-start";
 import { triageWriteBody } from "./client-triage";
 import { addComment, parseCommentBody } from "./comment";
+import { planDelete } from "./delete";
 import { projectGraph, proposeConnect } from "./graph-view";
 import {
 	CLIENT_ASSETS,
@@ -830,6 +831,52 @@ const smuggledActor = refusedAction(JSON.stringify({ intent: "comment", id: "fro
 expect("body actor is refused", smuggledActor.refused);
 expectEqual("body actor does not write", writes, []);
 
+const deletable = [issue({ id: "from-bd", status: "open" })];
+expectEqual("an open issue with no dependents can be deleted", planDelete("from-bd", deletable), {
+	ok: true,
+	id: "from-bd",
+});
+writes.length = 0;
+applyOperatorAction(
+	writeRunner,
+	JSON.stringify({ intent: "delete", id: "from-bd", confirm: true }),
+	{ issues: deletable },
+);
+expectEqual("delete is bd delete --force", writes, [{ args: ["delete", "from-bd", "--force"], stdin: undefined }]);
+expect("delete is not cascade", !writes[0]?.args.includes("--cascade"));
+
+writes.length = 0;
+const noConfirm = refusedAction(JSON.stringify({ intent: "delete", id: "from-bd" }), { issues: deletable });
+expect("delete without confirm is refused", noConfirm.refused);
+expectEqual("delete without confirm does not write", writes, []);
+
+writes.length = 0;
+const claimed = refusedAction(JSON.stringify({ intent: "delete", id: "from-bd", confirm: true }), {
+	issues: [issue({ id: "from-bd", status: "in_progress" })],
+});
+expect("in_progress delete is refused", claimed.refused && claimed.message.includes("in_progress"));
+expectEqual("in_progress delete does not write", writes, []);
+
+writes.length = 0;
+const blockedDelete = refusedAction(JSON.stringify({ intent: "delete", id: "from-bd", confirm: true }), {
+	issues: [issue({ id: "from-bd" }), issue({ id: "child", dependencies: [{ id: "from-bd", type: "blocks" }] })],
+});
+expect("a dependent blocks delete", blockedDelete.refused && blockedDelete.message.includes("dependents"));
+expectEqual("a dependent delete does not write", writes, []);
+
+writes.length = 0;
+const cascadeBody = refusedAction(JSON.stringify({ intent: "delete", id: "from-bd", confirm: true, cascade: true }), {
+	issues: deletable,
+});
+expect("cascade on the body is refused", cascadeBody.refused);
+expectEqual("cascade on the body does not write", writes, []);
+writes.length = 0;
+const forceBody = refusedAction(JSON.stringify({ intent: "delete", id: "from-bd", confirm: true, force: true }), {
+	issues: deletable,
+});
+expect("force on the body is refused", forceBody.refused);
+expectEqual("force on the body does not write", writes, []);
+
 writes.length = 0;
 const closeField = refusedAction(JSON.stringify({ intent: "comment", id: "from-bd", text: "leave this", close: true }));
 expect("close field is refused", closeField.refused);
@@ -1432,6 +1479,16 @@ expect(
 );
 const serveSrc = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "serve.ts"), "utf8");
 expect("the listener is Bun.serve, not node:http", serveSrc.includes("Bun.serve") && !serveSrc.includes("node:http"));
+expect(
+	"delete is a tagged intent behind confirm, not a canvas key",
+	appSrc.includes("postDelete") &&
+		readFileSync(join(dirname(fileURLToPath(import.meta.url)), "ui", "Graph.tsx"), "utf8").includes('change.type !== "remove"'),
+);
+expect(
+	"delete never passes --cascade",
+	readFileSync(join(dirname(fileURLToPath(import.meta.url)), "delete.ts"), "utf8").includes('["delete", id, "--force"]') &&
+		!readFileSync(join(dirname(fileURLToPath(import.meta.url)), "delete.ts"), "utf8").includes('"--cascade"'),
+);
 const listSrc = appSrc.slice(appSrc.indexOf("function IssueList"), appSrc.indexOf("function Filters"));
 expect("the list exists and only selects: no write goes out from it", listSrc.length > 0 && !listSrc.includes("post"));
 const kitSrc = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "ui", "kit.tsx"), "utf8");
@@ -1606,6 +1663,32 @@ expectEqual("empty POST is 400", emptyPost.status, 400);
 expectEqual("empty POST does not write", doorWrites.length, 3);
 const missing = await handleOverviewRequest({ method: "POST", url: "/close" }, "", handler);
 expectEqual("unknown path is 404", missing.status, 404);
+
+const deleteWrites: { args: string[]; stdin: string | undefined }[] = [];
+const deleteHandler = {
+	write: ((args: string[], stdin?: string) => {
+		deleteWrites.push({ args, stdin });
+		return "";
+	}) satisfies BdWriteRunner,
+	page: () => renderPage(overview, { commentEndpoint: "/comment" }),
+	issues: () => [issue({ id: "from-bd", status: "open" })],
+};
+const deleted = await handleOverviewRequest(
+	{ method: "POST", url: "/comment" },
+	JSON.stringify({ intent: "delete", id: "from-bd", confirm: true }),
+	deleteHandler,
+);
+expectEqual("POST delete is 204", deleted.status, 204);
+expectEqual("POST delete writes bd delete --force", deleteWrites, [
+	{ args: ["delete", "from-bd", "--force"], stdin: undefined },
+]);
+const claimedPost = await handleOverviewRequest(
+	{ method: "POST", url: "/comment" },
+	JSON.stringify({ intent: "delete", id: "from-bd", confirm: true }),
+	{ ...deleteHandler, issues: () => [issue({ id: "from-bd", status: "in_progress" })] },
+);
+expectEqual("POST in_progress delete is 400", claimedPost.status, 400);
+expectEqual("POST in_progress delete does not write again", deleteWrites.length, 1);
 
 const edgeWrites: { args: string[]; stdin: string | undefined }[] = [];
 const edgeHandler = {
