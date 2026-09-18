@@ -42,10 +42,12 @@ The Target-side tooling under `tools/` — the inquiry corpus tools and the expe
 and nothing else checks it, so it carries its own one-line gate: `./node_modules/.bin/tsc -p tsconfig.tools.json`.
 
 The machine's two copies of this checkout — the skill set in `~/.agents/skills/` and the pack link in
-`~/.archon/workflows/` — are checked, and refreshed, by one command run from here:
-`bun tools/flow.ts check` (add `install` to fix what it reports). The drain runs that refresh itself after
-every merge it lands (`.scratch/beads-dag.yaml`'s `postMerge`), so a session does not have to remember it,
-and no ticket brief may ask a worker to do it — writing outside its worktree is not a worker's act.
+`~/.archon/workflows/` — are the **only** copies. Product Targets do not carry the pack or the tracker
+contract. Refresh from here: `loom check` (or `bun tools/flow.ts check`; add `install` to fix).
+The drain runs that refresh itself after every merge it lands (`.scratch/beads-dag.yaml`'s `postMerge`),
+so a session does not have to remember it, and no ticket brief may ask a worker to do it — writing
+outside its worktree is not a worker's act. A new Target is `loom init` in that git repo. Landing skill:
+`/ask-loom`.
 
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:970c3bf2 -->
 ## Beads Issue Tracker

@@ -2,10 +2,10 @@
 /**
  * Repro: the contract this Target runs under and the contract the setup skill ships are one document.
  *
- * A store-backed Target keeps its contract at `docs/agents/issue-tracker.md` - the file every skill in the
- * set reads, and the one this repository's AGENTS.md points at. The setup skill carries the same contract
- * as `skills/setup-matt-pocock-skills/issue-tracker-beads.md`, and writes it into the next Target it sets
- * up, so the two are one document in two homes: the Target's copy and the shipped one.
+ * This repository is a Target, so it keeps the contract at `docs/agents/issue-tracker.md` — the file
+ * its AGENTS.md points at. The shipped copy in the closed skill set is
+ * `skills/ask-loom/issue-tracker.md`. Product Targets do not copy it; they read the installed skill.
+ * This checkout is the source, so the two files here are one document in two homes.
  *
  * They were byte-identical until `beads-dag/24` edited this Target's copy alone. The draft answer's rule,
  * its sweep query and the "executor drafts the answer" bullet landed in `docs/agents/issue-tracker.md` and
@@ -31,7 +31,7 @@ import { expect } from "./target.ts";
  */
 const REPO_ROOT = execFileSync("git", ["-C", import.meta.dir, "rev-parse", "--show-toplevel"], { encoding: "utf8" }).trim();
 const CONTRACT = join(REPO_ROOT, "docs", "agents", "issue-tracker.md");
-const SHIPPED = join(REPO_ROOT, "skills", "setup-matt-pocock-skills", "issue-tracker-beads.md");
+const SHIPPED = join(REPO_ROOT, "skills", "ask-loom", "issue-tracker.md");
 
 /** The first line two texts disagree at, as a one-line reason a reader can act on. */
 function firstDifference(mine: string, theirs: string): string {
@@ -39,7 +39,7 @@ function firstDifference(mine: string, theirs: string): string {
   const b = theirs.split("\n");
   for (let i = 0; i < Math.max(a.length, b.length); i++) {
     if (a[i] !== b[i]) {
-      return `line ${i + 1} differs:\n  docs/agents/issue-tracker.md: ${JSON.stringify(a[i] ?? "(no such line)")}\n  skills/.../issue-tracker-beads.md: ${JSON.stringify(b[i] ?? "(no such line)")}`;
+      return `line ${i + 1} differs:\n  docs/agents/issue-tracker.md: ${JSON.stringify(a[i] ?? "(no such line)")}\n  skills/ask-loom/issue-tracker.md: ${JSON.stringify(b[i] ?? "(no such line)")}`;
     }
   }
   return "the files differ but no line does (trailing bytes)";
@@ -52,10 +52,9 @@ try {
   const shipped = readFileSync(SHIPPED, "utf8");
   if (contract !== shipped) {
     throw new Error(
-      `the contract this Target runs under and the contract the setup skill ships have drifted apart; ` +
+      `the contract this Target runs under and the contract ask-loom ships have drifted apart; ` +
         `${firstDifference(contract, shipped)}\nedit docs/agents/issue-tracker.md and copy it over ` +
-        `skills/setup-matt-pocock-skills/issue-tracker-beads.md (or the other way round), so the next ` +
-        `Target gets the contract this one runs under`,
+        `skills/ask-loom/issue-tracker.md (or the other way round)`,
     );
   }
   console.log(JSON.stringify({ ok: true }));

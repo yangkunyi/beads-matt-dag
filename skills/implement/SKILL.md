@@ -6,7 +6,9 @@ disable-model-invocation: true
 
 Implement the work described by the user in a spec or an issue.
 
-An issue reaches you as a **handle** (`<feature>/<NN>`) and the **path to its published body**. Read the body first: it is what to build, it is frozen, and the issue's state is the tracker's — the contract (`docs/agents/issue-tracker.md`) owns how an issue is read and written. A spec path is a brief too, and a spec is not an issue: it has no handle, no claim and no branch of its own, so its work happens on the branch you are already on.
+An issue reaches you as a **handle** (`<feature>/<NN>`) and the **path to its published body**. Read the body first: it is what to build, it is frozen, and the issue's state is the tracker's — the contract is the installed sibling `ask-loom/issue-tracker.md`. Unsure? `/ask-loom`.
+
+This skill is **development** work. `closed` means the merge is already on Main (merge-before-stamp). Inquiry and experiments have their own executors; do not implement those here. A spec path is a brief too, and a spec is not an issue: it has no handle, no claim and no branch of its own, so its work happens on the branch you are already on.
 
 ## Where the work goes
 
@@ -25,10 +27,12 @@ Closing is never yours. `closed` means the work is in Main: the merge lands firs
 
 ## The work
 
-Use /tdd where possible, at pre-agreed seams.
+Use `/tdd` where possible, at **pre-agreed seams**. The issue body or the spec already named them; if the shape of an interface is itself in question, consult `/codebase-design` (vocabulary, not a session) before writing a test. One red → green slice at a time. A **tracer bullet**: each cycle responds to what the last one taught you.
 
 Run typechecking regularly, single test files regularly, and the full test suite once at the end.
 
-Once done, use /code-review to review the work.
+If the work is a hard bug — resists a first glance, intermittent, a regression between two known-good states — switch to `/diagnosing-bugs` first. It refuses to theorise until it has a **tight** loop that already goes **red** on this bug.
+
+Once done, use `/code-review` against the branch point (Main, or the commit you started from). Two axes, reported separately: **Standards** and **Spec**. A drain-launched worker that cannot spawn still runs both axes in this window.
 
 Commit your work to the current branch: those commits are the issue's work, and the merge that follows brings them into Main.

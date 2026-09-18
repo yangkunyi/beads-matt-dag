@@ -1,6 +1,6 @@
 ---
 name: to-tickets
-description: Break a plan, spec, or the current conversation into a set of tracer-bullet issues, each declaring the issues that block it, published to the configured tracker with the tracker's own blocking edges.
+description: Break a plan or spec into tracer-bullet issues on a loom Target — one domain, blocking edges, ready-for-agent only on development work.
 disable-model-invocation: true
 ---
 
@@ -8,7 +8,15 @@ disable-model-invocation: true
 
 Break a plan, spec, or conversation into a set of **issues** — tracer-bullet vertical slices, each declaring the issues that **block** it.
 
-The tracker's contract is `docs/agents/issue-tracker.md`, with the label vocabulary beside it; run `/setup-matt-pocock-skills` if either is missing. The contract owns the tracker — its commands, its identities, its publish step — and this skill owns the breakdown.
+The tracker contract is the installed sibling `ask-loom/issue-tracker.md` — one copy per machine, not a file in the repo. The contract owns the tracker; this skill owns the breakdown. Unsure which skill? `/ask-loom`.
+
+## Which domain
+
+Name the domain before slicing. Do not mix domains in one blocking chain.
+
+- **Development** — type `task` / `bug` / …. Vertical slices. Publication applies `ready-for-agent`. A drain may pick them up.
+- **Inquiry** — type `decision`. Questions, not work. Never `ready-for-agent`. The reading run is a different executor.
+- **Experiments** — type `experiment`. A result to record. Never `ready-for-agent`.
 
 ## Process
 
@@ -20,7 +28,7 @@ Work from whatever is already in the conversation context. If the user passes a 
 
 If you have not already explored the codebase, do so to understand the current state of the code. Issue titles and descriptions should use the project's domain glossary vocabulary, and respect ADRs in the area you're touching.
 
-Look for opportunities to prefactor the code to make the implementation easier. "Make the change easy, then make the easy change."
+Look for opportunities to prefactor the code to make the implementation easier. "Make the change easy, then make the easy change." A prefactor that is really a deepening (shallow module → deep) speaks `/codebase-design`; if the shape itself is still in question, stop slicing and `/grill` or `/prototype` first.
 
 ### 3. Draft vertical slices
 

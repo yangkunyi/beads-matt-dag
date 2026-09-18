@@ -1,41 +1,68 @@
 #!/usr/bin/env bun
 /**
- * The flow's installer, and the check that proves it.
+ * The flow's installer: one copy per machine, not one copy per Target.
  *
- * Two things on a machine are copies of this checkout, and both go stale silently:
+ *   ~/.agents/skills/<member>       a copy of skills/<member>
+ *   ~/.archon/workflows/beads-dag   a symlink to this checkout's pack
  *
- *   ~/.agents/skills/<member>       a copy of skills/<member> — the members this repo ships
- *   ~/.archon/workflows/beads-dag   a symlink to .archon/workflows/beads-dag — the pack itself
+ * `install` refreshes both; `check` reports drift; `init` turns a git repo into a Target without
+ * copying the tracker contract into it. The member list is whatever `skills/` holds — a directory
+ * with a `SKILL.md` — so the check cannot disagree with the set it checks.
  *
- * `install` refreshes both; `check` reads them and says what differs, exiting non-zero when anything
- * does. Neither verb writes the member list down: it is whatever `skills/` holds — a directory with a
- * `SKILL.md` in it — so the check cannot disagree with the set it checks.
+ *   loom install
+ *   loom check
+ *   loom init [--dir <repo>] [--prefix <name>]
  *
- * Run from this repo's root:
- *
- *   bun tools/flow.ts install
- *   bun tools/flow.ts check
- *
- * The staleness is invisible by looking: `cp -a` gives the installed file the source's mtime, so an
- * install a day behind reads as fresh. Comparing bytes is the only way to see it, which is why
- * `install` runs `check` on its way out rather than trusting itself.
+ * `beads-dag` is an alias. Still works as `bun tools/flow.ts <verb>` from this checkout.
  */
 
-import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, rmSync, symlinkSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { spawnSync } from "node:child_process";
+import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SKILLS = join(REPO, "skills");
 const PACK = join(REPO, ".archon", "workflows", "beads-dag");
 
-const USAGE = `usage: bun tools/flow.ts <install|check> [--dest <dir>] [--archon-home <dir>]
+const USAGE = `usage: loom <install|check|init> [options]
 
   install   copy every member of skills/ into the shared root, then check; point the pack link
-  check     compare the installed members and the pack link against this checkout, and report
+  check     compare the installed members and the pack link against this checkout
+  init      turn a git repo into a Target: store, yaml knobs, AGENTS.md pointers — no contract copy
+
+  beads-dag is an alias for loom.
 
   --dest <dir>         where skills are installed (default $HOME/.agents/skills)
-  --archon-home <dir>  where the pack link lives (default $HOME/.archon/workflows)`;
+  --archon-home <dir>  where the pack link lives (default $HOME/.archon/workflows)
+  --dir <dir>          init: the git repo (default cwd)
+  --prefix <name>      init: beads issue prefix (default: directory name)`;
+
+const FLOW_BEGIN = "<!-- BEGIN BEADS-DAG FLOW -->";
+const FLOW_END = "<!-- END BEADS-DAG FLOW -->";
+
+const FLOW_BLOCK = `## Agent skills
+
+### Issue tracker
+
+Beads store in this repo. The contract is the installed skill \`ask-loom/issue-tracker.md\` — one copy per machine, not a file in this repo. Flow vocabulary: \`ask-loom/flow-context.md\`. Landing: \`/ask-loom\`.
+
+### Triage labels
+
+The five canonical triage roles, each label string equal to its name. Vocabulary: installed \`ask-loom/triage-labels.md\`.
+
+### Domain docs
+
+Single-context: this repo's \`docs/CONTEXT.md\` is the **product** language, plus \`docs/adr/\`. See installed \`ask-loom/domain.md\`.
+
+### The pack
+
+Machine-global at \`~/.archon/workflows/beads-dag\` (\`loom install\`). This repo does not contain a copy. Knobs: \`.scratch/beads-dag.yaml\`.`;
+
+const YAML_STUB = `# This Target's knobs for the machine-global beads-dag pack.
+# The pack is not in this repo. Keys: model, thinkingLevel, concurrency, runner, store, verify, postMerge.
+# Leave postMerge empty — install lives on the machine, not in a Target.
+`;
 
 function home(): string {
   const h = process.env.HOME;
@@ -46,10 +73,9 @@ function home(): string {
   return h;
 }
 
-/** The set: every directory under `skills/` that holds a `SKILL.md`. Read, never written down. */
 function members(): string[] {
   if (!existsSync(SKILLS)) {
-    console.error(`no skills/ in ${REPO} — run this from the repository root`);
+    console.error(`no skills/ in ${REPO} — run this from the loom checkout, or install the loom package`);
     process.exit(2);
   }
   return readdirSync(SKILLS, { withFileTypes: true })
@@ -73,7 +99,6 @@ function filesUnder(root: string): string[] {
 
 type Verdict = { member: string; state: "identical" | "differs" | "missing"; detail: string[] };
 
-/** Byte comparison of one member's folder against its installed copy, file by file. */
 function compareMember(member: string, dest: string): Verdict {
   const src = join(SKILLS, member);
   if (!existsSync(dest)) return { member, state: "missing", detail: ["no installed copy"] };
@@ -92,7 +117,6 @@ function compareMember(member: string, dest: string): Verdict {
   return { member, state: detail.length === 0 ? "identical" : "differs", detail };
 }
 
-/** The pack's install is a link, so "what version is the pack" is answered by git, not by a copy. */
 function inspectPackLink(archonHome: string): { ok: boolean; note: string } {
   const link = join(archonHome, "beads-dag");
   const stat = lstatSafe(link);
@@ -142,6 +166,11 @@ function install(dest: string, archonHome: string): boolean {
     rmSync(target, { recursive: true, force: true });
     cpSync(join(SKILLS, member), target, { recursive: true, preserveTimestamps: true });
   }
+  // Names this set used to ship. Dest is the shared Agent Skills root and holds other people's
+  // skills too, so install only deletes these, never an unknown folder.
+  for (const retired of ["ask-matt", "setup-matt-pocock-skills"]) {
+    rmSync(join(dest, retired), { recursive: true, force: true });
+  }
   console.log(`installed ${list.length} members into ${dest}`);
 
   const link = join(archonHome, "beads-dag");
@@ -159,6 +188,102 @@ function install(dest: string, archonHome: string): boolean {
   return report(dest, archonHome);
 }
 
+export function defaultPrefix(dir: string): string {
+  const raw = basename(resolve(dir)).toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (raw === "") return "beads";
+  if (/^[0-9]/.test(raw)) return `p${raw}`.slice(0, 32);
+  return raw.slice(0, 32);
+}
+
+export function upsertFlowBlock(existing: string): string {
+  const wrapped = `${FLOW_BEGIN}\n${FLOW_BLOCK}\n${FLOW_END}\n`;
+  const start = existing.indexOf(FLOW_BEGIN);
+  const stop = existing.indexOf(FLOW_END);
+  if (start !== -1 && stop !== -1 && stop > start) {
+    const after = existing.slice(stop + FLOW_END.length).replace(/^\n/, "");
+    return existing.slice(0, start) + wrapped + after;
+  }
+  const body = existing.trimEnd();
+  if (body === "") return wrapped;
+  const lines = body.split("\n");
+  if (lines[0]?.startsWith("# ")) {
+    let i = 1;
+    while (i < lines.length && (lines[i]?.trim() ?? "") !== "") i++;
+    return `${lines.slice(0, i).join("\n")}\n\n${wrapped}${lines.slice(i).join("\n").replace(/^\n/, "")}`;
+  }
+  return `${wrapped}\n${body}\n`;
+}
+
+function runBd(dir: string, args: string[]): { ok: boolean; text: string } {
+  const result = spawnSync("bd", args, {
+    cwd: dir,
+    encoding: "utf8",
+    env: { ...process.env, BD_NON_INTERACTIVE: "1" },
+  });
+  const text = `${result.stdout ?? ""}${result.stderr ?? ""}`.trim();
+  if (result.error) return { ok: false, text: result.error.message };
+  if (result.status !== 0) return { ok: false, text: text || `bd ${args.join(" ")} exited ${result.status}` };
+  return { ok: true, text };
+}
+
+function init(dir: string, prefix: string | undefined): boolean {
+  const root = resolve(dir);
+  if (root === REPO) {
+    console.error("this checkout is the source of loom; run install, not init");
+    return false;
+  }
+  if (!existsSync(join(root, ".git"))) {
+    console.error(`not a git repo: ${root}`);
+    return false;
+  }
+  const p = prefix ?? defaultPrefix(root);
+  if (!/^[a-z][a-z0-9]{0,31}$/.test(p)) {
+    console.error(`bad prefix ${JSON.stringify(p)} — pass --prefix <letter then alphanumerics>`);
+    return false;
+  }
+
+  const hasStore = existsSync(join(root, ".beads"));
+  if (!hasStore) {
+    const made = runBd(root, ["init", "--prefix", p, "--non-interactive", "--quiet"]);
+    if (!made.ok) {
+      console.error(`bd init failed: ${made.text}`);
+      return false;
+    }
+    console.log(`store  ${root}/.beads  prefix ${p}`);
+  } else {
+    console.log(`store  already present`);
+  }
+
+  const typed = runBd(root, ["config", "set", "types.custom", "experiment"]);
+  if (!typed.ok) {
+    console.error(`bd config set types.custom experiment failed: ${typed.text}`);
+    return false;
+  }
+
+  const yaml = join(root, ".scratch", "beads-dag.yaml");
+  if (!existsSync(yaml)) {
+    mkdirSync(dirname(yaml), { recursive: true });
+    writeFileSync(yaml, YAML_STUB);
+    console.log(`wrote  ${yaml}`);
+  }
+
+  const agents = join(root, "AGENTS.md");
+  const before = existsSync(agents) ? readFileSync(agents, "utf8") : "";
+  const after = upsertFlowBlock(before);
+  if (after !== before) {
+    writeFileSync(agents, after.endsWith("\n") ? after : `${after}\n`);
+    console.log(`wrote  ${agents} (pointers at the installed skills, not a contract copy)`);
+  }
+
+  const contract = join(root, "docs", "agents", "issue-tracker.md");
+  if (existsSync(contract) && readFileSync(contract, "utf8").split("\n").length > 80) {
+    console.log(`note   ${contract} looks like a copied contract; the installed skill is now the source — delete the copy when ready`);
+  }
+
+  console.log(`init   ${root} is a Target. Pack and skills stay on the machine.`);
+  return true;
+}
+
 const argv = process.argv.slice(2);
 const verb = argv[0];
 function flag(name: string): string | undefined {
@@ -166,19 +291,27 @@ function flag(name: string): string | undefined {
   return i === -1 ? undefined : argv[i + 1];
 }
 
-if (!verb || verb === "--help" || verb === "-h") {
-  console.log(USAGE);
-  process.exit(verb ? 0 : 2);
+if (import.meta.main) {
+  if (!verb || verb === "--help" || verb === "-h") {
+    console.log(USAGE);
+    process.exit(verb ? 0 : 2);
+  }
+
+  const dest = flag("--dest") ?? join(home(), ".agents", "skills");
+  const archonHome = flag("--archon-home") ?? join(home(), ".archon", "workflows");
+
+  const ok =
+    verb === "install"
+      ? install(dest, archonHome)
+      : verb === "check"
+        ? report(dest, archonHome)
+        : verb === "init"
+          ? init(flag("--dir") ?? process.cwd(), flag("--prefix"))
+          : undefined;
+
+  if (ok === undefined) {
+    console.error(USAGE);
+    process.exit(2);
+  }
+  process.exit(ok ? 0 : 1);
 }
-
-const dest = flag("--dest") ?? join(home(), ".agents", "skills");
-const archonHome = flag("--archon-home") ?? join(home(), ".archon", "workflows");
-
-const ok =
-  verb === "install" ? install(dest, archonHome) : verb === "check" ? report(dest, archonHome) : undefined;
-
-if (ok === undefined) {
-  console.error(USAGE);
-  process.exit(2);
-}
-process.exit(ok ? 0 : 1);

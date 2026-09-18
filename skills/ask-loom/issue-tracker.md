@@ -12,19 +12,19 @@ something different by *closed*:
 
 | You have | You open | Type | *Closed* means |
 |---|---|---|---|
-| a question worth knowing the answer to | a **question ticket** — answered by a reading (`/research`), a grilling, a prototype, or an experiment | `decision` | the answer is written down; the session closes it on the operator's word |
+| a question worth knowing the answer to | a **question ticket** — answered by a reading run, `/grill`, or an experiment | `decision` | the answer is written down; the session closes it on the operator's word |
 | an idea — "this might be worth doing", no work agreed | an **idea ticket**; its comment thread is its development | `decision` | it graduated into a ticket in another domain (`relates-to`) or was dropped (`wontfix`) — *Ideas* |
 | work to do in the code | a **work ticket** carrying the gate label `ready-for-agent` | `task`, `bug`, … | a drain merged it into Main |
 | a question no published material can answer | an **experiment ticket** — the plan, and later its record | `experiment` | the result is recorded — *Experiments* |
-| a whole direction, still foggy, more than one session holds | a **map**, charted by `/wayfinder` | `decision`, labelled `wayfinder:map` | the destination document exists and the map's tickets are resolved — *Wayfinding operations* |
+| a whole direction, still foggy, more than one session holds | a **map** (git document) plus child **decision** issues, from `/grill` | `decision` | each child's question is answered; the map stays until the destination exists — *Maps* |
 
 **The operator decides what to open; the session types it.** Which skill does a piece of work is
-`/ask-matt`'s question — this table only decides *where a thing belongs*.
+`/ask-loom`'s question — this table only decides *where a thing belongs*.
 
 A session opens by looking at three things:
 
 ```bash
-bd ready                                          # what can start now — a `wayfinder:map` bead is a container, not a ticket
+bd ready                                          # what can start now — a map bead is a container, not work
 bd list -t experiment -s closed -l reading:none   # results nobody has read yet
 bd list -t decision -s open -l answer:draft       # questions whose reading landed and await my word
 ```
@@ -441,10 +441,10 @@ the drain refuses any blocking chain reaching one, which is what keeps a recorde
 implementation work. It carries an `experiment` label so the tickets are one filter (`bd list -l
 experiment`), and never the gate label: nothing about an experiment ticket is a drain's work.
 
-## Wayfinding operations
+## Maps
 
-Used by `/wayfinder`. The **map** and its exploration are git documents; the **child issues** are beads
-of type `decision`.
+There is no separate wayfinder skill. `/grill` produces the child questions; the **map** is a git
+document; the **child issues** are beads of type `decision`.
 
 - **Map**: one issue of type `decision` labelled `wayfinder:map`, its Notes / Decisions-so-far / Fog in
   a git document.

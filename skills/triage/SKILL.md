@@ -1,14 +1,18 @@
 ---
 name: triage
-description: Move issues and external PRs through a state machine of triage roles — categorise, verify, grill if needed, and write agent-ready briefs.
+description: Move incoming issues through the five triage labels on a loom Target — gate, brake, never ready-for-agent on inquiry or experiments.
 disable-model-invocation: true
 ---
 
 # Triage
 
-Move issues through a small state machine of triage roles. Every tracker mechanic is the tracker contract's — `docs/agents/issue-tracker.md`, with the label vocabulary beside it; run `/setup-matt-pocock-skills` if either is missing. That file owns how an issue is found, read, labelled and commented on; this skill names no commands of its own.
+Move **incoming** issues through triage roles. Not what `/to-tickets` already published. Unsure? `/ask-loom`.
 
-If the contract names a request surface for external pull requests, triage covers it too: **a PR is an issue with attached code** — same roles, same machine, with a few deltas marked "for a PR" below. Resolve a bare reference — an id, or a handle — to an issue or PR the way the contract's fetch step says.
+Every tracker mechanic is the tracker contract's — the installed sibling `ask-loom/issue-tracker.md`. That file owns how an issue is found, read, labelled and commented on; this skill names no commands of its own.
+
+On a loom Target, `ready-for-agent` is the drain's gate and only belongs on **development** work. Inquiry (`decision`) and experiments (`experiment`) never take it — brake those with `needs-info` or leave them ungated. `wontfix` is a label, never a close.
+
+If the contract names a request surface for external pull requests, triage covers it too: **a PR is an issue with attached code**. A loom Target usually has no such surface; skip that branch unless the contract says otherwise. Resolve a bare reference — an id, or a handle — the way the contract's fetch step says.
 
 Every comment or issue posted to the tracker during triage **must** start with this disclaimer:
 
@@ -75,7 +79,7 @@ Show counts and a one-line summary per item. Let the maintainer pick.
 
 3. **Verify the claim.** Before any grilling, check that the claim holds up. For a bug, reproduce it from the reporter's steps. For a PR, confirm the diff does what it claims — check it out, run the relevant tests or commands. Report what happened: confirmed (with code path), failed, or insufficient detail (a strong `needs-info` signal). A confirmed verification makes a much stronger agent brief.
 
-4. **Grill (if needed).** If the request needs fleshing out, run the `/grilling` and `/domain-modeling` skills together — grill it into shape a round of questions at a time, sharpening domain terms and updating `CONTEXT.md`/ADRs inline as decisions land.
+4. **Grill (if needed).** If the request needs fleshing out, `/grill` — rounds of questions, product terms into `docs/CONTEXT.md` / ADRs as they settle.
 
 5. **Apply the outcome.** The role is the contract's move, and the brief or the notes are the contract's comment — once an issue is published its body is frozen, so the conversation is the store's:
    - `ready-for-agent` — post an agent brief comment ([AGENT-BRIEF.md](AGENT-BRIEF.md)).

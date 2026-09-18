@@ -6,15 +6,15 @@ disable-model-invocation: true
 
 This skill takes the current conversation context and codebase understanding and produces a spec. Do NOT interview the user — just synthesize what you already know.
 
-The tracker's contract is `docs/agents/issue-tracker.md`; run `/setup-matt-pocock-skills` if it is missing. The contract owns where a spec lives and how the issues it produces reach the tracker.
+The tracker contract is the installed sibling `ask-loom/issue-tracker.md`. The contract owns where a spec lives and how the issues it produces reach the tracker. Unsure which skill next? `/ask-loom` — a spec is not an issue, and `/to-tickets` is what splits one into development work.
 
 ## Process
 
 1. Explore the repo to understand the current state of the codebase, if you haven't already. Use the project's domain glossary vocabulary throughout the spec, and respect any ADRs in the area you're touching.
 
-2. Sketch out the seams at which you're going to test the feature. Existing seams should be preferred to new ones. Use the highest seam possible. If new seams are needed, propose them at the highest point you can. The fewer seams across the codebase, the better - the ideal number is one.
+2. Sketch out the **seams** at which you're going to test the feature. The vocabulary is `/codebase-design`: module, interface, depth, seam, adapter. Existing seams should be preferred to new ones. Use the highest seam possible. If new seams are needed, propose them at the highest point you can. The fewer seams across the codebase, the better - the ideal number is one.
 
-Check with the user that these seams match their expectations.
+Check with the user that these seams match their expectations. A design question that is hard to settle on paper is a `/prototype` detour — throwaway code, then fold the answer into Implementation Decisions.
 
 3. Write the spec using the template below, and place it where the contract's spec convention puts it. On a store-backed Target the spec is a git document at the contract's spec path (`docs/specs/<date>-<slug>.md`) — there is no spec issue and no container tier — and the `ready-for-agent` gate label is `/to-tickets`' job at publication: it goes on the issues a spec produces, and this skill applies no triage role of its own.
 

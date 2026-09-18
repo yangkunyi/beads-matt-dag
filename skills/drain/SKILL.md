@@ -6,14 +6,16 @@ disable-model-invocation: true
 
 # Drain
 
-The operator surface for the `beads-dag` pack. The store's own commands live in the tracker contract,
-`docs/agents/issue-tracker.md`; this file names the pack and the `archon` calls that drive it, and
-points there for everything the store does.
+The operator surface for **loom**'s pack (`beads-dag` on disk). Unsure whether to drain, inquire, or
+triage? `/ask-loom`.
 
-The pack is a folder in a git checkout, installed as a symlink at `~/.archon/workflows/beads-dag`, so
-the checkout is what the runner reads and an update is `git pull` there — and `archon workflow list`
-shows `beads-dag-drain` when it is in place. The drain is that workflow; `beads-dag-execute` is not an
-entry point.
+The store's own commands live in the tracker contract — the installed sibling
+`ask-loom/issue-tracker.md`, not a file copied into the repo. This file names the pack and the
+`archon` calls that drive it, and points there for everything the store does.
+
+The pack is machine-global: a symlink at `~/.archon/workflows/beads-dag` (from `beads-dag install`).
+A Target does not contain a copy. `archon workflow list` shows `beads-dag-drain` when the link is in
+place. The drain is that workflow; `beads-dag-execute` is not an entry point.
 
 The operator has two actions: **run a drain**, and **move the gate label**. Everything else a drain
 does itself, or the store derives.
