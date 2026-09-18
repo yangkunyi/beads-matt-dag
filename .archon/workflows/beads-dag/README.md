@@ -22,6 +22,7 @@ Then, from the Target:
 ```
 archon workflow run beads-dag-drain --detach      # drain implementation issues
 archon workflow run beads-dag-inquiry --detach    # read the questions on the reading frontier
+archon workflow run beads-dag-grill --input seed=<id> --detach   # write the next round onto one seed
 ```
 
 A drain merges an issue's work into Main and closes it. A reading run merges nothing: it commits each
@@ -72,11 +73,13 @@ one Target are not a slower version of one: the second run's opening repair read
 claim as a leftover, and its `pick` can offer an issue the first is implementing right now. A reading
 run has the same shape — it repairs a killed reading's claim and picks the reading frontier — and it
 commits its documents to the same branch. An experiment run takes the same file at its own `open`,
-because a run that writes the store or Main must not interleave with another run of any kind. So `open`
+because a run that writes the store or Main must not interleave with another run of any kind. A grill
+run takes it too: it writes a comment on the seed and may commit glossary documents to the same branch.
+So `open`
 takes a Target-level **run lock** before it does anything, and a second run **refuses** — exit 1, one
 line naming the holder, nothing claimed, nothing written — rather than waiting a run's length for a
 read that would be a run old when it woke. It is one lock and one rule for every executor: a drain
-started while a reading or an experiment run holds it is refused, and a reading or experiment run
+started while a reading, an experiment, or a grill run holds it is refused, and a reading, experiment, or grill run
 started while a drain holds it is refused the same way, because "one run at a time" is about the Target
 and not about which domain asked.
 
@@ -91,7 +94,7 @@ The lock names the run — the basename of the run's artifacts directory, Archon
 workflow runner every node of the run shares. A pid that is gone is a killed run's leftover and is
 stolen exactly as `lock.ts` steals one, with one line saying so; a live one refuses, and the refusal on
 stderr names the holder's run id and pid, so `archon workflow status` finds the run to wait for — or to
-kill. The run's last node releases the lock — `summary` for a drain, `report` for a reading or experiment run — and
+kill. The run's last node releases the lock — `summary` for a drain, `report` for a reading, experiment, or grill run — and
 `open` releases it when its own work fails before the loop; but no node after `open` is guaranteed to
 run, so a run killed or failed on the way leaves the file behind, which is exactly what the dead-pid
 steal is for. The run also records the lock it
@@ -180,6 +183,27 @@ The run's last node is not a reader and not a draft report. It releases the Targ
 `open` took, and writes attempted, closed-on-record, and failed — from the run's `attempted-ids.json` and
 the store. Closed stays the completeness check the per-ticket node already made (ADR-0006); this node does
 not close, and it does not merge the experiment-run include into itself.
+
+## The grill run
+
+`beads-dag-grill` takes one seed issue id — the node the human created — and writes the next **round**
+onto that issue as a comment, then stops for answers. It is not drain and not the inquiry reading run.
+It is not an Archon approval gate: approve/reject is the wrong grain. A later turn of the same kind of
+run that sees answers writes the next round, or records `Done` when the grilling frontier is empty.
+Glossary and ADRs still settle in git as terms crystallise (`docs/CONTEXT.md`, `docs/adr/`), as one
+path-scoped commit under the Main lock.
+
+The operator surface remains a view: this run is the griller. Follow-up issues still wait for
+`/to-tickets` after Done. This run does not publish development tickets, and it does not close the seed.
+
+`open` takes the shared Target run lock, preflights the store, and refuses a seed that is not an open
+`decision` issue. The grill node claims nothing: the seed stays `open` so the operator can answer on it.
+The turn runs with the store read-only; the node writes the round (or Done) afterwards. `report` releases
+the lock and writes `report.md`.
+
+```
+archon workflow run beads-dag-grill --input seed=<id> --detach
+```
 
 ## One issue, one worktree, one brief
 

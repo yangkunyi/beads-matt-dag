@@ -21,7 +21,7 @@ import { join } from "node:path";
 import { DEFAULT_CONFIG_REL, DEFAULT_VERIFY_TIMEOUT_MS } from "../../scripts/config.ts";
 import { POST_MERGE_TIMEOUT_MS } from "../scripts/postmerge.ts";
 import { ROLES } from "../../scripts/roles.ts";
-import { drain, execute, experiment, experimentRun, expect, expectEqual, inquiry, kernelDir, readBlock } from "./target.ts";
+import { drain, execute, experiment, experimentRun, expect, expectEqual, grill, inquiry, kernelDir, readBlock } from "./target.ts";
 
 const nodeEntry = readFileSync(join(kernelDir, "node-entry.ts"), "utf8");
 
@@ -48,7 +48,7 @@ const inputsRead = new Set(nodeEntry.match(/INPUTS_[A-Z_]+/g) ?? []);
  * whether it is a CLI entry. The roles are read out of the source (`role: "implement"`), which is the
  * one place a node says which role it runs. */
 const scriptsByDir = new Map<string, Map<string, { entry: boolean; source: string }>>();
-for (const dir of [drain.dir, execute.dir, inquiry.dir, readBlock.dir, experiment.dir, experimentRun.dir]) {
+for (const dir of [drain.dir, execute.dir, inquiry.dir, readBlock.dir, experiment.dir, experimentRun.dir, grill.dir]) {
   const byName = new Map<string, { entry: boolean; source: string }>();
   for (const file of readdirSync(join(dir, "scripts"))) {
     if (!file.endsWith(".ts")) continue;
@@ -156,6 +156,7 @@ const yamls = [
   { file: "beads-dag-read.yaml", dir: readBlock.dir },
   { file: "beads-dag-experiment.yaml", dir: experiment.dir },
   { file: "beads-dag-experiment-run.yaml", dir: experimentRun.dir },
+  { file: "beads-dag-grill.yaml", dir: grill.dir },
 ].map((w) => ({ ...w, text: readFileSync(join(w.dir, w.file), "utf8") }));
 
 try {

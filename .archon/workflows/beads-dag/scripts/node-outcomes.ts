@@ -38,6 +38,24 @@ export const REGISTERED = "registered";
  */
 export const CLOSED = "closed";
 
+/**
+ * A grill turn's outcome: the next round is a comment on the seed. The grill run's counterpart of the
+ * reading's `landed` - a result rather than an error, and the run stops for answers.
+ */
+export const ROUND = "round";
+
+/**
+ * A grill turn's outcome: the frontier is empty, recorded as `Done` on the seed. Follow-up issues still
+ * wait for `/to-tickets`; this run does not publish them.
+ */
+export const DONE = "done";
+
+/**
+ * A grill turn's outcome: the last round is on the seed and no answers have landed, so this turn wrote
+ * nothing. A later turn that sees answers writes the next round or Done.
+ */
+export const WAITING = "waiting";
+
 /** A drain-end reader's outcome when the run merged nothing: there is no range to report on. */
 export const NOTHING_TO_REPORT = "nothing";
 

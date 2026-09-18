@@ -35,8 +35,14 @@ below — if a term can only be explained by a command, it belongs in a spec.
 
 - **drain** — one orchestration run. Starts eligible issues, merges what succeeds, stops when nothing
   is eligible.
+- **grill run** — one orchestration run that writes the next grilling **round** onto one seed issue and
+  stops for answers. A later turn that sees answers writes the next round or records that the frontier
+  is empty. Not drain, not the inquiry reading run, and not an Archon approval gate.
+- **round** — one grilling turn's questions, written onto the seed issue: the frontier of the design
+  tree that can be asked now.
 - **frontier** — what a drain may start right now: unblocked, unclaimed, gated, not already attempted
-  by this drain, and not already merged.
+  by this drain, and not already merged. In grilling, the questions whose prerequisites are already
+  settled.
 - **attempted** — an issue this drain has started at least once. Recorded per run, outside the store.
 - **Target** — the repository a drain operates on. It owns its own store.
 - **Main** — the Target's main branch: what merges land on.
@@ -49,7 +55,7 @@ below — if a term can only be explained by a command, it belongs in a spec.
 - **operator surface** — a view of that graph: issues and edges, plus the live overlay of a run. Not
   an executor and not a local editor. A write goes to the store; the view reloads from the store and
   keeps layout positions. Starting work still means starting the domain's existing run (drain,
-  inquiry, or experiment).
+  inquiry, experiment, or grill).
 - **allow-list** — the ids one run may claim. It is this run's pool, not a label; it does not brake
   issues left out of the selection.
 

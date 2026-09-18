@@ -18,7 +18,7 @@ import { roleSessionFile } from "../../scripts/pi-session.ts";
 import { AGENT_WALL_MS, ROLES, roleAgent, type AgentRole } from "../../scripts/roles.ts";
 import { conflictPersona, implementPersona } from "../../scripts/prompt.ts";
 import { READONLY_ENV } from "../../scripts/worker-env.ts";
-import { drain, execute, experimentRun, expect, expectEqual, kernelDir, readBlock } from "./target.ts";
+import { drain, execute, experimentRun, expect, expectEqual, grill, kernelDir, readBlock } from "./target.ts";
 
 /** The roles a node body names, read out of its source: the one call that says which role runs. */
 function rolesInScript(file: string): string[] {
@@ -28,7 +28,12 @@ function rolesInScript(file: string): string[] {
 /** Every node body this pack has: the workflows' entry scripts, taken from their YAMLs. */
 const nodeBodies = ["open", "pick", "review", "summary"]
   .map((name) => drain.script(name))
-  .concat([execute.script("execute"), readBlock.script("read"), experimentRun.script("run")]);
+  .concat([
+    execute.script("execute"),
+    readBlock.script("read"),
+    experimentRun.script("run"),
+    grill.script("grill"),
+  ]);
 
 const CONFIG: PackConfig = {
   model: "some/model",

@@ -446,6 +446,13 @@ experiment`), and never the gate label: nothing about an experiment ticket is a 
 There is no separate wayfinder skill. `/grill` produces the child questions; the **map** is a git
 document; the **child issues** are beads of type `decision`.
 
+A **grill run** (`beads-dag-grill`) is the same interview as a run, not a session: it takes one seed
+issue id, writes the next round onto that issue as a comment, and stops for answers. A later turn that
+sees answers writes the next round or records `Done` (the frontier is empty). Glossary and ADRs land in
+git as terms crystallise. Follow-up issues still wait for `/to-tickets` after Done — the run does not
+publish development tickets, and it is not an Archon approval gate. The operator surface remains a view;
+this run is the griller.
+
 - **Map**: one issue of type `decision` labelled `wayfinder:map`, its Notes / Decisions-so-far / Fog in
   a git document.
 - **Child issue**: a bead of type `decision`, labelled `wayfinder:<research|prototype|grilling|task>`,

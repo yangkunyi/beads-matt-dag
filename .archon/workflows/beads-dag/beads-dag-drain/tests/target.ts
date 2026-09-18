@@ -30,6 +30,7 @@ const experimentDir = join(import.meta.dir, "../../beads-dag-experiment");
 const experimentRunDir = join(import.meta.dir, "../../beads-dag-experiment-run");
 const inquiryDir = join(import.meta.dir, "../../beads-dag-inquiry");
 const readDir = join(import.meta.dir, "../../beads-dag-read");
+const grillDir = join(import.meta.dir, "../../beads-dag-grill");
 
 /** The pack root, the folder the workflow folders live in. */
 export const packDir = join(import.meta.dir, "../..");
@@ -87,6 +88,13 @@ export const readBlock = {
   dir: readDir,
   yaml: join(readDir, "beads-dag-read.yaml"),
   script: (name: string): string => join(readDir, "scripts", `${name}.ts`),
+};
+
+/** The grill run: one seed id, the next round onto that issue, then stop for answers. */
+export const grill = {
+  dir: grillDir,
+  yaml: join(grillDir, "beads-dag-grill.yaml"),
+  script: (name: string): string => join(grillDir, "scripts", `${name}.ts`),
 };
 
 /** The drain's config, relative to the Target: what the tests write a store override into. */
@@ -564,7 +572,8 @@ export function commitFile(cwd: string, file: string, content: string, message: 
  * note at the paths the brief carries and answers a draft, so a reading can be driven end to end; and
  * `read-silent` writes nothing and answers nothing, the turn that read and said nothing;
  * `record-complete` writes a complete experiment record at the path the brief carries; and
- * `record-incomplete` writes a record that has a table row but none of the four closing labels.
+ * `record-incomplete` writes a record that has a table row but none of the four closing labels;
+ * `grill` writes a first-round answer and `docs/CONTEXT.md`; `grill-done` answers Done.
  * `FAKE_PI_RECORD` names a file the fake leaves the turn's options in, for a test that wants to read them
  * back.
  */
@@ -578,7 +587,9 @@ export type FakePiMode =
   | "read"
   | "read-silent"
   | "record-complete"
-  | "record-incomplete";
+  | "record-incomplete"
+  | "grill"
+  | "grill-done";
 
 export function fakePiSdk(root: string, mode: FakePiMode): string {
   const dir = join(root, `fake-pi-${mode}`);
@@ -678,10 +689,19 @@ function fakePiSource(mode: string): string {
     '        const labels = "\\nmeasured: acc=0.91 from metrics.json\\nreference: met the frozen baseline\\ncovered: one seed, one dataset, one config\\nreading: none yet\\n";',
     '        writeFileSync(recordPath, MODE === "record-complete" ? table + labels : table);',
     "      }",
-    '      if (MODE !== "none" && MODE !== "read-silent") {',,
+    "      let answer = ANSWER;",
+    '      if (MODE === "grill") {',
+    '        mkdirSync(cwd + "/docs", { recursive: true });',
+    '        writeFileSync(cwd + "/docs/CONTEXT.md", "# Product\\n\\n**Thing**:\\nA thing.\\n");',
+    '        answer = "❓ **Q1** - **Thing**: what is this?\\n\\n➡️ a thing";',
+    "      }",
+    '      if (MODE === "grill-done") {',
+    '        answer = "Done\\n\\nThe frontier is empty.";',
+    "      }",
+    '      if (MODE !== "none" && MODE !== "read-silent") {',
     '        appendFileSync(file, JSON.stringify({ type: "message", message: { role: "assistant", content: [',
     '          { type: "thinking", text: "THINKING-LEAK" },',
-    '          { type: "text", text: ANSWER },',
+    '          { type: "text", text: answer },',
     '        ] } }) + "\\n");',
     "      }",
     "      return PROMPT_RETURN;",
@@ -699,7 +719,7 @@ function fakePiSource(mode: string): string {
  * The runner's conversation with one node: the protocol variables Archon sets for a node and nothing else.
  * A fixture never inherits them, in any shape.
  */
-const PROTOCOL_ENV = ["INPUTS_ISSUE", "INPUTS_CONFIG", "INPUTS_ALLOW_LIST", "ARTIFACTS_DIR"];
+const PROTOCOL_ENV = ["INPUTS_ISSUE", "INPUTS_CONFIG", "INPUTS_ALLOW_LIST", "INPUTS_SEED", "ARTIFACTS_DIR"];
 
 export function envWithout(...names: string[]): NodeJS.ProcessEnv {
   const env = { ...process.env };

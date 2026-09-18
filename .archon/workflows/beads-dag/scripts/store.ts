@@ -274,6 +274,23 @@ export function issueByHandle(store: Store, target: string, handle: string): Sto
 }
 
 /**
+ * One issue, by the bead's own id.
+ *
+ * A grill run is handed a seed id, not a handle: the node the human created is identified in the store,
+ * and the handle is what git names derive from once the issue is loaded. `bd show --json` answers with a
+ * one-element array; the same narrowing `toStoreIssue` applies as every other store read.
+ */
+export function issueById(store: Store, target: string, id: string): StoreIssue {
+  const command = `show ${id} --json`;
+  const parsed = parseJSON(command, runStore(store, target, ["show", id, "--json"]));
+  const raw = Array.isArray(parsed) ? parsed[0] : parsed;
+  if (raw === undefined) {
+    throw new Error(`no issue ${id}: ${command} answered with nothing`);
+  }
+  return toStoreIssue(raw, command);
+}
+
+/**
  * Claim issues: every one of them, in a single transaction, or none of them.
  *
  * `bd batch` executes its stdin inside one store transaction and rolls the whole thing back on any
