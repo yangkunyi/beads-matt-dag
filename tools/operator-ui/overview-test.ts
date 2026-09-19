@@ -18,7 +18,10 @@
  * not stay on the canvas; coordinates stay in the view; issues sit in three domain lanes; a
  * selection frames its neighbourhood and Show all opts into the full graph; a selected issue's
  * current grill round is data (questions, choices, recommended); answering it is a tagged write
- * that lands as a store comment and survives a re-read; an issue with no round has no round form.
+ * that lands as a store comment and survives a re-read; an issue with no round has no round form;
+ * a round's number is its `round N` marker, so a second round on the same issue is a new form rather
+ * than the previous round's picks; an `answer-round` body whose id is not the door's issue-id shape
+ * is refused 400 by the door itself, as `answer-round`.
  *
  *   bun tools/operator-ui/overview-test.ts
  */
@@ -73,7 +76,7 @@ import {
 } from "./page";
 import type { RunLaunch } from "./start";
 import { MarkdownBody } from "./ui/markdown";
-import { commentFrom, IssueDetail, RoundForm, withNewlyOffered, type PageOverview } from "./ui/App.tsx";
+import { commentFrom, IssueDetail, RoundForm, roundFormKey, withNewlyOffered, type PageOverview } from "./ui/App.tsx";
 import { createElement } from "react";
 import { renderToString } from "react-dom/server";
 import { createOverviewServer, handleOverviewRequest } from "./serve";
@@ -264,6 +267,7 @@ const grilled = assembleOverview(
 expectEqual("round questions join onto the issue", grilled.issues[0]?.round?.questions.map((q) => q.n), [1, 2]);
 expectEqual("round choices are data", grilled.issues[0]?.round?.questions[0]?.choices, ["keep it", "drop it"]);
 expectEqual("recommended answer is on the question", grilled.issues[0]?.round?.questions[0]?.recommended, "keep it");
+expectEqual("a round whose comment carries no marker has no number", grilled.issues[0]?.round?.n, null);
 expectEqual(
 	"round comments are not the conversation",
 	grilled.issues[0]?.comments.map((entry) => entry.text),
@@ -471,6 +475,7 @@ const fromRun = roundFromComments([
 	{ id: "run-1", author: "agent", createdAt: "2026-09-19T00:00:00Z", text: writtenByRun },
 ]);
 expectEqual("the run's own comment parses to a round", fromRun.round?.questions.length, 2);
+expectEqual("and its number comes off the run's own marker", fromRun.round?.n, 2);
 expectEqual("numbered by the node, not by the turn", fromRun.round?.questions[0]?.n, 1);
 expectEqual("with the question's title", fromRun.round?.questions[0]?.title, "Name");
 expectEqual("its body, with no commit line in it", fromRun.round?.questions[0]?.body, "what is this called?");
@@ -491,6 +496,74 @@ if (grilledIssue) {
 		["widget", "gadget", "yes", "no"].every((choice) => seamHtml.includes(choice)),
 	);
 	expectEqual("and one recommended mark per question", seamHtml.split('data-recommended="true"').length - 1, 2);
+}
+
+// ---- A new round on the same issue is a new form. -------------------------------------------------
+// The review of the range that landed operator-ui/30 found the form keyed by the issue: a second round on
+// the same issue did not remount it, so `selected` kept the previous round's answers, and because every
+// round numbers its questions from Q1 those stale choices pre-checked the new round's radios - `complete`
+// was true on arrival, and one click re-submitted round N's answers as round N+1's. This harness renders
+// server-side, so every render mounts fresh: what the two renders below show is that the form's picks are
+// the round's own answers and nothing else, and `roundFormKey` plus the source assertion further down are
+// what make React mount a new form when the round changes on the client.
+const roundOneText = renderPackRound(1, [
+	{ title: "Scope", body: "what stays in?", choices: ["keep it", "drop it"], recommended: "keep it" },
+	{ title: "Name", body: "what do we call it?", choices: ["round", "quiz"], recommended: "round" },
+]);
+// The second round asks the same questions with the same choices, as a real one does: that is exactly what
+// makes a retained `selected` pre-check it.
+const roundTwoText = renderPackRound(2, [
+	{ title: "Scope", body: "what stays in?", choices: ["keep it", "drop it"], recommended: "drop it" },
+	{ title: "Name", body: "what do we call it?", choices: ["round", "quiz"], recommended: "quiz" },
+]);
+const roundOneComment: StoreComment = {
+	id: "n1",
+	author: "agent",
+	createdAt: "2026-09-20T00:00:00Z",
+	text: roundOneText,
+};
+const roundOneAnswersComment: StoreComment = {
+	id: "n2",
+	author: "op",
+	createdAt: "2026-09-20T00:01:00Z",
+	text: serializeGrillAnswers([
+		{ n: 1, choice: "keep it" },
+		{ n: 2, choice: "round" },
+	]),
+};
+const roundTwoComment: StoreComment = {
+	id: "n3",
+	author: "agent",
+	createdAt: "2026-09-20T00:02:00Z",
+	text: roundTwoText,
+};
+const answeredRound = roundFromComments([roundOneComment, roundOneAnswersComment]);
+const nextRound = roundFromComments([roundOneComment, roundOneAnswersComment, roundTwoComment]);
+expectEqual("the round's number comes off the comment's marker", answeredRound.round?.n, 1);
+expectEqual("a later round on the same issue is the current one", nextRound.round?.n, 2);
+expectEqual(
+	"and it is asked afresh: the previous round's answers are not on it",
+	(nextRound.round?.questions ?? []).filter((question) => question.answer !== undefined).length,
+	0,
+);
+if (grilledIssue) {
+	const answeredIssue: OverviewIssue = { ...grilledIssue, id: "rounds", round: answeredRound.round };
+	const nextIssue: OverviewIssue = { ...grilledIssue, id: "rounds", round: nextRound.round };
+	expectEqual(
+		"the answered round's form comes up with its answers picked",
+		renderRound(answeredIssue).split('checked=""').length - 1,
+		2,
+	);
+	expectEqual(
+		"a second round on the same issue starts with nothing picked",
+		renderRound(nextIssue).split('checked=""').length - 1,
+		0,
+	);
+	expect(
+		"the form's identity is the issue and the round, so a new round is a new form",
+		roundFormKey(answeredIssue) !== roundFormKey(nextIssue),
+	);
+	expectEqual("and the key names the issue and the round's number", roundFormKey(nextIssue), "rounds:2");
 }
 
 const projected = projectGraph(overview);
@@ -1491,6 +1564,20 @@ expect("empty answers are refused", emptyAnswers.refused);
 expectEqual("empty answers do not write", writes, []);
 
 writes.length = 0;
+// The door's own shape check, not the comment helper's. `comment.ts` refuses a malformed id too, so this
+// was never a 500 - but it refused in the comment layer's name ("comment needs an issue id") after the
+// answer body had been accepted. The door refuses it here, as `answer-round`, before the store layer runs.
+const malformedRoundId = refusedAction(
+	JSON.stringify({ intent: "answer-round", id: "not an id!", answers: [{ n: 1, choice: "keep it" }] }),
+);
+expect("answer-round with a malformed id is refused", malformedRoundId.refused);
+expect(
+	"answer-round with a malformed id is refused in its own name, not the comment layer's",
+	malformedRoundId.message.startsWith("answer-round needs"),
+);
+expectEqual("answer-round with a malformed id does not write", writes, []);
+
+writes.length = 0;
 const roundClosed = refusedAction(
 	JSON.stringify({ intent: "answer-round", id: "from-bd", answers: [{ n: 1, choice: "keep it" }], closed: true }),
 );
@@ -1916,6 +2003,10 @@ expect("surface has a triage form", appSrc.includes('id="triage-form"'));
 expect("surface posts through the one client", appSrc.includes("postOperatorAction"));
 expect("surface has a grill round form", appSrc.includes('id="grill-round"'));
 expect("surface posts the round through the write door", appSrc.includes('intent: "answer-round"'));
+expect(
+	"the round form is keyed by the round, not the issue alone",
+	appSrc.includes("key={roundFormKey(issue)}"),
+);
 expect("surface offers the five triage labels", appSrc.includes("TRIAGE_LABELS"));
 expect("surface can mark wontfix as a label", appSrc.includes("wontfix"));
 expect("surface does not close from triage", !appSrc.includes("bd close") && !appSrc.includes('name="close"'));
@@ -2219,6 +2310,17 @@ const closedRoundPost = await handleOverviewRequest(
 );
 expectEqual("POST answer-round carrying closed is 400", closedRoundPost.status, 400);
 expectEqual("POST answer-round carrying closed does not write", roundWrites.length, 1);
+const malformedIdPost = await handleOverviewRequest(
+	{ method: "POST", url: "/comment" },
+	JSON.stringify({ intent: "answer-round", id: "not an id!", answers: [{ n: 1, choice: "keep it" }] }),
+	roundHandler,
+);
+expectEqual("POST answer-round with a malformed id is 400", malformedIdPost.status, 400);
+expectEqual("POST answer-round with a malformed id never reaches bd", roundWrites.length, 1);
+expect(
+	"POST answer-round with a malformed id is refused as answer-round, not as a comment",
+	malformedIdPost.body.includes("answer-round needs"),
+);
 const missing = await handleOverviewRequest({ method: "POST", url: "/close" }, "", handler);
 expectEqual("unknown path is 404", missing.status, 404);
 

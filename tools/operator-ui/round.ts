@@ -4,8 +4,10 @@
  *
  * The round is a comment in the shape `skills/grill` asks the agent for: one
  * `❓ **Q<n>** - **<title>**: <body>` line per question, its `- <choice>` lines under it, and
- * `➡️ <recommended>`. A run may open the comment with its own `round N` line; that line is ignored
- * here, because what the surface needs is the questions. Answers are another comment, one
+ * `➡️ <recommended>`. The comment opens with a `round N` marker — the pack's grill node writes it,
+ * and a session writing a round by hand uses the next number in the thread — and that number is the
+ * round's identity, so a new round on the same issue is a new round to the surface rather than the
+ * same form with the previous round's picks still in it. Answers are another comment, one
  * `Q<n>: <choice>` line each.
  *
  * The thread is the record: nothing here writes a label or a file, and a re-read recomputes the
@@ -31,6 +33,12 @@ export type GrillQuestion = {
 };
 
 export type GrillRound = {
+	/**
+	 * The round's number, from the comment's `round N` first line, or null when the comment carries no
+	 * marker. It is the round's identity: two rounds on one issue differ here and nowhere else, since
+	 * every round numbers its questions from `Q1`.
+	 */
+	n: number | null;
 	questions: GrillQuestion[];
 };
 
@@ -38,6 +46,20 @@ export type GrillAnswer = {
 	n: number;
 	choice: string;
 };
+
+/**
+ * The round comment's first line: `round N`, optionally followed by what the turn's documents landed
+ * on (`round N (commit <sha>)`, as `beads-dag-grill` writes it). Only the number is read — the rest of
+ * the line is the producer's business — so the marker is matched at the start of the line and the
+ * number is what has to be there.
+ */
+const ROUND_LINE = /^round (\d+)(?:\s|$)/;
+
+/**
+ * The door's issue-id shape, the same one `actions.ts` holds for every other intent. An id that is not
+ * this shape is the body's mistake, not the store's, so `answer-round` refuses it here.
+ */
+const ISSUE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/;
 
 const QUESTION_LINE = /^❓\s*\*\*Q(\d+)\*\*\s*-\s*\*\*(.+?)\*\*\s*:?\s*(.*)$/;
 const CHOICE_LINE = /^[-*]\s+(.+)$/;
@@ -47,6 +69,14 @@ const ANSWER_LINE = /^Q(\d+)\s*:\s*(.+)$/;
 /** True when the comment carries questions: a round, not conversation. */
 export function isRoundComment(text: string): boolean {
 	return text.split("\n").some((line) => QUESTION_LINE.test(line.trim()));
+}
+
+/** The round's number off the comment's first line, or null when the comment has no marker. */
+function parseRoundNumber(text: string): number | null {
+	const match = ROUND_LINE.exec((text.split("\n", 1)[0] ?? "").trim());
+	if (match === null) return null;
+	const n = Number(match[1]);
+	return Number.isInteger(n) && n > 0 ? n : null;
 }
 
 function parseQuestions(text: string): GrillQuestion[] {
@@ -139,7 +169,8 @@ export function roundFromComments(comments: readonly RoundComment[]): {
 		}
 	}
 	if (roundIndex === -1) return { round: null, conversation: comments.map((comment) => ({ ...comment })) };
-	const questions = parseQuestions(comments[roundIndex]?.text ?? "");
+	const roundText = comments[roundIndex]?.text ?? "";
+	const questions = parseQuestions(roundText);
 	if (questions.length === 0) return { round: null, conversation: comments.map((comment) => ({ ...comment })) };
 	const answers = new Map<number, string>();
 	for (const comment of comments.slice(roundIndex + 1)) {
@@ -150,7 +181,7 @@ export function roundFromComments(comments: readonly RoundComment[]): {
 		if (answer !== undefined && answer !== "") question.answer = answer;
 	}
 	return {
-		round: { questions },
+		round: { n: parseRoundNumber(roundText), questions },
 		conversation: comments.filter((_, index) => index !== roundIndex).map((comment) => ({ ...comment })),
 	};
 }
@@ -168,7 +199,7 @@ export function parseAnswerRoundBody(raw: string): { id: string; answers: GrillA
 	}
 	const record = parsed as Record<string, unknown>;
 	const id = typeof record.id === "string" ? record.id.trim() : "";
-	if (id === "") throw new Error("answer-round needs an issue id");
+	if (!ISSUE_ID.test(id)) throw new Error("answer-round needs an issue id");
 	if (!Array.isArray(record.answers) || record.answers.length === 0) {
 		throw new Error("answer-round needs answers");
 	}
