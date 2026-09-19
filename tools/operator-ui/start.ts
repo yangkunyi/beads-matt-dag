@@ -24,6 +24,7 @@ export type StartPlan =
 export function workflowForKind(kind: LiveRunKind): string {
 	if (kind === "drain") return "beads-dag-drain";
 	if (kind === "inquiry") return "beads-dag-inquiry";
+	if (kind === "grill") return "beads-dag-grill";
 	return "beads-dag-experiment";
 }
 
