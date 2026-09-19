@@ -453,7 +453,9 @@ issue id, writes the next round onto that issue as a comment, and stops for answ
 sees answers writes the next round or records `Done` (the frontier is empty). Glossary and ADRs land in
 git as terms crystallise. Follow-up issues still wait for `/to-tickets` after Done — the run does not
 publish development tickets, and it is not an Archon approval gate. The operator surface remains a view;
-this run is the griller.
+this run is the griller. The round travels as the run's own tool call (`submit_round`, or `submit_done` for
+an empty frontier) rather than as prose, and the comment it writes is the shape that surface renders as
+choices — sibling skill `grill-round` is that contract, `grill` is the same interview in conversation.
 
 - **Map**: one issue of type `decision` labelled `wayfinder:map`, its Notes / Decisions-so-far / Fog in
   a git document.

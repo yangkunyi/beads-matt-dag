@@ -25,6 +25,7 @@ import {
   type PackAgentResult,
 } from "./agent.ts";
 import { composeMessage } from "./prompt.ts";
+import { roundTools } from "./round-tool.ts";
 import type { AgentRole } from "./roles.ts";
 
 /**
@@ -331,7 +332,13 @@ async function startPiSession(opts: PackAgentOpts) {
     // is what beads-dag/42 shipped, and why every drain after it could edit files but never run a gate
     // or a commit. The custom definition is what removes the default: it is registered after the
     // built-ins and takes the name.
-    customTools: [piBashTool(pi, opts)],
+    //
+    // The grill role mounts two more: the round's own channel (round-tool.ts). No other role has a round
+    // to deliver, so no other role carries them.
+    customTools: [
+      piBashTool(pi, opts),
+      ...(opts.role === "grill" ? roundTools(pi, { artifactsDir: opts.artifactsDir }) : []),
+    ],
   });
 
   let aborted = false;

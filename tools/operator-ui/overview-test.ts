@@ -47,6 +47,10 @@ import { postOperatorAction } from "./client";
 import { planDelete, planDeleteAll } from "./delete";
 import { DOMAIN_LANES, framedIssueIds, projectGraph, proposeConnect } from "./graph-view";
 import { roundFromComments, serializeGrillAnswers, serializeGrillRound } from "./round";
+// The pack's own renderer, imported so this suite can test the seam the review found untested: the round the
+// grill run writes must be the round this surface reads. Aliased, because the local helper below is also
+// called renderRound.
+import { renderRound as renderPackRound } from "../../.archon/workflows/beads-dag/beads-dag-grill/scripts/rounds.ts";
 import {
 	CLIENT_ASSETS,
 	clientAssets,
@@ -450,6 +454,43 @@ expect("bare issue is in the model", bareIssue !== undefined);
 if (bareIssue) {
 	const emptyRound = renderRound(bareIssue);
 	expect("an issue with no round does not show a round form", !emptyRound.includes('id="grill-round"'));
+}
+
+// ---- The seam: what the grill run writes is what this surface reads. -------------------------------
+// The review of the range that landed the grill run found the two halves agreeing only with themselves: the
+// run's producer and this consumer were never tested against each other. This is that test.
+const writtenByRun = renderPackRound(
+	2,
+	[
+		{ title: "Name", body: "what is this called?", choices: ["widget", "gadget"], recommended: "widget" },
+		{ title: "Scope", body: "does it cover returns?", choices: ["yes", "no"], recommended: "no" },
+	],
+	"abc1234",
+);
+const fromRun = roundFromComments([
+	{ id: "run-1", author: "agent", createdAt: "2026-09-19T00:00:00Z", text: writtenByRun },
+]);
+expectEqual("the run's own comment parses to a round", fromRun.round?.questions.length, 2);
+expectEqual("numbered by the node, not by the turn", fromRun.round?.questions[0]?.n, 1);
+expectEqual("with the question's title", fromRun.round?.questions[0]?.title, "Name");
+expectEqual("its body, with no commit line in it", fromRun.round?.questions[0]?.body, "what is this called?");
+expectEqual("its choices", fromRun.round?.questions[0]?.choices, ["widget", "gadget"]);
+expectEqual("its recommended answer, exactly one of them", fromRun.round?.questions[0]?.recommended, "widget");
+expectEqual("and the second question keeps its own", fromRun.round?.questions[1]?.recommended, "no");
+expectEqual("the round comment is the round, not conversation", fromRun.conversation.length, 0);
+expect(
+	"every question has choices to pick, so a pick can complete the form",
+	(fromRun.round?.questions ?? []).every((question) => question.choices.length >= 2),
+);
+if (grilledIssue) {
+	const seamIssue: OverviewIssue = { ...grilledIssue, id: "seam", round: fromRun.round };
+	const seamHtml = renderRound(seamIssue);
+	expect("the run's round renders the form", seamHtml.includes('id="grill-round"'));
+	expect(
+		"with a radio for every choice of every question",
+		["widget", "gadget", "yes", "no"].every((choice) => seamHtml.includes(choice)),
+	);
+	expectEqual("and one recommended mark per question", seamHtml.split('data-recommended="true"').length - 1, 2);
 }
 
 const projected = projectGraph(overview);

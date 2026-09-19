@@ -26,6 +26,7 @@ import { bodyPath, issueNames } from "../../scripts/naming.ts";
 import { runNode } from "../../scripts/node-entry.ts";
 import { DONE, FAILED, ROUND, WAITING, nodeLine } from "../../scripts/node-outcomes.ts";
 import { roleAgent } from "../../scripts/roles.ts";
+import { clearSubmission, readSubmission } from "../../scripts/round-tool.ts";
 import {
   commentIssue,
   issueById,
@@ -38,10 +39,9 @@ import {
 import {
   GRILL_DOC_PATHS,
   OUTCOME_FILE,
-  answerKind,
   doneLine,
   grillState,
-  roundLine,
+  renderRound,
   type GrillOutcome,
 } from "./rounds.ts";
 
@@ -103,6 +103,9 @@ export async function grillSeed(target: string, seedId: string, opts: GrillOpts)
   }
 
   const nextRound = state.kind === "fresh" ? 1 : state.round + 1;
+  // The turn's only channel is the round tool, so the files are cleared first: a turn that submits nothing
+  // must read as nothing, never as an earlier turn's round left in the same artifacts directory.
+  clearSubmission(opts.artifactsDir);
   const turn = await runAgent(
     roleAgent({
       role: "grill",
@@ -119,19 +122,18 @@ export async function grillSeed(target: string, seedId: string, opts: GrillOpts)
   );
   console.error(`${names.handle}: grill session ${turn.sessionFile}`);
 
-  if (turn.answer.kind !== "text") {
+  const submitted = readSubmission(opts.artifactsDir);
+  if (submitted.kind === "none") {
     return didNotLand(
       store,
       target,
       issue,
       names.handle,
       opts.artifactsDir,
-      turn.lastError ?? "the grill turn produced no round",
+      turn.lastError ?? "the grill turn submitted no round: neither submit_round nor submit_done was called",
     );
   }
-
-  const answered = answerKind(turn.answer.text);
-  if (answered.kind === "done" && state.kind === "fresh") {
+  if (submitted.kind === "done" && state.kind === "fresh") {
     return didNotLand(
       store,
       target,
@@ -140,9 +142,6 @@ export async function grillSeed(target: string, seedId: string, opts: GrillOpts)
       opts.artifactsDir,
       "a first turn writes round 1, not Done",
     );
-  }
-  if (answered.kind === "round" && answered.body === "") {
-    return didNotLand(store, target, issue, names.handle, opts.artifactsDir, "the grill turn produced an empty round");
   }
 
   let commit: string | undefined;
@@ -163,16 +162,14 @@ export async function grillSeed(target: string, seedId: string, opts: GrillOpts)
     );
   }
 
-  if (answered.kind === "done") {
-    const body = answered.body === "" ? doneLine(commit) : `${doneLine(commit)}\n\n${answered.body}`;
-    commentIssue(store, target, issue.id, body);
+  if (submitted.kind === "done") {
+    commentIssue(store, target, issue.id, `${doneLine(commit)}\n\n${submitted.summary}`);
     writeOutcome(opts.artifactsDir, { seed: issue.id, handle: names.handle, token: DONE });
     console.error(`${names.handle}: frontier empty`);
     return DONE;
   }
 
-  const body = `${roundLine(nextRound, commit)}\n\n${answered.body}`;
-  commentIssue(store, target, issue.id, body);
+  commentIssue(store, target, issue.id, renderRound(nextRound, submitted.questions, commit));
   writeOutcome(opts.artifactsDir, {
     seed: issue.id,
     handle: names.handle,

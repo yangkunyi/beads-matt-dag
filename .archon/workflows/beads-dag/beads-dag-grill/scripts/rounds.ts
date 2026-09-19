@@ -2,11 +2,18 @@
  * The grill run's comment markers, and the state a later turn reads off them.
  *
  * A round is a comment whose first line is `round N` (optionally naming the commit that carried
- * glossary or ADRs). Done is a comment whose first line is `Done`. Answers are the comments after the
- * latest round that are neither a round, nor Done, nor a failed attempt. The record is the comment
- * thread: nothing here writes a label, and a later turn of the same run kind recomputes from it.
+ * glossary or ADRs), then one block per question: the question's line, its `- ` choices, and the
+ * recommendation on the `➡️` line. Done is a comment whose first line is `Done`. An answer is a comment
+ * whose every non-empty line is `Q<n>: <choice>` - the shape the operator surface writes and the only
+ * shape the run reads as an answer, so a chat reply on the same issue does not consume a round. The record
+ * is the comment thread: nothing here writes a label, and a later turn of the same run kind recomputes
+ * from it.
+ *
+ * The node is the only writer of a round comment (renderRound below, from the turn's submitted round), which
+ * is what makes the surface's parse of it exact rather than a guess about what the model wrote.
  */
 import { DONE, FAILED, ROUND, WAITING } from "../../scripts/node-outcomes.ts";
+import type { SubmittedQuestion } from "../../scripts/round-tool.ts";
 
 /** The first line of a round comment, as the node writes it and as a later turn reads it back. */
 const ROUND_LINE = /^round (\d+)(?: \(commit ([0-9a-f]{7,64})\))?$/;
@@ -16,6 +23,9 @@ const DONE_LINE = /^Done(?: \(commit ([0-9a-f]{7,64})\))?$/;
 
 /** A failed attempt, the same prefix the rest of the pack writes. */
 const FAILURE_LINE = /^attempt \d+ failed:/;
+
+/** One answer line, as the surface writes it and as this reads it back. */
+const ANSWER_LINE = /^Q\d+: \S/;
 
 /** The glossary and ADRs a grill turn may crystallise, relative to the Target. */
 export const GRILL_DOC_PATHS = ["docs/CONTEXT.md", "docs/adr"];
@@ -55,9 +65,18 @@ function isFailure(comment: string): boolean {
   return FAILURE_LINE.test(firstLine(comment));
 }
 
-/** An operator answer: anything after a round that is not another round, Done, or a failed attempt. */
+/**
+ * An operator answer: a comment whose every non-empty line is `Q<n>: <choice>`. The surface writes exactly
+ * this and nothing else, so anything else on the issue is conversation - and conversation must not be read
+ * as an answer, or a later turn spends itself writing round N+1 having read none.
+ */
 function isAnswer(comment: string): boolean {
-  return parseRound(comment) === undefined && !isDone(comment) && !isFailure(comment);
+  if (parseRound(comment) !== undefined || isDone(comment) || isFailure(comment)) return false;
+  const lines = comment
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line !== "");
+  return lines.length > 0 && lines.every((line) => ANSWER_LINE.test(line));
 }
 
 /**
@@ -98,16 +117,16 @@ export function doneLine(commit?: string): string {
 }
 
 /**
- * What the agent answered: a round body, or Done. A leading `round N` the agent included is stripped
- * so the node owns the number. A first line `Done` is Done even with more text under it.
+ * The round as the node writes it, from the round the turn submitted. The question numbers are the node's:
+ * the turn submits an ordered frontier and never numbers it itself, so a re-render of the same round is
+ * byte-identical and the surface's `Q<n>` always matches the answer's.
  */
-export function answerKind(text: string): { kind: "round"; body: string } | { kind: "done"; body: string } {
-  const trimmed = text.trim();
-  const first = firstLine(trimmed);
-  if (DONE_LINE.test(first)) {
-    const rest = trimmed.split("\n").slice(1).join("\n").trim();
-    return { kind: "done", body: rest };
-  }
-  const rest = parseRound(trimmed) !== undefined ? trimmed.split("\n").slice(1).join("\n").trim() : trimmed;
-  return { kind: "round", body: rest };
+export function renderRound(n: number, questions: readonly SubmittedQuestion[], commit?: string): string {
+  const blocks = questions.map((question, index) => {
+    const lines = [`❓ **Q${index + 1}** - **${question.title}**: ${question.body}`, ""];
+    for (const choice of question.choices) lines.push(`- ${choice}`);
+    lines.push("", `➡️ ${question.recommended}`);
+    return lines.join("\n");
+  });
+  return `${roundLine(n, commit)}\n\n${blocks.join("\n\n")}\n`;
 }

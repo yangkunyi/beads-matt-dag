@@ -234,6 +234,23 @@ try {
       expect("so the turn really has a shell to run its gate with", seen.activeTools.includes("bash"));
       expectEqual("the thinking level travels", seen.thinkingLevel, "high");
 
+      // ---- The grill role mounts the round's own channel; no other role carries it. -----------------
+      const grillRecord = join(root, "pi-record-grill.json");
+      process.env.PI_SDK_PATH = fakePiSdk(root, "grill");
+      process.env.FAKE_PI_RECORD = grillRecord;
+      await defaultAgent(agentOpts({ cwd: work, artifactsDir: artifacts, role: "grill", sessionKey: "grill/01" }));
+      const grillSeen = JSON.parse(readFileSync(grillRecord, "utf8")) as Record<string, any>;
+      expectEqual(
+        "the grill turn mounts the round tools beside its shell",
+        grillSeen.customTools,
+        ["bash", "submit_round", "submit_done"],
+      );
+      expect(
+        "and the mounted tool really wrote the turn's submission",
+        existsSync(join(artifacts, "grill-round.json")),
+      );
+      expect("and the implement turn carries none of them", !seen.customTools.includes("submit_round"));
+
       // The reader's own rule, on a hand-written session: thinking never becomes the answer.
       const thinkingOnly = join(root, "thinking-only.jsonl");
       writeFileSync(
