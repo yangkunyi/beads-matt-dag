@@ -9,6 +9,10 @@ disable-model-invocation: true
 Interview the user until you share an understanding, and **write the documents in this repo as
 you go**. Unsure whether to grill? `/ask-loom`.
 
+This is the **conversation** half of grilling: the human answers by typing here. When the answers will be
+picked on the operator surface instead, that is sibling `/grill-round` — same design tree, same documents,
+different channel.
+
 This skill is both the interview and the domain model. There is no separate domain-modeling skill.
 Do not reach for any skill outside this set.
 Do **not act** on the idea until the user confirms a shared understanding.
@@ -29,6 +33,10 @@ your recommended answer. Then wait.
 
 ➡️ <your recommended answer>
 ```
+
+That is the round as it reads in conversation. On the surface it is the same round as a comment the
+surface renders as radios — sibling `/grill-round` owns that shape, and owns the `submit_round` tool the
+grill run delivers it with. One round, two channels; do not mix them in a single session.
 
 Each round of answers reshapes the tree. Recompute the frontier. A question that depends on another
 still open in this round belongs to a later round.

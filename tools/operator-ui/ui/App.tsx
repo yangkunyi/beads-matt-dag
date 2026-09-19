@@ -534,7 +534,21 @@ function answersFrom(round: OverviewIssue["round"]): Record<number, string> {
 	return out;
 }
 
-/** The current grill round as choices. Null round renders nothing. */
+/**
+ * The form's identity: the issue *and* the round. Keying by the issue alone made a new round on the same
+ * issue look like the same form, so React kept the previous round's `selected` and every round numbering
+ * its questions from `Q1` pre-checked the new round's radios — one click re-submitted round N's answers as
+ * round N+1's. A round the producer did not number has no identity to key on; the marker is how the format
+ * numbers a round.
+ */
+export function roundFormKey(issue: { id: string; round: OverviewIssue["round"] }): string {
+	return `${issue.id}:${issue.round?.n ?? "?"}`;
+}
+
+/**
+ * The current grill round as choices. Null round renders nothing. Keyed by `roundFormKey`, so a new round on
+ * the issue remounts it with the new round's answers rather than keeping the previous round's picks.
+ */
 export function RoundForm(props: { endpoint: string | null; issue: OverviewIssue }) {
 	const { status, run } = useWrite("saved the round");
 	const round = props.issue.round;
@@ -660,7 +674,7 @@ export function IssueDetail(props: {
 					</>
 				)}
 				{issue.round === null ? null : (
-					<RoundForm key={issue.id} endpoint={props.overview.commentEndpoint} issue={issue} />
+					<RoundForm key={roundFormKey(issue)} endpoint={props.overview.commentEndpoint} issue={issue} />
 				)}
 				<h3>Comments</h3>
 				{issue.comments.length === 0 ? (

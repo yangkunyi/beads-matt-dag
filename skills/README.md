@@ -11,6 +11,7 @@ never its input.
 
 - `ask-loom` — landing + contract (`issue-tracker.md`), flow glossary, triage labels, domain-doc rules, phase boundaries
 - `grill` — interview until product language and decisions settle (`docs/CONTEXT.md`, ADRs)
+- `grill-round` — the same round written onto an issue for the operator surface to answer as choices
 - `to-spec` — conversation → spec
 - `to-tickets` — spec → tracer-bullet issues in one domain
 - `implement` — development work on the handle's branch; drives `/tdd` then `/code-review`

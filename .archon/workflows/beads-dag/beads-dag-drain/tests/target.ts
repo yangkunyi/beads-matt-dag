@@ -589,7 +589,8 @@ export type FakePiMode =
   | "record-complete"
   | "record-incomplete"
   | "grill"
-  | "grill-done";
+  | "grill-done"
+  | "grill-silent";
 
 export function fakePiSdk(root: string, mode: FakePiMode): string {
   const dir = join(root, `fake-pi-${mode}`);
@@ -639,13 +640,26 @@ function fakePiSource(mode: string): string {
     "export function createBashToolDefinition(cwd, options) {",
     '  return { kind: "bash", cwd, spawnHook: options.spawnHook };',
     "}",
+    "// The fake session plays the model calling one of the tools the pack mounted. A mode that needs a tool",
+    "// the pack did not mount is a failure of the pack, not of the fake.",
+    "async function callTool(opts, name, params) {",
+    "  const tool = (opts.customTools ?? []).find((candidate) => candidate && candidate.name === name);",
+    '  if (!tool) throw new Error("the fake session called a tool the pack did not mount: " + name);',
+    '  return tool.execute("fake-call", params);',
+    "}",
     "export async function createAgentSession(opts) {",
     "  const file = opts.sessionManager.getSessionFile();",
     "  const cwd = opts.cwd;",
+    "  // Pi's own rule, kept here so this fake cannot be more forgiving than the SDK it stands in for:",
+    "  // a tool is active when its name is in the default list and nothing excludes that name, and",
+    "  // exclusion is by name across built-ins and custom tools alike. A custom definition wins the name.",
+    "  const excluded = new Set(opts.excludeTools ?? []);",
+    "  const activeTools = (opts.tools ?? ['read', 'bash', 'edit', 'write']).filter((name) => !excluded.has(name));",
     "  const saw = () => ({",
     "    cwd, sessionFile: file, model: opts.model, thinkingLevel: opts.thinkingLevel,",
     "    excludeTools: opts.excludeTools,",
-    "    customTools: (opts.customTools ?? []).map((tool) => tool && tool.kind),",
+    "    customTools: (opts.customTools ?? []).map((tool) => tool && (tool.name ?? tool.kind)),",
+    "    activeTools,",
     "  });",
     "  record(saw());",
     "  const session = {",
@@ -693,10 +707,16 @@ function fakePiSource(mode: string): string {
     '      if (MODE === "grill") {',
     '        mkdirSync(cwd + "/docs", { recursive: true });',
     '        writeFileSync(cwd + "/docs/CONTEXT.md", "# Product\\n\\n**Thing**:\\nA thing.\\n");',
-    '        answer = "❓ **Q1** - **Thing**: what is this?\\n\\n➡️ a thing";',
+    "        await callTool(opts, 'submit_round', { questions: [{ title: 'Thing', body: 'what is this?', choices: ['a thing', 'not a thing'], recommended: 'a thing' }] });",
+    '        answer = "";',
     "      }",
     '      if (MODE === "grill-done") {',
-    '        answer = "Done\\n\\nThe frontier is empty.";',
+    "        await callTool(opts, 'submit_done', { summary: 'The frontier is empty.' });",
+    '        answer = "";',
+    "      }",
+    "      // A grill turn that calls neither tool: the node must refuse it rather than read any prose.",
+    '      if (MODE === "grill-silent") {',
+    '        answer = "❓ **Q1** - **Thing**: prose the node must not read as a round";',
     "      }",
     '      if (MODE !== "none" && MODE !== "read-silent") {',
     '        appendFileSync(file, JSON.stringify({ type: "message", message: { role: "assistant", content: [',

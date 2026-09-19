@@ -43,6 +43,9 @@ Pick this before any skill that writes an issue. A blocking edge must not cross 
 1. **`/grill`** — interview until product language and decisions settle. Writes `docs/CONTEXT.md` and
    ADRs in the same turn a term or choice crystallises. Start here whenever you are in a working
    directory. Do not act on the idea until the user confirms a shared understanding.
+   Its other half is **`/grill-round`**: the same round, written onto an issue for the operator surface
+   to answer by picking instead of typing. Use it when the human would rather click than chat, and when
+   the run should ask (`beads-dag-grill` delivers the round with `submit_round`).
 
 2. **Branch — does a question need a runnable answer?** State, business logic, a UI you have to see.
    Detour through a prototype, bridged by **`/handoff`** in both directions (a prototype often lives

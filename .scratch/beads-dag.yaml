@@ -1,9 +1,12 @@
 # The pack's knobs for this Target (drain/scripts/config.ts).
 #
-# concurrency: 1 because this frontier is operator-ui tickets that all edit App.tsx / Graph.tsx /
-# overview-test.ts. Drain 8e15a783 ran four of them at once; workers left dirty trees and merge-before-stamp
-# recorded "nothing to merge" / unresolved conflict. Raise it again when the frontier is issues that do
-# not share one client. The provider still allows more than one (micu measured six then ten).
+# concurrency: 1, kept from 2026-09-18 but not for the reason first written here. The earlier note blamed
+# four parallel operator-ui workers for dirty trees and "nothing to merge"; that was wrong. The cause was
+# that every session had no shell at all (beads-dag/46): a worker could edit files but could never run its
+# gate or commit, so whichever workers burned their wall clock hunting for a way to run a command failed
+# and left their work uncommitted. With the shell back, the pack's own throttle is the only reason to keep
+# this number low, and the current frontier is one ticket. Raise it when the frontier is issues that do not
+# share one client. The provider allows more than one (micu measured six then ten).
 #
 # model: xai/grok-4.6 was the operator's choice on 2026-09-16, but the xAI account ran out of credits:
 # drain 3a88033c failed five of six tickets with 403 "You have run out of credits". Operator then chose
