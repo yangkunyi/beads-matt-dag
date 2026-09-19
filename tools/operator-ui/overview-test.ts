@@ -2,7 +2,7 @@
 /**
  * The overview's seams: the graph is `bd`, never jsonl; the page filters by type / status / label / feature;
  * a selected issue's default reading is the human face (handle, title, domain, status, labels,
- * neighbours as issues, comment thread), with documents reachable and unoptimized; a live drain / inquiry / experiment run
+ * neighbours as issues, comment thread), with documents reachable and unoptimized; a live drain / inquiry / experiment / grill run
  * overlays from the run lock, Archon status, artefacts and attempted — not a pack publish API;
  * an operator reply is `bd comment` on the selected issue, never `bd human respond`; the one
  * tagged write door refuses `closed`, `reading:`, and unknown intents without writing; create
@@ -37,6 +37,7 @@ import {
 	assembleOverview,
 	filterOverview,
 	issueDetail,
+	kindOfWorkflow,
 	neighboursOf,
 	type LiveRun,
 	type OverviewIssue,
@@ -930,6 +931,14 @@ expectEqual(
 	null,
 );
 
+expectEqual(
+	"each pack executor maps to its kind",
+	["beads-dag-drain", "beads-dag-inquiry", "beads-dag-experiment", "beads-dag-grill", "archon-ship"].map(
+		kindOfWorkflow,
+	),
+	["drain", "inquiry", "experiment", "grill", undefined],
+);
+
 const joinedDrain = assembleLive({
 	lock: { pid: 9, run: "run-drain" },
 	archon: [{ id: "run-drain", workflow: "beads-dag-drain", status: "running" }],
@@ -973,6 +982,20 @@ const joinedExperiment = assembleLive({
 });
 expectEqual("experiment overlay kind", joinedExperiment?.kind, "experiment");
 expectEqual("experiment last report is report.md", joinedExperiment?.report?.rel, "report.md");
+
+const joinedGrill = assembleLive({
+	lock: { pid: 6, run: "run-grill" },
+	archon: [{ id: "run-grill", workflow: "beads-dag-grill", status: "running" }],
+	artifacts: {
+		dir: "artifacts/runs/run-grill",
+		record: { pid: 6, run: "run-grill" },
+		attempted: ["a"],
+		reports: [{ rel: "report.md", text: "grill last report: round two" }],
+	},
+});
+expectEqual("grill overlay kind", joinedGrill?.kind, "grill");
+expectEqual("grill overlay attempted", joinedGrill?.attempted, ["a"]);
+expectEqual("grill last report is report.md", joinedGrill?.report?.rel, "report.md");
 
 expectEqual(
 	"a run-lock record for another run is not this overlay's artefacts",
