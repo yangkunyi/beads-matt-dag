@@ -177,7 +177,7 @@ html, body {
   padding: 10px 14px;
 }
 #start-summary { margin: 0; flex: 1; }
-#start-status { margin: 0; }
+#start-status, #grill-status { margin: 0; }
 
 #live details { margin-top: 8px; }
 #live pre {

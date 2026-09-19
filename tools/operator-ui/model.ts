@@ -50,8 +50,15 @@ export type OverviewEdge = {
 	type: string;
 };
 
-/** Which pack executor is holding the Target. Named from Archon's workflow, never from a new field. */
-export type LiveRunKind = "drain" | "inquiry" | "experiment";
+/**
+ * Which pack executor is holding the Target. Named from Archon's workflow, never from a new field.
+ * The grill run is one of them: it takes the same Target run lock, and its round lands on the seed as
+ * a comment while the page is watching.
+ */
+export type LiveRunKind = "drain" | "inquiry" | "experiment" | "grill";
+
+/** The grill run's workflow name, beside `kindOfWorkflow`: the launch and the overlay name it once. */
+export const GRILL_WORKFLOW = "beads-dag-grill";
 
 export type LiveReport = {
 	rel: string;
@@ -59,8 +66,8 @@ export type LiveReport = {
 };
 
 /**
- * A live drain / inquiry / experiment run, as the overlay reads it: the Target lock, Archon status,
- * the run's artefacts directory, and attempted. Absent when nothing holds the Target.
+ * A live drain / inquiry / experiment / grill run, as the overlay reads it: the Target lock, Archon
+ * status, the run's artefacts directory, and attempted. Absent when nothing holds the Target.
  */
 /** Archon's run JSONL, joined as another fact of the same live run. Absent when the file is missing. */
 export type LiveLog = {
@@ -264,15 +271,16 @@ export function neighboursOf(overview: Overview, id: string): IssueNeighbour[] {
 	return neighbours;
 }
 
-/** The three executors the overlay knows. Any other Archon workflow is not this page's live run. */
+/** The four executors the overlay knows. Any other Archon workflow is not this page's live run. */
 export function kindOfWorkflow(workflow: string): LiveRunKind | undefined {
 	if (workflow === "beads-dag-drain") return "drain";
 	if (workflow === "beads-dag-inquiry") return "inquiry";
 	if (workflow === "beads-dag-experiment") return "experiment";
+	if (workflow === GRILL_WORKFLOW) return "grill";
 	return undefined;
 }
 
-/** The report artefact that kind writes: drain `summary.md`, inquiry and experiment `report.md`. */
+/** The report artefact that kind writes: drain `summary.md`, every other executor `report.md`. */
 export function reportRelFor(kind: LiveRunKind): string {
 	return kind === "drain" ? "summary.md" : "report.md";
 }
@@ -298,7 +306,7 @@ export type LiveArtifacts = {
 
 /**
  * The overlay's facts, already read. Assembly is a pure join: a live holder, an Archon row for the
- * same run that is one of the three executors, and whatever the artefacts directory held for it.
+ * same run that is one of the four executors, and whatever the artefacts directory held for it.
  */
 export type LiveRunFacts = {
 	lock: LiveLock | undefined;

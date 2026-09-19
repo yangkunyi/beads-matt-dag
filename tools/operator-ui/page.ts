@@ -8,7 +8,8 @@
  * fetches that same client from `CLIENT_ASSETS` instead, so one 1.2 MB script is cached and
  * revalidated rather than re-sent with every response. A served page posts tagged intents through the
  * write door: a comment as `bd comment`, create (type is the domain; needs-triage; no gate), start
- * (that domain's existing run with the selected ids as the allow-list), store deps, or one of the five
+ * (that domain's existing run with the selected ids as the allow-list), grill (the grill run with the
+ * one selected id as its seed), store deps, or one of the five
  * triage labels replacing the rest of the family. Beads stays the only graph and the only comment
  * store. Coordinates stay in the view. A refused connect does not land on the canvas.
  */
@@ -82,7 +83,7 @@ function clientBundle(): ClientAssets {
 }
 
 export type RenderPageOptions = {
-	/** When set, the page posts tagged comment, create, triage, and start intents here. Absent on a static snapshot. */
+	/** When set, the page posts tagged comment, create, triage, start, and grill intents here. Absent on a static snapshot. */
 	commentEndpoint?: string;
 	/** When set, a write re-reads this for a fresh snapshot instead of reloading the page. Absent on a static snapshot. */
 	overviewEndpoint?: string;
@@ -190,6 +191,11 @@ export function pageOffersPalette(html: string): boolean {
 /** A served page can start a selection; a static snapshot does not. */
 export function pageOffersStart(html: string): boolean {
 	return html.includes('id="start"') && html.includes("Start selection");
+}
+
+/** A served page can grill one selected seed; a static snapshot does not. */
+export function pageOffersGrill(html: string): boolean {
+	return html.includes('id="grill-button"') && html.includes("Grill selection");
 }
 
 /** The page still names all three domains even when a live run of one kind is overlaid. */

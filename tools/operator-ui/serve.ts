@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
 /**
  * Serve the Target's beads graph as a React page so an operator can comment or create without a
- * session, and a same-domain selection can start that domain's existing run.
+ * session, a same-domain selection can start that domain's existing run, and one selected seed can be
+ * grilled by the grill run.
  *
  *   bun tools/operator-ui/serve.ts [--dir <target>] [--store <bd>] [--archon <bin>] [--actor <name>] [--port <n>] [--host <addr>]
  *
@@ -10,8 +11,9 @@
  * `/app.css`) rather than 1.2 MB inlined into every response, so a second request costs the snapshot
  * JSON and nothing else. Writes go through one tagged door: a comment is
  * `bd comment`; create requires a type (the domain) and lands as `needs-triage` without the gate;
- * start launches drain, inquiry, or experiment with those ids as the allow-list and does not claim,
- * merge, or stamp `closed`. Mixed-domain, empty, and a held Target are refused. Same-domain `blocks`
+ * start launches drain, inquiry, or experiment with those ids as the allow-list; grill launches
+ * `beads-dag-grill` with the one selected id as its seed. Neither claims, merges, or stamps
+ * `closed`. Mixed-domain, empty, more than one seed, and a held Target are refused. Same-domain `blocks`
  * and crossing `relates-to` / `discovered-from` are store deps; triage moves one of the five labels,
  * replacing the rest of the family; `closed`, `reading:`, non-triage labels, unknown intents,
  * cross-domain `blocks`, and `parent-child` are refused. `wontfix` is a label, not a close. Close,
@@ -46,8 +48,9 @@ revalidated by ETag), and POST /comment is the tagged write door.
 The graph is read via bd, not the jsonl export. Writes go through one tagged door. An operator
 reply is bd comment on the selected issue. Create requires a type (the domain), writes a body of
 handle and prose, and lands as needs-triage without the gate. A same-domain selection starts that
-domain's existing run with those ids as the allow-list. Mixed-domain, empty, and a held Target
-are refused. Start does not claim, merge, or stamp closed. Same-domain blocks and crossing relates-to /
+domain's existing run with those ids as the allow-list; the grill control starts beads-dag-grill
+with the one selected id as its seed. Mixed-domain, empty, more than one seed, and a held Target
+are refused. Neither launch claims, merges, or stamps closed. Same-domain blocks and crossing relates-to /
 discovered-from are store deps. Triage moves one of the five labels, replacing the rest of the
 family. wontfix is a label, not a close. closed, reading:, non-triage labels, unknown intents,
 cross-domain blocks, and parent-child are refused. Close, reading:, and other domain labels stay
@@ -123,7 +126,8 @@ export type OverviewResponse = {
  * the store instead of reloading the page, POST /comment is the tagged write door. A comment intent
  * is `bd comment`. A create intent writes the body and `bd create`. A start intent launches that
  * domain's existing run with the selected ids as the allow-list. Edge intents are store deps.
- * A triage intent moves one of the five labels, replacing the rest of the family. Answering a
+ * A triage intent moves one of the five labels, replacing the rest of the family. A grill intent
+ * launches the grill run with the one selected id as its seed. Answering a
  * grill round is `bd comment` with the answers as data. `closed`, `reading:`, non-triage labels,
  * unknown intents, cross-domain `blocks`, and `parent-child` are refused and do not write.
  */

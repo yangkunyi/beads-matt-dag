@@ -22,7 +22,7 @@ import {
 	type LiveRun,
 } from "./model";
 
-/** The run lock the three executors share, inside the Target's git directory. */
+/** The run lock the four executors share, inside the Target's git directory. */
 export const RUN_LOCK_NAME = "beads-dag-run.lock";
 
 /** The run-lock record the holder writes into ARTIFACTS_DIR. */
@@ -31,7 +31,7 @@ const RUN_LOCK_RECORD = "run-lock.json";
 /** The ids this run has claimed, beside the run and never in the store. */
 const ATTEMPTED_FILE = "attempted-ids.json";
 
-/** The two report names the overlay knows: drain summary, inquiry/experiment report. */
+/** The two report names the overlay knows: drain summary, every other executor report. */
 const REPORT_RELS = ["summary.md", "report.md"] as const;
 
 export type ArchonRunner = (args: string[]) => string;

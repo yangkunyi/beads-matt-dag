@@ -74,7 +74,11 @@ stay the session's or the orchestrator's (ADR-0006). `bd human respond` is not u
 Responded.
 
 Starting work from the surface starts the domain's existing run, optionally with an allow-list of
-issue ids for that run. It does not claim, merge, or stamp `closed`.
+issue ids for that run. Beside it a grill control starts `beads-dag-grill` on one selected seed: the
+run writes the next round onto that issue as a comment and stops for answers, so the page shows the
+round a run wrote and never invents questions of its own. One seed and no more — the surface does not
+silently pick one out of a larger selection, and an empty selection or a held Target starts nothing.
+Neither launch claims, merges, or stamps `closed`.
 
 ## Identity: the two metadata keys
 

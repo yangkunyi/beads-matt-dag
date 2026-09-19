@@ -1,13 +1,15 @@
 /**
  * The operator page: a windowed issue list, the React Flow graph, the live overlay, detail whose
  * default reading is the human face (store facts, neighbours as issues, the comment thread) with
- * documents reachable and unoptimized, and the write panels — comment, create, triage, start — plus a
- * command palette. All of it is a view of the store snapshot embedded in the page.
+ * documents reachable and unoptimized, and the write panels — comment, create, triage, start, grill —
+ * plus a command palette. All of it is a view of the store snapshot embedded in the page.
  *
  * Writes go through the tagged door: comments, create (type is the domain; needs-triage; no gate),
- * start (that domain's existing run with the selected ids as the allow-list), intra-domain `blocks`,
+ * start (that domain's existing run with the selected ids as the allow-list), grill (the grill run
+ * with the one selected id as its seed), intra-domain `blocks`,
  * crossing `relates-to` / `discovered-from`, one of the five triage labels replacing the rest of
  * the family, and answering a grill round. A write re-reads the store rather than reloading the page.
+ * The page writes no questions of its own: the round it shows is the one a run left in the store.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
@@ -53,7 +55,7 @@ import {
 	type OverviewDomain,
 	type OverviewIssue,
 } from "../model.ts";
-import { planStart } from "../start.ts";
+import { planGrill, planStart } from "../start.ts";
 import { Bubble } from "./bubble.tsx";
 import { cn } from "./cn.ts";
 import { Graph } from "./Graph.tsx";
@@ -443,27 +445,48 @@ function LiveBanner({ overview }: { overview: Overview }) {
 	);
 }
 
+/**
+ * The two launches. Start takes the whole selection to that domain's existing run; Grill takes the
+ * one selected seed to the grill run, which writes the next round onto that issue and stops. Each
+ * has its own write path, so a refusal is readable beside the button that made it, and neither
+ * writes the store. A run holding the Target disables both: one run at a time is the Target's rule.
+ */
 function StartBar(props: {
 	endpoint: string;
 	overview: Overview;
 	selected: string[];
 }) {
-	const { status, run } = useWrite("started the run");
-	const plan = planStart(props.selected, props.overview.issues, props.overview.live !== null);
-	const label = plan.ok ? `Start ${plan.kind}` : "Start selection";
+	const start = useWrite("started the run");
+	const grill = useWrite("started the grill");
+	const startPlan = planStart(props.selected, props.overview.issues, props.overview.live !== null);
+	const grillPlan = planGrill(props.selected, props.overview.issues, props.overview.live !== null);
+	const seed = grillPlan.ok ? issueDetail(props.overview, grillPlan.seed) : undefined;
 	return (
 		<section id="start" className="card" aria-label="Start selection">
-			<p id="start-summary">{plan.ok ? `${props.selected.length} ${plan.kind}` : plan.reason}</p>
+			<p id="start-summary">
+				{startPlan.ok ? `${props.selected.length} ${startPlan.kind}` : startPlan.reason}
+			</p>
 			<Button
 				id="start-button"
-				disabled={!plan.ok}
-				onClick={() => void run(postOperatorAction(props.endpoint, { intent: "start", ids: props.selected }))}
+				disabled={!startPlan.ok}
+				onClick={() => void start.run(postOperatorAction(props.endpoint, { intent: "start", ids: props.selected }))}
 			>
 				<Play aria-hidden="true" size={14} />
-				{label}
+				{startPlan.ok ? `Start ${startPlan.kind}` : "Start selection"}
+			</Button>
+			<Button
+				id="grill-button"
+				disabled={!grillPlan.ok}
+				onClick={() => void grill.run(postOperatorAction(props.endpoint, { intent: "grill", ids: props.selected }))}
+			>
+				<MessageSquare aria-hidden="true" size={14} />
+				{grillPlan.ok ? `Grill ${seed?.handle || grillPlan.seed}` : "Grill selection"}
 			</Button>
 			<p className="muted" id="start-status">
-				{status}
+				{start.status}
+			</p>
+			<p className="muted" id="grill-status">
+				{grill.status || (grillPlan.ok ? "" : grillPlan.reason)}
 			</p>
 		</section>
 	);
@@ -958,12 +981,13 @@ function Palette(props: {
 	const focused = props.selected.length === 0 ? undefined : props.selected[props.selected.length - 1];
 	const issue = focused === undefined ? undefined : issueDetail(props.overview, focused);
 	const { run } = useWrite("acted");
-	const plan = planStart(props.selected, props.overview.issues, props.overview.live !== null);
+	const startPlan = planStart(props.selected, props.overview.issues, props.overview.live !== null);
+	const grillPlan = planGrill(props.selected, props.overview.issues, props.overview.live !== null);
 	const group = "p-1";
 	const item =
 		"flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-sm outline-none data-[selected=true]:bg-accent";
 	return (
-		<Dialog id="palette" open={props.open} onClose={props.onClose} title="Commands" description="Jump, create, triage, start.">
+		<Dialog id="palette" open={props.open} onClose={props.onClose} title="Commands" description="Jump, create, triage, start, grill.">
 			{/* The items are the store's issues again: mounted when the palette opens, not baked into every page. */}
 			{props.open ? (
 				<Command label="Commands" loop>
@@ -997,7 +1021,7 @@ function Palette(props: {
 						>
 							<Plus aria-hidden="true" size={14} /> Create an issue
 						</Command.Item>
-						{plan.ok ? (
+						{startPlan.ok ? (
 							<Command.Item
 								className={item}
 								onSelect={() => {
@@ -1005,7 +1029,18 @@ function Palette(props: {
 									props.onClose();
 								}}
 							>
-								<Play aria-hidden="true" size={14} /> Start {plan.kind}
+								<Play aria-hidden="true" size={14} /> Start {startPlan.kind}
+							</Command.Item>
+						) : null}
+						{grillPlan.ok ? (
+							<Command.Item
+								className={item}
+								onSelect={() => {
+									void run(postOperatorAction(endpoint, { intent: "grill", ids: props.selected }));
+									props.onClose();
+								}}
+							>
+								<MessageSquare aria-hidden="true" size={14} /> Grill {grillPlan.seed}
 							</Command.Item>
 						) : null}
 						{planDeleteAll(props.selected, props.overview.issues).ok ? (
