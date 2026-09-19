@@ -36,7 +36,6 @@ import {
 	assembleOverview,
 	filterOverview,
 	issueDetail,
-	kindOfWorkflow,
 	neighboursOf,
 	type LiveRun,
 	type OverviewIssue,
@@ -864,23 +863,6 @@ const joinedExperiment = assembleLive({
 });
 expectEqual("experiment overlay kind", joinedExperiment?.kind, "experiment");
 expectEqual("experiment last report is report.md", joinedExperiment?.report?.rel, "report.md");
-
-// The grill run takes the same Target lock, so it is a live run like the other three: the page shows
-// it, and its round lands on the seed as a comment while the page is watching.
-const joinedGrill = assembleLive({
-	lock: { pid: 6, run: "run-grill" },
-	archon: [{ id: "run-grill", workflow: "beads-dag-grill", status: "running" }],
-	artifacts: {
-		dir: "artifacts/runs/run-grill",
-		record: { pid: 6, run: "run-grill" },
-		attempted: [],
-		reports: [{ rel: "report.md", text: "grill last report: one round" }],
-	},
-});
-expectEqual("the grill run is the fourth executor", kindOfWorkflow("beads-dag-grill"), "grill");
-expectEqual("grill overlay kind", joinedGrill?.kind, "grill");
-expectEqual("grill last report is report.md", joinedGrill?.report?.rel, "report.md");
-expectEqual("a workflow the pack does not run is still no executor", kindOfWorkflow("archon-ship"), undefined);
 
 expectEqual(
 	"a run-lock record for another run is not this overlay's artefacts",

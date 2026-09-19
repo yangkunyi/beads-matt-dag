@@ -9,7 +9,7 @@
  * open so the operator can answer on it.
  */
 
-import { domainOf, GRILL_WORKFLOW, type LiveRunKind, type OverviewDomain } from "./model";
+import { domainOf, type LiveRunKind, type OverviewDomain } from "./model";
 import type { ArchonRunner } from "./overlay";
 
 /** The executors a selection starts. Grill is not one: it takes a seed, not a list. */
@@ -38,8 +38,7 @@ export type GrillPlan =
 export function workflowForKind(kind: LiveRunKind): string {
 	if (kind === "drain") return "beads-dag-drain";
 	if (kind === "inquiry") return "beads-dag-inquiry";
-	if (kind === "experiment") return "beads-dag-experiment";
-	return GRILL_WORKFLOW;
+	return "beads-dag-experiment";
 }
 
 export function kindOfDomain(domain: OverviewDomain): StartKind {
@@ -106,7 +105,7 @@ export function planGrill(
 	if (seed === undefined) return { ok: false, reason: "empty selection" };
 	if (!issues.some((issue) => issue.id === seed)) return { ok: false, reason: "unknown issue" };
 	if (targetHeld) return { ok: false, reason: "Target already held" };
-	return { ok: true, kind: "grill", workflow: GRILL_WORKFLOW, seed };
+	return { ok: true, kind: "grill", workflow: "beads-dag-grill", seed };
 }
 
 /** `archon workflow run <workflow> --detach --input …` — the same CLI start, plus the list or the seed. */
