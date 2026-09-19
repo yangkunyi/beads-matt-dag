@@ -8,9 +8,10 @@
  * on what an observer outside the pack can see: the node's one stdout token, the reason on stderr, the
  * lock file, and the store's own answers.
  *
- * The premise is one seed issue id, a `decision`, still open. A missing seed, a work issue, or a closed
- * seed is refused loudly, before anything is written. The run lock is shared, so a drain already
- * running refuses a grill run and a grill run already running refuses a drain.
+ * The premise is one seed issue id, a `decision`, still open. A missing seed, a work issue, a seed
+ * that is not open, or a closed seed is refused loudly, before anything is written. The run lock is
+ * shared, so a drain already running refuses a grill run and a grill run already running refuses a
+ * drain.
  */
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
@@ -64,7 +65,7 @@ try {
     expect("the lock was released", !existsSync(runLockFilePath(root)));
   });
 
-  // A work issue is not a seed: refused loudly.
+  // A work issue is not a seed: refused loudly, naming the type.
   await withTarget(async (root, artifacts) => {
     const work = publishIssue(root, {
       title: "build it",
@@ -80,12 +81,32 @@ try {
     expectEqual("and claimed nothing", storeIssue(root, work.id).status, "open");
   });
 
-  // A closed seed is refused.
+  // A decision issue that is not open is not a seed either: whatever took the claim owns it, and a
+  // grill run writes rounds onto an open issue only. Refused loudly, naming the status, and the
+  // claim is left exactly as it was found.
+  await withTarget(async (root, artifacts) => {
+    const seed = publishIssue(root, {
+      title: "claimed by someone else",
+      type: "decision",
+      handle: "idea/02",
+      slug: "claimed-by-someone-else",
+    });
+    bd(root, "update", seed.id, "-s", "in_progress");
+    const opened = runScript(grill.script("open"), root, seedEnv(artifacts, seed.id));
+    expectEqual("an in_progress seed prints no token", opened.stdout, "");
+    expect("and fails the node", opened.status !== 0, opened.status);
+    expect("naming the status", /in_progress/.test(opened.stderr), opened.stderr);
+    expect("and saying it is not open", /not open/.test(opened.stderr), opened.stderr);
+    expect("the lock was released", !existsSync(runLockFilePath(root)));
+    expectEqual("and the claim is untouched", storeIssue(root, seed.id).status, "in_progress");
+  });
+
+  // A closed seed is refused too, naming that status.
   await withTarget(async (root, artifacts) => {
     const seed = publishIssue(root, {
       title: "already settled",
       type: "decision",
-      handle: "idea/02",
+      handle: "idea/03",
       slug: "already-settled",
     });
     bd(root, "close", seed.id, "--reason", "settled");
@@ -102,7 +123,7 @@ try {
     const seed = publishIssue(root, {
       title: "waiting for the grill run",
       type: "decision",
-      handle: "idea/03",
+      handle: "idea/04",
       slug: "waiting-for-the-grill-run",
     });
     const issue = publishIssue(root, {
@@ -131,7 +152,7 @@ try {
     const seed = publishIssue(root, {
       title: "after a killed run",
       type: "decision",
-      handle: "idea/04",
+      handle: "idea/05",
       slug: "after-a-killed-run",
     });
     const runLock = runLockFilePath(root);
@@ -149,7 +170,7 @@ try {
     const seed = publishIssue(root, {
       title: "report releases the lock",
       type: "decision",
-      handle: "idea/05",
+      handle: "idea/06",
       slug: "report-releases-the-lock",
     });
     const opened = runScript(grill.script("open"), root, seedEnv(artifacts, seed.id));
