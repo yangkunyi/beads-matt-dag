@@ -4,8 +4,9 @@
  * A tagged intent goes in; a store write or a run launch comes out, or a refusal and nothing
  * is written. Comment is `bd comment` on the selected issue. Create requires a type (the domain),
  * lands as `needs-triage` without the gate, and writes a body of handle and prose. Start launches
- * that domain's existing run with the selected ids as the allow-list; it does not claim, merge,
- * or stamp `closed`. Intra-domain `blocks` is `bd dep add` / `bd dep remove`. Crossing `relates-to`
+ * that domain's existing run with the selected ids as the allow-list; grill launches the grill run
+ * with the one selected id as its seed. Neither claims, merges, or stamps `closed`. Intra-domain
+ * `blocks` is `bd dep add` / `bd dep remove`. Crossing `relates-to`
  * is `bd dep relate` / `bd dep unrelate`. Crossing `discovered-from` is `bd dep add --type
  * discovered-from` / `bd dep remove`. Cross-domain `blocks` and `parent-child` are refused. Triage
  * moves one of the five labels, replacing the rest of the family; `wontfix` is a label, not a
@@ -19,7 +20,7 @@ import { createIssue, parseCreateInput } from "./create";
 import { deleteIssue } from "./delete";
 import { parseAnswerRoundBody, serializeGrillAnswers } from "./round";
 import { domainOf } from "./model";
-import { planStart, type RunLauncher } from "./start";
+import { planGrill, planStart, type RunLauncher } from "./start";
 import type { BdWriteRunner } from "./store";
 import { applyTriage, isTriageLabel } from "./triage";
 
@@ -36,6 +37,7 @@ const ACCEPTED_INTENTS = new Set([
 	"comment",
 	"create",
 	"start",
+	"grill",
 	"add-edge",
 	"remove-edge",
 	"triage",
@@ -257,7 +259,7 @@ function asRefused(error: unknown, prefixes: string[]): never {
 	throw error;
 }
 
-/** Create needs the target dir. Start needs the graph (for domain) and a launcher. Edges need the graph. Comment takes the door's actor, never a body field. */
+/** Create needs the target dir. Start and grill need the graph (start for the domain, grill for a known seed) and a launcher. Edges need the graph. Comment takes the door's actor, never a body field. */
 export type OperatorActionExtras = {
 	/** Target root. Create writes the body file here. */
 	dir?: string;
@@ -271,7 +273,8 @@ export type OperatorActionExtras = {
 /**
  * Apply one tagged write. Accepted intents are `comment` (`bd comment`), `create` (body plus
  * `bd create`), `start` (launch that domain's existing run with the selected ids as the
- * allow-list; does not write the store), `add-edge` / `remove-edge` (store deps), `triage`
+ * allow-list; does not write the store), `grill` (launch the grill run with the one selected id as
+ * its seed; does not write the store either), `add-edge` / `remove-edge` (store deps), `triage`
  * (one of the five labels, replacing the rest of the family), `delete` (`bd delete --force`
  * after the door has refused `in_progress` and dependents; `--cascade` is never passed), and
  * `answer-round` (`bd comment` with the answers as data, so a re-read shows them).
@@ -304,6 +307,13 @@ export function applyOperatorAction(bd: BdWriteRunner, raw: string, extras: Oper
 		if (!plan.ok) throw new OperatorActionRefused(plan.reason);
 		if (extras.launchRun === undefined) throw new Error("start needs a run launcher");
 		extras.launchRun({ kind: plan.kind, workflow: plan.workflow, allowList: plan.allowList });
+		return;
+	}
+	if (intent === "grill") {
+		const plan = planGrill(record.ids, extras.issues ?? [], extras.targetHeld === true);
+		if (!plan.ok) throw new OperatorActionRefused(plan.reason);
+		if (extras.launchRun === undefined) throw new Error("grill needs a run launcher");
+		extras.launchRun({ kind: plan.kind, workflow: plan.workflow, seed: plan.seed });
 		return;
 	}
 	if (intent === "add-edge") {

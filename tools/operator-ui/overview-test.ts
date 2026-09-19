@@ -8,9 +8,11 @@
  * tagged write door refuses `closed`, `reading:`, and unknown intents without writing; create
  * requires a type (the domain), lands as `needs-triage` without the gate, and writes handle,
  * slug, and a body of prose with no status; a same-domain selection starts that domain's existing
- * run with those ids as the allow-list; mixed-domain, empty, and a held Target do not start; start
- * does not claim, merge, or stamp `closed`; issues left out keep their triage; triage moves one of
- * the five labels, replacing the rest of the family; `wontfix` is a label, not a close; a non-triage
+ * run with those ids as the allow-list; mixed-domain, empty, and a held Target do not start; a grill
+ * control launches the grill run with the one selected id as its seed, and an empty selection, a
+ * second id, and a held Target do not grill; neither launch claims, merges, or stamps `closed`;
+ * issues left out keep their triage; triage moves one of the five labels, replacing the rest of the
+ * family; `wontfix` is a label, not a close; a non-triage
  * label write is refused; close / `reading:` / other domain labels stay the session's; same-domain
  * `blocks` and crossing `relates-to` / `discovered-from` go through that door; cross-domain `blocks`
  * and `parent-child` are refused with no write; the page is a React app with a shadcn-style kit;
@@ -69,6 +71,7 @@ import {
 	pageIsReactApp,
 	pageClientIsModule,
 	pageOffersCreate,
+	pageOffersGrill,
 	pageOffersPalette,
 	pageOffersRefresh,
 	pageOffersReply,
@@ -385,6 +388,7 @@ expect("static snapshot does not offer a refresh endpoint", !pageOffersRefresh(h
 expect("static snapshot does not offer create", !pageOffersCreate(html));
 expect("static snapshot does not offer the palette", !pageOffersPalette(html));
 expect("static snapshot does not offer start", !pageOffersStart(html));
+expect("static snapshot does not offer grill", !pageOffersGrill(html));
 expect("static snapshot carries its client, so the file stands alone", !pageCachesClient(html));
 expect("page is a React app with a shadcn-style kit", pageIsReactApp(html));
 expect("client script is type=module so bun's ESM hydrate runs", pageClientIsModule(html));
@@ -1901,6 +1905,11 @@ expect(
 expect("served page offers create", pageOffersCreate(servedHtml));
 expect("create form requires a type", servedHtml.includes('id="create-type"') && servedHtml.includes("Select a type"));
 expect("served page offers start", pageOffersStart(servedHtml));
+expect("served page offers grill", pageOffersGrill(servedHtml));
+expect(
+	"the grill control does not invent a round",
+	!servedHtml.includes('id="grill-round"') && !servedHtml.includes('data-question="1"'),
+);
 expect("served page still carries issue detail", pageCarriesDetail(servedHtml, issueDetail(overview, "c")!));
 expect("served page still has filters", pageHasFilters(servedHtml));
 expect(
@@ -1914,6 +1923,7 @@ const taggedWrites = [
 	{ intent: "comment", id: "from-bd", text: "leave this" },
 	{ intent: "create", type: "task", feature: "drain", title: "the work", prose: "" },
 	{ intent: "start", ids: ["c", "d"] },
+	{ intent: "grill", ids: ["c"] },
 	{ intent: "add-edge", from: "t1", to: "t2", type: "blocks" },
 	{ intent: "remove-edge", from: "t1", to: "t2", type: "blocks" },
 	{ intent: "triage", id: "from-bd", label: "ready-for-agent" },
@@ -1973,6 +1983,7 @@ expect(
 		perIntentClientGone("client-delete.ts") &&
 		perIntentClientGone("client-edge.ts") &&
 		perIntentClientGone("client-start.ts") &&
+		perIntentClientGone("client-grill.ts") &&
 		perIntentClientGone("client-triage.ts"),
 );
 expect("served page offers the comment door", pageOffersReply(servedHtml));
@@ -2025,6 +2036,9 @@ expect(
 expect("surface has a triage form", appSrc.includes('id="triage-form"'));
 expect("surface posts through the one client", appSrc.includes("postOperatorAction"));
 expect("surface has a grill round form", appSrc.includes('id="grill-round"'));
+expect("surface has a grill control beside start", appSrc.includes('id="grill-button"'));
+expect("the grill control posts the seed through the write door", appSrc.includes('intent: "grill"'));
+expect("the grill control is not a per-intent client", !appSrc.includes("client-grill"));
 expect("surface posts the round through the write door", appSrc.includes('intent: "answer-round"'));
 expect(
 	"the round form is keyed by the round, not the issue alone",
@@ -2109,6 +2123,7 @@ expect(
 		!appSrc.includes("client-delete") &&
 		!appSrc.includes("client-edge") &&
 		!appSrc.includes("client-start") &&
+		!appSrc.includes("client-grill") &&
 		!appSrc.includes("client-triage") &&
 		graphSrc.includes("postOperatorAction") &&
 		!graphSrc.includes("client-edge"),
@@ -2775,6 +2790,85 @@ expect(
 );
 expectEqual("unselected gated issue is not written", writes, []);
 
+// Grill is the other launch: the same door, one seed instead of a list, handed to the grill run as
+// its own `seed` input. It writes nothing to the store either — the run writes the round, not the
+// page — and it does not narrow a selection the operator did not narrow.
+writes.length = 0;
+launches.length = 0;
+const grilledSeed = startAction(JSON.stringify({ intent: "grill", ids: ["a"] }));
+expect("grilling one seed is accepted", !grilledSeed.refused);
+expectEqual("grill launches the grill run with the selected seed", launches, [
+	{ kind: "grill", workflow: "beads-dag-grill", seed: "a" },
+]);
+expectEqual("grill does not write the store", writes, []);
+
+writes.length = 0;
+launches.length = 0;
+const grilledTask = startAction(JSON.stringify({ intent: "grill", ids: ["c"] }));
+expect("a task can be grilled: the run refuses a non-decision seed, not the page", !grilledTask.refused);
+expectEqual("grill takes the id it was given", launches, [
+	{ kind: "grill", workflow: "beads-dag-grill", seed: "c" },
+]);
+
+expect(
+	"grill does not claim, merge, close, or label",
+	writes.length === 0 &&
+		writes.every(
+			(call) =>
+				!call.args.includes("claim") &&
+				!call.args.includes("close") &&
+				!call.args.includes("update") &&
+				!call.args.includes("label") &&
+				!call.args.includes("merge"),
+		),
+);
+
+writes.length = 0;
+launches.length = 0;
+const emptyGrill = startAction(JSON.stringify({ intent: "grill", ids: [] }));
+expect("empty selection does not grill", emptyGrill.refused);
+expect("empty selection names empty", emptyGrill.message.includes("empty selection"));
+expectEqual("empty selection grills nothing", launches, []);
+expectEqual("empty selection writes nothing", writes, []);
+
+writes.length = 0;
+launches.length = 0;
+const missingGrillIds = startAction(JSON.stringify({ intent: "grill" }));
+expect("missing ids is empty selection for grill", missingGrillIds.refused);
+expectEqual("missing ids grills nothing", launches, []);
+
+writes.length = 0;
+launches.length = 0;
+const twoSeeds = startAction(JSON.stringify({ intent: "grill", ids: ["c", "d"] }));
+expect("two seeds are refused, not silently narrowed", twoSeeds.refused);
+expect("two seeds names one seed", twoSeeds.message.includes("one seed"));
+expectEqual("two seeds grill nothing", launches, []);
+expectEqual("two seeds write nothing", writes, []);
+
+writes.length = 0;
+launches.length = 0;
+const unknownSeed = startAction(JSON.stringify({ intent: "grill", ids: ["nope"] }));
+expect("an unknown seed is refused", unknownSeed.refused);
+expectEqual("an unknown seed grills nothing", launches, []);
+
+writes.length = 0;
+launches.length = 0;
+const heldGrill = startAction(JSON.stringify({ intent: "grill", ids: ["a"] }), {
+	...startExtras,
+	targetHeld: true,
+});
+expect("a held Target does not grill", heldGrill.refused);
+expect("held Target names held", heldGrill.message.includes("Target already held"));
+expectEqual("held Target grills nothing", launches, []);
+expectEqual("held Target writes nothing", writes, []);
+
+writes.length = 0;
+launches.length = 0;
+const grillClosed = startAction(JSON.stringify({ intent: "grill", ids: ["a"], closed: true }));
+expect("grill carrying closed is refused", grillClosed.refused);
+expectEqual("grill carrying closed launches nothing", launches, []);
+expectEqual("grill carrying closed writes nothing", writes, []);
+
 const startLaunches: RunLaunch[] = [];
 const startHandler = {
 	write: ((args: string[], stdin?: string) => {
@@ -2798,6 +2892,29 @@ expectEqual("POST start launches drain with the allow-list", startLaunches, [
 	{ kind: "drain", workflow: "beads-dag-drain", allowList: ["c"] },
 ]);
 expectEqual("POST start does not write the store", doorWrites.length, 3);
+
+startLaunches.length = 0;
+const grillPost = await handleOverviewRequest(
+	{ method: "POST", url: "/comment" },
+	JSON.stringify({ intent: "grill", ids: ["a"] }),
+	startHandler,
+);
+expectEqual("POST grill is 204", grillPost.status, 204);
+expectEqual("POST grill launches the grill run with the seed", startLaunches, [
+	{ kind: "grill", workflow: "beads-dag-grill", seed: "a" },
+]);
+expectEqual("POST grill does not write the store", doorWrites.length, 3);
+
+startLaunches.length = 0;
+const twoSeedPost = await handleOverviewRequest(
+	{ method: "POST", url: "/comment" },
+	JSON.stringify({ intent: "grill", ids: ["a", "b"] }),
+	startHandler,
+);
+expectEqual("POST two seeds is 400", twoSeedPost.status, 400);
+expect("POST two seeds names one seed", twoSeedPost.body.includes("one seed"));
+expectEqual("POST two seeds launches nothing", startLaunches, []);
+expectEqual("POST two seeds does not write", doorWrites.length, 3);
 
 startLaunches.length = 0;
 const mixedPost = await handleOverviewRequest(
@@ -2826,6 +2943,13 @@ const heldPost = await handleOverviewRequest(
 );
 expectEqual("POST held Target is 400", heldPost.status, 400);
 expectEqual("POST held Target does not launch", startLaunches, []);
+const heldGrillPost = await handleOverviewRequest(
+	{ method: "POST", url: "/comment" },
+	JSON.stringify({ intent: "grill", ids: ["a"] }),
+	startHandler,
+);
+expectEqual("POST held Target does not grill", heldGrillPost.status, 400);
+expectEqual("POST held Target grills nothing", startLaunches, []);
 startHandler.targetHeld = () => false;
 
 const startTmp = mkdtempSync(join(tmpdir(), "operator-ui-start-"));
@@ -2918,6 +3042,36 @@ const liveMixed = await fetch(`http://127.0.0.1:${startPort}/comment`, {
 expectEqual("live POST empty selection is 400", liveMixed.status, 400);
 const startLoggedAfter = existsSync(startLog) ? readFileSync(startLog, "utf8").trim() : "";
 expectEqual("refused live start does not launch again", startLoggedAfter, startLogged);
+const liveGrill = await fetch(`http://127.0.0.1:${startPort}/comment`, {
+	method: "POST",
+	headers: { "content-type": "application/json" },
+	body: JSON.stringify({ intent: "grill", ids: ["from-bd"] }),
+});
+expectEqual("live POST grill is 204", liveGrill.status, 204);
+const grillLines = (existsSync(startLog) ? readFileSync(startLog, "utf8").trim() : "").split("\n");
+const grillRecorded = JSON.parse(grillLines[grillLines.length - 1] ?? "") as { args: string[] };
+expectEqual("live grill is archon workflow run beads-dag-grill with the seed", grillRecorded.args, [
+	"workflow",
+	"run",
+	"beads-dag-grill",
+	"--detach",
+	"--input",
+	"seed=from-bd",
+]);
+const bdLoggedAfterGrill = existsSync(startBdLog) ? readFileSync(startBdLog, "utf8").trim() : "";
+const bdLinesAfterGrill =
+	bdLoggedAfterGrill === "" ? [] : bdLoggedAfterGrill.split("\n").map((line) => JSON.parse(line) as { args: string[] });
+expect(
+	"live grill does not claim, close, update, or label",
+	bdLinesAfterGrill.every(
+		(line) =>
+			line.args[0] !== "close" &&
+			line.args[0] !== "update" &&
+			line.args[0] !== "label" &&
+			line.args[0] !== "claim" &&
+			!line.args.includes("human"),
+	),
+);
 await new Promise<void>((resolve, reject) => startServer.close((err) => (err ? reject(err) : resolve())));
 
 const contract = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "..", "docs", "agents", "issue-tracker.md"), "utf8");
