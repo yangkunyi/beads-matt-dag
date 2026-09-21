@@ -1,17 +1,12 @@
 /**
  * Capture a decision from the operator surface, without a session.
  *
- * The operator door does not create development or experiment issues: those are a
- * `/to-tickets` graduation. This module always writes type `decision`, triage
- * `needs-triage`, never the gate. The operator supplies the feature; this module
- * allocates the next unused NN and a slug from the title. The bead carries `handle`
- * and `slug`. The body is handle and prose, no status. An optional `from` hangs the
- * new decision off an existing issue: `blocks` when that issue is inquiry, 
- * `discovered-from` when it is development or experiment.
+ * Always type `decision`, never the drain gate. A question is `deferred`. A map is
+ * `pinned` (handle `<feature>/map`) and is not a ticket. Prose is `--description` on
+ * the bead (ADR-0005). Optional `from` is `--deps` on create: `blocks` when that
+ * issue is inquiry, `discovered-from` when it is development or experiment.
  */
 
-import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
 import { domainOf } from "./model";
 import type { BdWriteRunner } from "./store";
 
@@ -19,13 +14,14 @@ const FEATURE = /^[A-Za-z0-9_][A-Za-z0-9._-]*$/;
 const SLUG = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const ISSUE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/;
 const DECISION_TYPE = "decision";
-const CREATE_LABELS = "needs-triage";
 
 export type CreateInput = {
 	feature: string;
 	title: string;
 	prose: string;
 	from?: string;
+	/** A map is a container, not a question. */
+	map?: boolean;
 };
 
 export type GrowSource = {
@@ -45,12 +41,6 @@ function slugFromTitle(title: string): string {
 function nextNumber(used: number[]): string {
 	const max = used.reduce((m, n) => (n > m ? n : m), 0);
 	return String(max + 1).padStart(2, "0");
-}
-
-function issueBody(handle: string, title: string, prose: string): string {
-	const heading = title.trim().replace(/\s+/g, " ");
-	const text = prose.trim() === "" ? heading : prose.trim();
-	return `# ${handle} — ${heading}\n\n${text}\n`;
 }
 
 function listHandles(bd: BdWriteRunner): string[] {
@@ -85,26 +75,9 @@ function numbersFromHandles(feature: string, handles: readonly string[]): number
 	for (const handle of handles) {
 		if (!handle.startsWith(prefix)) continue;
 		const rest = handle.slice(prefix.length);
+		if (rest === "map") continue;
 		if (!/^\d+$/.test(rest)) continue;
 		used.push(Number(rest));
-	}
-	return used;
-}
-
-function numbersFromBodies(dir: string, feature: string): number[] {
-	const folder = join(dir, ".scratch", feature, "issues");
-	let names: string[];
-	try {
-		names = readdirSync(folder);
-	} catch {
-		return [];
-	}
-	const used: number[] = [];
-	for (const name of names) {
-		const match = /^(\d+)-.+\.md$/.exec(name);
-		const raw = match?.[1];
-		if (raw === undefined) continue;
-		used.push(Number(raw));
 	}
 	return used;
 }
@@ -125,12 +98,17 @@ export function parseCreateInput(record: Record<string, unknown>): CreateInput {
 		title,
 		prose: typeof record.prose === "string" ? record.prose : "",
 		from: fromRaw === "" ? undefined : fromRaw,
+		map: record.map === true,
 	};
 }
 
 /** Inquiry hangs with `blocks`; a development or experiment completion hangs with `discovered-from`. */
 export function growEdgeType(sourceType: string): "blocks" | "discovered-from" {
 	return domainOf(sourceType) === "inquiry" ? "blocks" : "discovered-from";
+}
+
+function depFlag(source: GrowSource): string {
+	return growEdgeType(source.type) === "discovered-from" ? `discovered-from:${source.id}` : source.id;
 }
 
 /** Hang the new decision off the source. Same-domain inquiry is a gate; a crossing is provenance. */
@@ -143,18 +121,22 @@ export function attachGrownFrom(bd: BdWriteRunner, id: string, source: GrowSourc
 	bd(["dep", "add", id, source.id]);
 }
 
-/** Write the body and create the decision. Returns the new bead id (`bd create --silent`). */
-export function createIssue(bd: BdWriteRunner, input: CreateInput, dir: string): string {
-	const { feature, title, prose } = parseCreateInput({ ...input });
-	const slug = slugFromTitle(title);
+/**
+ * Create the decision. Returns the new bead id (`bd create --silent`).
+ * `dir` is accepted for call-site compatibility; capture no longer writes a sidecar file.
+ */
+export function createIssue(bd: BdWriteRunner, input: CreateInput, _dir = "", source?: GrowSource): string {
+	const { feature, title, prose, map } = parseCreateInput({ ...input });
 	const handles = listHandles(bd);
-	const nn = nextNumber([...numbersFromHandles(feature, handles), ...numbersFromBodies(dir, feature)]);
-	const handle = `${feature}/${nn}`;
-	const rel = join(".scratch", feature, "issues", `${nn}-${slug}.md`);
-	const abs = join(dir, rel);
-	mkdirSync(dirname(abs), { recursive: true });
-	writeFileSync(abs, issueBody(handle, title, prose), "utf8");
-	const stdout = bd([
+	const handle =
+		map === true
+			? `${feature}/map`
+			: `${feature}/${nextNumber(numbersFromHandles(feature, handles))}`;
+	const slug = map === true ? "map" : slugFromTitle(title);
+	if (map === true && handles.includes(handle)) throw new Error("create needs an unused map");
+	const heading = title.trim().replace(/\s+/g, " ");
+	const description = prose.trim() === "" ? heading : prose.trim();
+	const args = [
 		"create",
 		title,
 		"--type",
@@ -162,8 +144,15 @@ export function createIssue(bd: BdWriteRunner, input: CreateInput, dir: string):
 		"--silent",
 		"--metadata",
 		JSON.stringify({ handle, slug }),
-		"--labels",
-		CREATE_LABELS,
-	]);
-	return stdout.trim().split(/\s+/)[0] ?? "";
+		"--description",
+		description,
+	];
+	if (source !== undefined && source.id !== "") {
+		args.push("--deps", depFlag(source));
+	}
+	const stdout = bd(args);
+	const id = stdout.trim().split(/\s+/)[0] ?? "";
+	if (id === "") throw new Error("create needs a bead");
+	bd(["update", id, "-s", map === true ? "pinned" : "deferred"]);
+	return id;
 }

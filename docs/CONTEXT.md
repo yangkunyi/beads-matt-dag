@@ -50,6 +50,9 @@ below — if a term can only be explained by a command, it belongs in a spec.
   from it.
 - **attention UI** — the human renderer of that object: an inbox of the first nonempty bucket and the
   beads graph on the same page. Not an executor.
+- **canvas frame** — which issues the beads graph draws. Open issues stay on the canvas. Closed issues
+  appear only as a one-hop neighbour of the selection. With nothing selected: every open issue, no
+  closed. **Show all** is the whole store, including closed.
 - **attempted** — an issue this drain has started at least once. Recorded per run, outside the store.
 - **Target** — the repository a drain operates on. It owns its own store.
 - **Main** — the Target's main branch: what merges land on.
@@ -73,6 +76,8 @@ below — if a term can only be explained by a command, it belongs in a spec.
 ## Lifecycle
 
 - **status** — an issue's single lifecycle slot: `open`, `in_progress`, `closed`.
+- **comment** — a record appended to an issue. The operator may write one from the attention UI on
+  whatever is selected; a comment does not change status, labels, or closure.
 - **blocked** — derived, never stored: a blocker is not closed. The store maintains it.
 - **ready** — derived: `open` and not blocked.
 - **closed** — every issue's `closed` means what its domain says it means: in development the work is in
@@ -104,18 +109,18 @@ below — if a term can only be explained by a command, it belongs in a spec.
   `parent-child` hierarchy, at any depth (ADR-0004) — in either direction. A closure in one domain must
   never release work in another.
 
-## Labels
+## Labels and parking
 
-- **triage label** — one of five: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`,
-  `wontfix`.
-- **gate** — `ready-for-agent`. An issue without it is outside the frontier.
-- **brake** — moving an issue back to `needs-triage` or `needs-info` to pull it out of the frontier.
+- **gate** — `ready-for-agent`. Drain only. `/to-tickets` stamps it.
+- **reading gate** — `leg:research` (`bd set-state <id> leg=research`). Inquiry only.
+- **parking** — Beads `deferred` (a captured question) and `pinned` (a map). Not triage labels.
 - **wontfix** — nobody will do this. A label, never a closure.
+- `needs-triage` / `needs-info` / `ready-for-human` are leftover vocabulary; Capture no longer stamps them.
 
 ## Truth
 
-- **ground truth** — git holds the fact (the merge commit); the store holds the state. When they
-  disagree, git wins and the store is repaired.
+- **ground truth** — git holds the merge; the store holds state and issue prose (ADR-0005). When they
+  disagree on whether work landed, git wins and the store is repaired.
 
 ## Terms this repo avoids
 

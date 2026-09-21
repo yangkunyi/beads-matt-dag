@@ -5,9 +5,10 @@
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, Inbox, Play, Plus } from "lucide-react";
 import { useCallback, useMemo, useState, type FormEvent } from "react";
+import { Group, Panel, Separator as ResizeSeparator } from "react-resizable-panels";
 import { Toaster, toast } from "sonner";
 import { postOperatorAction } from "../../operator-ui/client.ts";
-import { TRIAGE_LABELS } from "../../operator-ui/triage-labels.ts";
+const FACE_LABELS = ["wontfix"] as const;
 import {
 	BUCKET_ORDER,
 	bucketCounts,
@@ -54,7 +55,7 @@ const BUCKET_LABEL: Record<BucketKey, string> = {
 	"ready.inquiry": "Ready · inquiry",
 	"ready.experiments": "Ready · experiments",
 	unread_experiments: "Unread experiments",
-	braked: "Braked",
+	braked: "Parked",
 };
 
 function nextLabel(next: AttentionNext): string {
@@ -63,7 +64,8 @@ function nextLabel(next: AttentionNext): string {
 	if (next === "inquiry") return "Start inquiry";
 	if (next === "experiment") return "Start experiment";
 	if (next === "grill") return "Start grill";
-	if (next === "triage") return "Triage";
+	if (next === "triage") return "Drop";
+	if (next === "run") return "Run reading";
 	if (next === "accept-or-edit-or-reject") return "Accept, edit, or reject in a session";
 	return "Read or decline in a session";
 }
@@ -149,8 +151,8 @@ function InboxPage({ attention }: { attention: PageAttention }) {
 	}, [queryClient]);
 
 	return (
-		<div className="flex min-h-screen flex-col bg-muted text-foreground" data-app="react" data-kit="shadcn">
-			<header className="flex items-center justify-between gap-4 border-b border-border bg-card px-4 py-3">
+		<div className="flex h-full flex-col overflow-hidden bg-muted text-foreground" data-app="react" data-kit="shadcn">
+			<header className="flex shrink-0 items-center justify-between gap-4 border-b border-border bg-card px-4 py-3">
 				<div>
 					<h1 className="flex items-center gap-2 text-lg font-semibold">
 						<Inbox size={18} aria-hidden="true" />
@@ -168,90 +170,116 @@ function InboxPage({ attention }: { attention: PageAttention }) {
 					)}
 				</div>
 			</header>
-			<div className="grid min-h-0 flex-1 grid-cols-[14rem_16rem_minmax(0,1fr)_18rem]">
-				<nav id="buckets" className="border-r border-border bg-card p-2" aria-label="Attention buckets">
-					<Tabs
-						value={focus}
-						onValueChange={(value) => {
-							const key = value as BucketKey;
-							setFocus(key);
-							setSelectedId(rowsIn(snapshot, key)[0]?.id);
-						}}
-						orientation="vertical"
-					>
-						<TabsList>
-							{BUCKET_ORDER.map((key) => (
-								<TabsTrigger key={key} value={key} data-bucket={key} data-count={String(counts[key])}>
-									<span>{BUCKET_LABEL[key]}</span>
-									<Badge>{counts[key]}</Badge>
-								</TabsTrigger>
-							))}
-						</TabsList>
-					</Tabs>
-				</nav>
-				<main id="focus" data-focus={focus} className="min-h-0 bg-muted/40">
-					{rows.length === 0 ? (
-						<p id="empty" className="p-8 text-sm text-muted-foreground">
-							{boot === undefined ? "No work is waiting." : `${BUCKET_LABEL[focus]} is empty.`}
-						</p>
-					) : (
-						<ScrollArea className="h-full">
-							<ul id="attention-list" className="divide-y divide-border bg-card">
-								{rows.map((row) => (
-									<li key={row.id}>
-										<button
-											type="button"
-											className={`attention-row flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-accent ${selected?.id === row.id ? "bg-accent" : ""}`}
-											data-handle={row.handle}
-											data-next={row.next}
-											data-id={row.id}
-											onClick={() => setSelectedId(row.id)}
-										>
-											<span className="min-w-0">
-												<span className="block font-medium">{row.handle}</span>
-												<span className="block truncate text-sm text-muted-foreground">{row.title ?? row.type ?? ""}</span>
-											</span>
-											<Badge data-next={row.next}>{row.next}</Badge>
-										</button>
-									</li>
+			<Group id="panels" className="min-h-0 flex-1" orientation="horizontal">
+				<Panel id="buckets-panel" defaultSize="14rem" minSize="10rem" className="min-h-0 overflow-hidden">
+					<nav id="buckets" className="h-full overflow-y-auto bg-card p-2" aria-label="Attention buckets">
+						<Tabs
+							value={focus}
+							onValueChange={(value) => {
+								const key = value as BucketKey;
+								setFocus(key);
+								setSelectedId(rowsIn(snapshot, key)[0]?.id);
+							}}
+							orientation="vertical"
+						>
+							<TabsList>
+								{BUCKET_ORDER.filter((key) => counts[key] > 0 || key === focus).map((key) => (
+									<TabsTrigger key={key} value={key} data-bucket={key} data-count={String(counts[key])}>
+										<span>{BUCKET_LABEL[key]}</span>
+										<Badge>{counts[key]}</Badge>
+									</TabsTrigger>
 								))}
-							</ul>
-						</ScrollArea>
-					)}
-				</main>
-				{attention.overviewEndpoint === null && attention.graph === null ? (
-					<section id="graph" />
-				) : (
-					<GraphPane
-						overview={overviewQuery.data}
-						error={overviewQuery.isError}
-						selectedId={selectedId}
-						onSelect={setSelectedId}
-						writeEndpoint={attention.commentEndpoint}
-						onWritten={refresh}
-					/>
-				)}
-				<aside className="overflow-y-auto border-l border-border bg-card p-4">
-					{selected !== undefined ? (
-						<ItemDetail
-							row={selected}
-							comments={overviewIssue?.comments ?? []}
-							held={snapshot.run.held}
-							endpoint={attention.commentEndpoint}
-							onWrote={refresh}
-						/>
-					) : overviewIssue !== undefined ? (
-						<div id="detail" className="flex flex-col gap-2">
-							<p className="font-medium">{overviewIssue.handle ?? overviewIssue.id}</p>
-							<p className="text-sm text-muted-foreground">{overviewIssue.title}</p>
-							<p className="text-sm text-muted-foreground">Not in this attention bucket. Capture still grows from it.</p>
-							<CommentList comments={overviewIssue.comments} />
-						</div>
+							</TabsList>
+						</Tabs>
+					</nav>
+				</Panel>
+				<ResizeSeparator className={resizeHandleClass} />
+				<Panel id="inbox-panel" defaultSize="16rem" minSize="12rem" className="min-h-0 overflow-hidden">
+					<main id="focus" data-focus={focus} className="h-full min-h-0 bg-muted/40">
+						{rows.length === 0 ? (
+							<p id="empty" className="p-8 text-sm text-muted-foreground">
+								{boot === undefined ? "No work is waiting." : `${BUCKET_LABEL[focus]} is empty.`}
+							</p>
+						) : (
+							<ScrollArea className="h-full">
+								<ul id="attention-list" className="list-none divide-y divide-border bg-card p-0">
+									{rows.map((row) => (
+										<li key={row.id} className="list-none">
+											<button
+												type="button"
+												className={`attention-row flex w-full min-w-0 items-center justify-between gap-3 px-4 py-3 text-left hover:bg-accent ${selected?.id === row.id ? "bg-accent" : ""}`}
+												data-handle={row.handle}
+												data-next={row.next}
+												data-id={row.id}
+												onClick={() => setSelectedId(row.id)}
+											>
+												<span className="min-w-0">
+													<span className="block truncate font-medium">{row.handle}</span>
+													<span className="block truncate text-sm text-muted-foreground">{row.title ?? row.type ?? ""}</span>
+												</span>
+												<Badge className="shrink-0" data-next={row.next}>
+													{row.next}
+												</Badge>
+											</button>
+										</li>
+									))}
+								</ul>
+							</ScrollArea>
+						)}
+					</main>
+				</Panel>
+				<ResizeSeparator className={resizeHandleClass} />
+				<Panel id="graph-panel" defaultSize="50%" minSize="20%" className="min-h-0 overflow-hidden">
+					{attention.overviewEndpoint === null && attention.graph === null ? (
+						<section id="graph" className="h-full min-h-0" />
 					) : (
-						<p className="text-sm text-muted-foreground">Pick a row.</p>
+						<GraphPane
+							overview={overviewQuery.data}
+							error={overviewQuery.isError}
+							selectedId={selectedId}
+							onSelect={setSelectedId}
+							writeEndpoint={attention.commentEndpoint}
+							onWritten={refresh}
+						/>
 					)}
-				</aside>
-			</div>
+				</Panel>
+				<ResizeSeparator className={resizeHandleClass} />
+				<Panel id="detail-panel" defaultSize="18rem" minSize="14rem" className="min-h-0 overflow-hidden">
+					<aside className="h-full overflow-y-auto bg-card p-4">
+						{selected !== undefined ? (
+							<ItemDetail
+								row={selected}
+								comments={overviewIssue?.comments ?? []}
+								held={snapshot.run.held}
+								endpoint={attention.commentEndpoint}
+								onWrote={refresh}
+							/>
+						) : overviewIssue !== undefined ? (
+							<div id="detail" className="flex flex-col gap-2">
+								<p className="font-medium">{overviewIssue.handle ?? overviewIssue.id}</p>
+								<p className="text-sm text-muted-foreground">{overviewIssue.title}</p>
+								<p className="text-sm text-muted-foreground">
+									{overviewIssue.status === "pinned" || overviewIssue.labels.includes("wayfinder:map")
+										? "A map is a pinned direction, not a ticket. Close it when the way is clear."
+										: "Not in this attention bucket."}
+								</p>
+								<CommentList comments={overviewIssue.comments} />
+								{overviewIssue.status === "closed" ? null : overviewIssue.status === "pinned" ||
+								  overviewIssue.labels.includes("wayfinder:map") ? (
+									<CloseMapButton id={overviewIssue.id} endpoint={attention.commentEndpoint} onWrote={refresh} />
+								) : overviewIssue.status === "deferred" ? (
+									<RunReadingButton id={overviewIssue.id} endpoint={attention.commentEndpoint} onWrote={refresh} />
+								) : (
+									<TriageButtons id={overviewIssue.id} endpoint={attention.commentEndpoint} onWrote={refresh} />
+								)}
+								<CommentForm issueId={overviewIssue.id} endpoint={attention.commentEndpoint} onWrote={refresh} />
+							</div>
+						) : (
+							<p className="text-sm text-muted-foreground">Pick a row.</p>
+						)}
+					</aside>
+				</Panel>
+			</Group>
 			<CaptureDialog
 				open={captureOpen}
 				onClose={() => setCaptureOpen(false)}
@@ -262,6 +290,75 @@ function InboxPage({ attention }: { attention: PageAttention }) {
 					refresh();
 				}}
 			/>
+		</div>
+	);
+}
+
+const resizeHandleClass = "w-1.5 bg-border hover:bg-ring/40";
+
+function RunReadingButton(props: { id: string; endpoint: string | null; onWrote: () => void }) {
+	if (props.endpoint === null) return null;
+	return (
+		<Button
+			id="act"
+			data-act="run-reading"
+			onClick={() => {
+				void postOperatorAction(props.endpoint as string, { intent: "run-reading", id: props.id })
+					.then(() => {
+						toast.success("Run reading");
+						props.onWrote();
+					})
+					.catch((error: unknown) => toast.error(error instanceof Error ? error.message : String(error)));
+			}}
+		>
+			<Play size={14} aria-hidden="true" />
+			Run reading
+		</Button>
+	);
+}
+
+function CloseMapButton(props: { id: string; endpoint: string | null; onWrote: () => void }) {
+	if (props.endpoint === null) return null;
+	return (
+		<Button
+			id="act"
+			data-act="close-map"
+			variant="outline"
+			onClick={() => {
+				void postOperatorAction(props.endpoint as string, { intent: "close-map", id: props.id })
+					.then(() => {
+						toast.success("Map closed");
+						props.onWrote();
+					})
+					.catch((error: unknown) => toast.error(error instanceof Error ? error.message : String(error)));
+			}}
+		>
+			Close map
+		</Button>
+	);
+}
+
+function TriageButtons(props: { id: string; endpoint: string | null; onWrote: () => void }) {
+	if (props.endpoint === null) return null;
+	const endpoint = props.endpoint;
+	return (
+		<div id="act" data-act="triage" className="flex flex-wrap gap-1">
+			{FACE_LABELS.map((label) => (
+				<Button
+					key={label}
+					variant="outline"
+					onClick={() => {
+						void postOperatorAction(endpoint, { intent: "triage", id: props.id, label })
+							.then(() => {
+								toast.success(label);
+								props.onWrote();
+							})
+							.catch((error: unknown) => toast.error(error instanceof Error ? error.message : String(error)));
+					}}
+				>
+					{label}
+				</Button>
+			))}
 		</div>
 	);
 }
@@ -315,6 +412,7 @@ function ItemDetail(props: {
 			<CommentList comments={props.comments} />
 			<Separator />
 			<PrimaryAct row={row} held={props.held} endpoint={props.endpoint} onWrote={props.onWrote} />
+			<CommentForm issueId={row.id} endpoint={props.endpoint} onWrote={props.onWrote} />
 		</div>
 	);
 }
@@ -343,6 +441,36 @@ function CommentList({ comments }: { comments: OverviewComment[] }) {
 	);
 }
 
+function CommentForm(props: {
+	issueId: string;
+	endpoint: string | null;
+	onWrote: () => void;
+}) {
+	const [text, setText] = useState("");
+	const endpoint = props.endpoint;
+	if (endpoint === null) return null;
+	return (
+		<form
+			id="comment-form"
+			className="flex flex-col gap-2"
+			onSubmit={(event: FormEvent) => {
+				event.preventDefault();
+				if (text.trim() === "") return;
+				void postOperatorAction(endpoint, { intent: "comment", id: props.issueId, text: text.trim() })
+					.then(() => {
+						setText("");
+						toast.success("Commented");
+						props.onWrote();
+					})
+					.catch((error: unknown) => toast.error(error instanceof Error ? error.message : String(error)));
+			}}
+		>
+			<Textarea value={text} onChange={(event) => setText(event.target.value)} placeholder="Comment" />
+			<Button type="submit">Comment</Button>
+		</form>
+	);
+}
+
 function PrimaryAct(props: {
 	row: AttentionRow;
 	held: boolean;
@@ -350,7 +478,6 @@ function PrimaryAct(props: {
 	onWrote: () => void;
 }) {
 	const { row, held, endpoint, onWrote } = props;
-	const [text, setText] = useState("");
 	if (endpoint === null) {
 		return <p className="text-sm text-muted-foreground">{nextLabel(row.next)}</p>;
 	}
@@ -383,49 +510,16 @@ function PrimaryAct(props: {
 			</Tooltip>
 		);
 	}
+	if (row.next === "run") {
+		return <RunReadingButton id={row.id} endpoint={endpoint} onWrote={onWrote} />;
+	}
 	if (row.next === "triage") {
-		return (
-			<div id="act" data-act="triage" className="flex flex-wrap gap-1">
-				{TRIAGE_LABELS.map((label) => (
-					<Button
-						key={label}
-						variant="outline"
-						onClick={() => {
-							void postOperatorAction(endpoint, { intent: "triage", id: row.id, label })
-								.then(() => {
-									toast.success(label);
-									onWrote();
-								})
-								.catch((error: unknown) => toast.error(error instanceof Error ? error.message : String(error)));
-						}}
-					>
-						{label}
-					</Button>
-				))}
-			</div>
-		);
+		return <TriageButtons id={row.id} endpoint={endpoint} onWrote={onWrote} />;
 	}
 	return (
-		<form
-			id="act"
-			data-act="comment"
-			className="flex flex-col gap-2"
-			onSubmit={(event: FormEvent) => {
-				event.preventDefault();
-				if (text.trim() === "") return;
-				void postOperatorAction(endpoint, { intent: "comment", id: row.id, text: text.trim() })
-					.then(() => {
-						setText("");
-						toast.success("Commented");
-						onWrote();
-					})
-					.catch((error: unknown) => toast.error(error instanceof Error ? error.message : String(error)));
-			}}
-		>
-			<p className="text-sm text-muted-foreground">{nextLabel(row.next)}</p>
-			<Textarea value={text} onChange={(event) => setText(event.target.value)} placeholder="Comment" />
-			<Button type="submit">Comment</Button>
-		</form>
+		<p id="act" data-act="comment" className="text-sm text-muted-foreground">
+			{nextLabel(row.next)}
+		</p>
 	);
 }
 
@@ -438,7 +532,7 @@ function CaptureDialog(props: {
 }) {
 	if (props.endpoint === null) return null;
 	return (
-		<Dialog id="create" open={props.open} onClose={props.onClose} title="Capture" description="A decision. Ungated. No YAML head. Publication is /to-tickets.">
+		<Dialog id="create" open={props.open} onClose={props.onClose} title="Capture" description="A question is deferred. A direction is pinned. Prose lives on the bead.">
 			<CaptureFields
 				key={props.source?.id ?? "bare"}
 				endpoint={props.endpoint}
@@ -457,6 +551,7 @@ function CaptureFields(props: {
 	const [feature, setFeature] = useState(featureOf(props.source?.handle));
 	const [title, setTitle] = useState("");
 	const [prose, setProse] = useState("");
+	const [map, setMap] = useState(false);
 	return (
 		<form
 			id="create-form"
@@ -468,6 +563,7 @@ function CaptureFields(props: {
 					feature,
 					title,
 					prose,
+					...(map ? { map: true } : {}),
 					...(props.source === undefined ? {} : { from: props.source.id }),
 				})
 					.then(() => {
@@ -490,6 +586,15 @@ function CaptureFields(props: {
 			<Input id="create-title" value={title} onChange={(event) => setTitle(event.target.value)} />
 			<Label htmlFor="create-prose">Prose</Label>
 			<Textarea id="create-prose" value={prose} onChange={(event) => setProse(event.target.value)} />
+			<label className="flex items-center gap-2 text-sm" htmlFor="create-map">
+				<input
+					id="create-map"
+					type="checkbox"
+					checked={map}
+					onChange={(event) => setMap(event.target.checked)}
+				/>
+				This is a direction (pinned map), not a question
+			</label>
 			<Button type="submit">Capture</Button>
 		</form>
 	);

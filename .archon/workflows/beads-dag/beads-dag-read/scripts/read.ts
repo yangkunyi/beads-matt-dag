@@ -120,7 +120,11 @@ export async function readQuestion(target: string, issueHandle: string, opts: Re
       role: "read",
       args: {
         handle: names.handle,
-        bodyPath: bodyPath(target, names),
+        bodyPath: (() => {
+          const file = bodyPath(target, names);
+          if (existsSync(file)) return file;
+          return issue.description !== undefined && issue.description !== "" ? issue.description : file;
+        })(),
         corpusRel: paths.corpusRel,
         noteRel: paths.noteRel,
       },

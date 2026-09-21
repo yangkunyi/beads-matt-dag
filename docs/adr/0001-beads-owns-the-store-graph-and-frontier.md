@@ -13,8 +13,10 @@ write, and `bd recompute-blocked` repairs it after a bulk operation (a pull, mos
 
 Documents do not move. A spec is not an issue: it has no state, never enters a frontier, is never
 claimed, and must never be closed. Beads' own model agrees — its spec field is a link to a *document*
-— so specs and maps stay markdown files in git, where they can be diffed, grepped and reverted
-alongside the code they describe.
+— so **product** specs stay markdown files in git, where they can be diffed, grepped and reverted
+alongside the code they describe. An issue brief is not a spec: it is work-memory, and it lives on
+the issue (ADR-0005). A map is a pinned `decision`, not a document pretending to be a ticket; a long
+product map may still be a git file the bead points at with `spec_id`.
 
 Rejected: keeping the `.scratch` scan as the frontier with beads as a mirror beside it (two answers to
 one question, and the mirror is the one that goes stale); a DAG file the orchestrator appends to; specs

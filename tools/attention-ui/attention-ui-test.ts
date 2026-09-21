@@ -107,6 +107,14 @@ expect("page is a React shadcn app", pageIsReactApp(html));
 expect("page focuses leftovers", pageFocusesBucket(html, "leftovers"));
 expect("page carries leftover handle", pageCarriesHandle(html, "feat/04"));
 expect("page names leftover next", html.includes('data-next="drain"'));
+expect("leftovers still offer a comment form", html.includes('id="comment-form"'));
+const brakedHtml = renderAttentionPage(
+	snapshotWith({
+		braked: [{ id: "id-brake", handle: "feat/10", next: "triage", labels: ["needs-triage"] }],
+	}),
+	{ commentEndpoint: "/comment" },
+);
+expect("triage still offers a comment form", brakedHtml.includes('id="comment-form"') && brakedHtml.includes('data-act="triage"'));
 expect("page offers create without a YAML fence", pageOffersCreate(html));
 expect("create form has no type picker", !html.includes('id="create-type"'));
 expect("SSR does not mount the canvas", !html.includes('data-graph="react-flow"'));
@@ -120,11 +128,17 @@ expect("canvas does not import the operator page", !graphSrc.includes("operator-
 // React #185 came from two defects: an unstable `selected` array re-setting React Flow's store every
 // render, and the page plus the store both owning selection. Both are pinned here.
 const appSrc = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "ui", "App.tsx"), "utf8");
+expect("create can mark a map", appSrc.includes('id="create-map"') && appSrc.includes("map: true"));
+expect("maps close through close-map", appSrc.includes('data-act="close-map"'));
 expect("canvas memoises selection on the id, not on a fresh array", graphSrc.includes("selectedId === undefined ? [] : [selectedId]"));
 expect("canvas writes selection only from clicks", graphSrc.includes("onNodeClick") && !graphSrc.includes("onSelectionChange={"));
 expect("canvas does not pass a controlled selected flag", !graphSrc.includes("selected={selected}"));
 expect("page keeps its refresh stable", !appSrc.includes("function refresh("));
 expect("page shows a node's comments", appSrc.includes("function CommentList") && appSrc.includes("comment.text"));
+expect("comment form is not gated on next", appSrc.includes('id="comment-form"') && appSrc.includes("function CommentForm"));
+expect("canvas fits the camera when the selection changes", graphSrc.includes("fitView") && graphSrc.includes("fittedSelection"));
+expect("inbox rows are not a bulleted list", appSrc.includes('id="attention-list"') && appSrc.includes("list-none"));
+expect("columns are resizable", appSrc.includes('from "react-resizable-panels"') && html.includes('id="panels"'));
 
 const emptyHtml = renderAttentionPage(emptySnapshot(), { commentEndpoint: "/comment" });
 expect("empty page says nothing is waiting", emptyHtml.includes("No work is waiting."));

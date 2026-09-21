@@ -34,7 +34,7 @@ import { mkdirSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { commentIssue, inProgressIssues, recordFailedAttempt, reopenIssue, type Store, type StoreIssue } from "../../scripts/store.ts";
 import { DRAFT_LABEL } from "../../beads-dag-read/scripts/reading.ts";
-import { GRILL_LABEL, READING_LEG_LABEL } from "./inquiry.ts";
+import { GRILL_LABEL, READING_LEG_LABEL, hasReadingLeg } from "./inquiry.ts";
 
 /**
  * What one leftover was resolved to: the reading landed and the status was stale, the reading never
@@ -56,7 +56,7 @@ const REPAIRS_FILE = "repairs.json";
 
 /** A `decision` issue a reading run may have claimed: the leg label gates the frontier, the draft label marks a landing. */
 export function isReadingClaim(issue: StoreIssue): boolean {
-  return issue.type === "decision" && (issue.labels.includes(READING_LEG_LABEL) || issue.labels.includes(DRAFT_LABEL));
+  return issue.type === "decision" && (hasReadingLeg(issue) || issue.labels.includes(DRAFT_LABEL));
 }
 
 /** A `decision` issue a grill run's seed may have claimed. Reading repair leaves these alone. */

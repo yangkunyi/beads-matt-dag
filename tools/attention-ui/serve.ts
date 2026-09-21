@@ -32,8 +32,8 @@ const USAGE = `usage: bun tools/attention-ui/serve.ts [--dir <target>] [--store 
 
 Routes: GET / is the inbox and graph on one page, GET /attention is the snapshot JSON,
 GET /overview is the beads graph JSON after a write, POST /comment is the tagged write door.
-Capture is a decision; optional from hangs it off the selected issue. Start/grill launch the
-existing domain run for one id. The page does not claim, merge, or stamp closed.`;
+Capture is a deferred decision or a pinned map. Run-reading undefer + leg=research. Close-map
+unpins then closes. Start/grill launch the existing domain run.`;
 
 class UsageError extends Error {}
 
@@ -80,6 +80,25 @@ export type AttentionHandler = {
 	issues?: () => ReadonlyArray<OperatorIssue>;
 	targetHeld?: () => boolean;
 };
+
+function writeNeedsIssues(raw: string): boolean {
+	try {
+		const parsed = JSON.parse(raw) as { intent?: unknown };
+		const intent = parsed.intent;
+		return (
+			intent === "create" ||
+			intent === "start" ||
+			intent === "grill" ||
+			intent === "add-edge" ||
+			intent === "remove-edge" ||
+			intent === "delete" ||
+			intent === "run-reading" ||
+			intent === "close-map"
+		);
+	} catch {
+		return true;
+	}
+}
 
 function etagMatches(header: string | string[] | undefined, etag: string): boolean {
 	const value = Array.isArray(header) ? header.join(",") : header;
@@ -141,7 +160,7 @@ export async function handleAttentionRequest(
 			applyOperatorAction(handler.write, body, {
 				dir: handler.dir,
 				launchRun: handler.launchRun,
-				issues: handler.issues?.() ?? [],
+				issues: writeNeedsIssues(body) ? (handler.issues?.() ?? []) : [],
 				targetHeld: handler.targetHeld?.() ?? false,
 				actor: handler.actor,
 			});

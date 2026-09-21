@@ -15,6 +15,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { DRAFT_LABEL } from "../beads-dag-read/scripts/reading.ts";
 import { composeReadingFrontier } from "../beads-dag-inquiry/scripts/frontier.ts";
+import { isMapContainer } from "../beads-dag-inquiry/scripts/inquiry.ts";
 import { isGrillClaim, isReadingClaim } from "../beads-dag-inquiry/scripts/leftovers.ts";
 import { loadConfig } from "./config.ts";
 import { contractPresence } from "./contract.ts";
@@ -45,6 +46,7 @@ export type AttentionNext =
   | "experiment"
   | "grill"
   | "triage"
+  | "run"
   | "accept-or-edit-or-reject"
   | "read-or-decline";
 
@@ -234,17 +236,19 @@ function composeAttention(store: Store, target: string): AttentionSnapshot {
     }));
 
   const braked: BrakedItem[] = all
-    .filter(
-      (issue) =>
-        issue.status === "open" &&
-        !issue.labels.includes(GATE_LABEL) &&
-        issue.labels.some((label) => BRAKE_LABELS.has(label)),
-    )
+    .filter((issue) => {
+      if (isMapContainer(issue)) return false;
+      if (issue.labels.includes(GATE_LABEL)) return false;
+      if (issue.status === "deferred") return true;
+      return (
+        issue.status === "open" && issue.labels.some((label) => BRAKE_LABELS.has(label))
+      );
+    })
     .map((issue) => ({
       id: issue.id,
       handle: handleOf(issue),
       labels: issue.labels.filter((label) => BRAKE_LABELS.has(label)),
-      next: "triage" as const,
+      next: issue.status === "deferred" || issue.labels.includes("needs-triage") ? ("run" as const) : ("triage" as const),
     }));
 
   return {

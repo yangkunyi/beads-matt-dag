@@ -495,8 +495,8 @@ experiment`), and never the gate label: nothing about an experiment ticket is a 
 
 ## Maps
 
-There is no separate wayfinder skill. `/grill` produces the child questions; the **map** is a git
-document; the **child issues** are beads of type `decision`.
+There is no separate wayfinder skill. `/grill` produces the child questions; the **map** is a pinned
+`decision` (prose in `description`); the **child issues** are beads of type `decision`.
 
 A **grill run** (`beads-dag-grill`) is the same interview as a run, not a session: it takes one seed
 issue id, writes the next round onto that issue as a comment, and stops for answers. A later turn that
@@ -507,16 +507,15 @@ this run is the griller. The round travels as the run's own tool call (`submit_r
 an empty frontier) rather than as prose, and the comment it writes is the shape that surface renders as
 choices — sibling skill `grill-round` is that contract, `grill` is the same interview in conversation.
 
-- **Map**: one issue of type `decision` labelled `wayfinder:map`, its Notes / Decisions-so-far / Fog in
-  a git document.
-- **Child issue**: a bead of type `decision`, labelled `wayfinder:<research|prototype|grilling|task>`,
-  with the question as its body file at the handle path — the same body convention as an
-  implementation issue. A decision issue never enters a drain.
-- **Blocking**: the same `blocks` edges (`bd dep add`); an issue is unblocked when every issue blocking
+- **Map**: one issue of type `decision` with status `pinned` (legacy label `wayfinder:map` still counts).
+  Destination / Notes / Fog live in `description`. Optional `spec_id` may point at a git product map.
+  Turn it off with unpin then `bd close` (the attention UI's Close map). Not an `epic`.
+- **Child issue**: a bead of type `decision`. The reading gate is `leg:research`. Capture parks a
+  question as `deferred`; Run reading undefer + set-state. A decision issue never enters a drain.
+- **Blocking**: the same `blocks` edges (`bd dep add` / `bd create --deps`); an issue is unblocked when every issue blocking
   it is closed.
 - **Frontier**: the `decision`-typed issues in the store's ready answer, minus the claimed ones and minus
-  the map itself — the map carries `wayfinder:map` and is a container, not a ticket, so a query that only
-  filters the type hands it back. The first by handle (`01` before `02`) is the one to take.
+  pinned maps and questions without `leg:research`. The first by handle (`01` before `02`) is the one to take.
 - **Claim**: `bd update <id> -s in_progress`, and record the driving dev with the store's assignee
   field (`bd update <id> --assignee <dev>`) — for a decision issue that assignee is the claim a
   concurrent session reads.

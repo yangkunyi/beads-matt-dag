@@ -12,6 +12,7 @@ export const ATTENTION_NEXT = [
 	"experiment",
 	"grill",
 	"triage",
+	"run",
 	"accept-or-edit-or-reject",
 	"read-or-decline",
 ] as const;

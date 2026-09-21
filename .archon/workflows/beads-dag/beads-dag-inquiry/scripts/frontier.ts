@@ -28,7 +28,7 @@ import {
   type StoreIssue,
 } from "../../scripts/store.ts";
 import { DRAFT_LABEL } from "../../beads-dag-read/scripts/reading.ts";
-import { MAP_LABEL, READING_LEG_LABEL } from "./inquiry.ts";
+import { hasReadingLeg, isMapContainer } from "./inquiry.ts";
 
 /**
  * Why a question the store offered was left out. These are the rules this module applies, and the only
@@ -61,8 +61,8 @@ export type ReadingFrontier = {
  * the reading gate, then the landing, then this run's own memory.
  */
 function exclusionRule(issue: StoreIssue, attempted: ReadonlySet<string>): ExclusionRule | undefined {
-  if (issue.labels.includes(MAP_LABEL)) return "map-container";
-  if (!issue.labels.includes(READING_LEG_LABEL)) return "missing-reading-label";
+  if (isMapContainer(issue)) return "map-container";
+  if (!hasReadingLeg(issue)) return "missing-reading-label";
   if (issue.labels.includes(DRAFT_LABEL)) return "reading-already-landed";
   if (attempted.has(issue.id)) return "attempted-by-this-run";
   return undefined;
@@ -98,7 +98,7 @@ export function composeReadingFrontier(
   for (const issue of inProgress) {
     if (issue.type !== "decision") continue;
     if (attempted.has(issue.id)) continue;
-    if (!issue.labels.includes(READING_LEG_LABEL) && !issue.labels.includes(DRAFT_LABEL)) continue;
+    if (!hasReadingLeg(issue) && !issue.labels.includes(DRAFT_LABEL)) continue;
     excluded.push({ id: issue.id, handle: issue.handle, rule: "already-claimed" });
   }
   return {

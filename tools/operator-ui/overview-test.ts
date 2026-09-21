@@ -371,7 +371,7 @@ expectEqual(
 	(nextRound.round?.questions ?? []).filter((question) => question.answer !== undefined).length,
 	0,
 );
-const projected = projectGraph(overview);
+const projected = projectGraph(overview, { showAll: true });
 expectEqual(
 	"React Flow nodes are the store issues",
 	projected.nodes.map((node) => node.id),
@@ -412,33 +412,44 @@ expect("inquiry issue sits in the inquiry lane", inLane("a", "inquiry"));
 expect("development issue sits in the development lane", inLane("c", "development"));
 expect("experiment issue sits in the experiments lane", inLane("b", "experiment"));
 expectEqual(
-	"empty selection shows all — pinned",
+	"empty selection shows open issues, not closed",
 	[...framedIssueIds(overview)].sort(),
-	["a", "b", "c"],
+	["a", "c"],
 );
 expectEqual(
-	"empty selection ignores showAll because there is nothing to frame",
-	projectGraph(overview, { selected: [], showAll: false }).nodes.map((node) => node.id),
-	["a", "b", "c"],
+	"empty selection with Show all off still hides closed",
+	projectGraph(overview, { selected: [], showAll: false }).nodes.map((node) => node.id).sort(),
+	["a", "c"],
 );
 const aroundC = projectGraph(overview, { selected: ["c"] });
 expectEqual(
-	"a selection frames the issue and one hop",
+	"a selection keeps every open issue",
 	aroundC.nodes.map((node) => node.id).sort(),
 	["a", "c"],
 );
-expect("the two-hop experiment stays out of the neighbourhood", !aroundC.nodes.some((node) => node.id === "b"));
+expect("a closed two-hop stays out unless it is a neighbour", !aroundC.nodes.some((node) => node.id === "b"));
 expect(
-	"a hop edge remains in the neighbourhood",
+	"a hop edge among the open issues remains",
 	aroundC.edges.some((edge) => edge.source === "a" && edge.target === "c"),
 );
 expect(
-	"a handoff out of the neighbourhood is dropped",
+	"a handoff to a closed two-hop is dropped",
 	!aroundC.edges.some((edge) => edge.source === "a" && edge.target === "b"),
+);
+const aroundA = projectGraph(overview, { selected: ["a"] });
+expectEqual(
+	"a closed one-hop neighbour of the selection comes in",
+	aroundA.nodes.map((node) => node.id).sort(),
+	["a", "b", "c"],
 );
 expectEqual(
 	"Show all with a selection is the full graph",
 	projectGraph(overview, { selected: ["c"], showAll: true }).nodes.map((node) => node.id),
+	["a", "b", "c"],
+);
+expectEqual(
+	"Show all with nothing selected is still the full graph",
+	[...framedIssueIds(overview, { selected: [], showAll: true })].sort(),
 	["a", "b", "c"],
 );
 
@@ -1433,20 +1444,22 @@ applyOperatorAction(writeRunner, JSON.stringify({ intent: "create", feature: "dr
 const captured = createArgs();
 expect("create wrote a bead", captured[0] === "create");
 expectEqual("create is a decision", flagAfter(captured, "--type"), "decision");
-expectEqual("create labels", flagAfter(captured, "--labels"), "needs-triage");
+expect("create does not stamp triage labels", !captured.includes("--labels"));
 expect(
 	"create does not apply the gate",
-	!captured.includes("ready-for-agent") && !(flagAfter(captured, "--labels") ?? "").includes("ready-for-agent"),
+	!captured.includes("ready-for-agent"),
 );
+expectEqual("create writes description", flagAfter(captured, "--description"), "the work");
 const capturedMeta = JSON.parse(flagAfter(captured, "--metadata") ?? "{}") as { handle?: string; slug?: string };
 expectEqual("create handle", capturedMeta.handle, "drain/01");
 expectEqual("create slug", capturedMeta.slug, "the-work");
 const capturedBody = join(createDir, ".scratch", "drain", "issues", "01-the-work.md");
-expect("create wrote the body", existsSync(capturedBody));
-const capturedText = existsSync(capturedBody) ? readFileSync(capturedBody, "utf8") : "";
-expect("body carries the handle", capturedText.includes("drain/01"));
-expect("body carries the prose", capturedText.includes("the work"));
-expect("body has no status", !/status\s*:/i.test(capturedText));
+expect("create does not write a sidecar body", !existsSync(capturedBody));
+expectEqual(
+	"create parks the question as deferred",
+	writes[writes.length - 1]?.args,
+	["update", "new-id", "-s", "deferred"],
+);
 expect(
 	"create listed then created",
 	writes[0]?.args[0] === "list" && writes.some((call) => call.args[0] === "create"),
@@ -1460,14 +1473,7 @@ applyOperatorAction(
 	JSON.stringify({ intent: "create", feature: "lab", title: "what next", from: "t1" }),
 	{ dir: growDevDir, issues: [{ id: "t1", type: "task" }] },
 );
-expectEqual("grow from development is discovered-from", writes[writes.length - 1]?.args, [
-	"dep",
-	"add",
-	"new-id",
-	"t1",
-	"--type",
-	"discovered-from",
-]);
+expectEqual("grow from development is discovered-from", flagAfter(createArgs(), "--deps"), "discovered-from:t1");
 expectEqual("grow from development still captures a decision", flagAfter(createArgs(), "--type"), "decision");
 
 writes.length = 0;
@@ -1478,14 +1484,7 @@ applyOperatorAction(
 	JSON.stringify({ intent: "create", feature: "lab", title: "what the result means", from: "e1" }),
 	{ dir: growExpDir, issues: [{ id: "e1", type: "experiment" }] },
 );
-expectEqual("grow from experiment is discovered-from", writes[writes.length - 1]?.args, [
-	"dep",
-	"add",
-	"new-id",
-	"e1",
-	"--type",
-	"discovered-from",
-]);
+expectEqual("grow from experiment is discovered-from", flagAfter(createArgs(), "--deps"), "discovered-from:e1");
 
 writes.length = 0;
 listStdout = "[]";
@@ -1495,7 +1494,7 @@ applyOperatorAction(
 	JSON.stringify({ intent: "create", feature: "lab", title: "follow-up", from: "q1" }),
 	{ dir: growQDir, issues: [{ id: "q1", type: "decision" }] },
 );
-expectEqual("grow from inquiry is blocks", writes[writes.length - 1]?.args, ["dep", "add", "new-id", "q1"]);
+expectEqual("grow from inquiry is blocks", flagAfter(createArgs(), "--deps"), "q1");
 
 writes.length = 0;
 const growUnknown = refusedAction(
@@ -1519,18 +1518,21 @@ applyOperatorAction(writeRunner, JSON.stringify({ intent: "create", feature: "la
 const allocMeta = JSON.parse(flagAfter(createArgs(), "--metadata") ?? "{}") as { handle?: string; slug?: string };
 expectEqual("create allocates the next unused NN", allocMeta.handle, "lab/03");
 expectEqual("create slug from title", allocMeta.slug, "next-question");
-expectEqual("create decision labels are triage only", flagAfter(createArgs(), "--labels"), "needs-triage");
+expect("create still does not stamp triage labels", !createArgs().includes("--labels"));
 
-const fileAllocDir = mkdtempSync(join(tmpdir(), "operator-ui-create-file-"));
-mkdirSync(join(fileAllocDir, ".scratch", "lab", "issues"), { recursive: true });
-writeFileSync(join(fileAllocDir, ".scratch", "lab", "issues", "03-existing.md"), "# lab/03 — existing\n");
 writes.length = 0;
 listStdout = "[]";
-applyOperatorAction(writeRunner, JSON.stringify({ intent: "create", feature: "lab", title: "after a body" }), {
-	dir: fileAllocDir,
-});
-const fileAllocMeta = JSON.parse(flagAfter(createArgs(), "--metadata") ?? "{}") as { handle?: string };
-expectEqual("create skips a body file's NN", fileAllocMeta.handle, "lab/04");
+applyOperatorAction(
+	writeRunner,
+	JSON.stringify({ intent: "create", feature: "lab", title: "the map", map: true, prose: "Fog remains." }),
+	{ dir: allocDir },
+);
+const mapCaptured = createArgs();
+const mapMeta = JSON.parse(flagAfter(mapCaptured, "--metadata") ?? "{}") as { handle?: string; slug?: string };
+expectEqual("map handle", mapMeta.handle, "lab/map");
+expectEqual("map slug", mapMeta.slug, "map");
+expectEqual("map description", flagAfter(mapCaptured, "--description"), "Fog remains.");
+expectEqual("map is pinned", writes[writes.length - 1]?.args, ["update", "new-id", "-s", "pinned"]);
 listStdout = "[]";
 
 const startIssues = [

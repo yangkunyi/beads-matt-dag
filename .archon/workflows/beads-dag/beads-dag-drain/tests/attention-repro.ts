@@ -221,7 +221,8 @@ acceptance:
     expect("needs-info is braked", ids(snap.buckets.braked).includes("feat/05"));
     expect("wontfix is braked", ids(snap.buckets.braked).includes("feat/06"));
     expect("an ungated idea is braked", ids(snap.buckets.braked).includes("q/04"));
-    expectEqual("braked next is triage", one(snap.buckets.braked, "feat/05").next, "triage");
+    expectEqual("needs-info next is drop", one(snap.buckets.braked, "feat/05").next, "triage");
+    expectEqual("an ungated idea next is run", one(snap.buckets.braked, "q/04").next, "run");
 
     const lock = runLockFilePath(root);
     writeFileSync(lock, `${process.pid}\nheld-run\ndrain\n`);
