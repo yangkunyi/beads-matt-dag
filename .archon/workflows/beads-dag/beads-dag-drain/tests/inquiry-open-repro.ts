@@ -40,11 +40,11 @@ try {
     expectEqual("the reading run opens", opened.status, 0);
     expectEqual("with the token alone on stdout", opened.stdout, "opened\n");
     expect("and the configuration line on stderr", opened.stderr.includes("beads-dag: config:"), opened.stderr);
-    expectEqual("the run lock is this run's", readFileSync(runLock, "utf8"), `${process.pid}\n${basename(artifacts)}\n`);
+    expectEqual("the run lock is this run's", readFileSync(runLock, "utf8"), `${process.pid}\n${basename(artifacts)}\ninquiry\n`);
     expectEqual(
       "and the run says so in its own record",
       JSON.parse(readFileSync(join(artifacts, RUN_LOCK_FILE), "utf8")),
-      { run: basename(artifacts), pid: process.pid, path: runLock },
+      { run: basename(artifacts), pid: process.pid, path: runLock, kind: "inquiry" },
     );
     expect("Main did not move", gitC(root, "rev-parse", "main") === head);
   });
@@ -158,7 +158,7 @@ try {
     const steals = opened.stderr.split("\n").filter((line) => line.includes("run lock: stole"));
     expectEqual("one line says the lock was stolen", steals.length, 1);
     expect("naming the dead holder", steals[0]!.includes("the-killed-reading-run"), steals[0]);
-    expectEqual("the lock is this run's now", readFileSync(runLock, "utf8"), `${process.pid}\n${basename(artifacts)}\n`);
+    expectEqual("the lock is this run's now", readFileSync(runLock, "utf8"), `${process.pid}\n${basename(artifacts)}\ninquiry\n`);
   });
 
   console.log(JSON.stringify({ ok: true }));

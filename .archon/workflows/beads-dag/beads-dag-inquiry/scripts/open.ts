@@ -24,7 +24,7 @@ if (import.meta.main) {
   await runNode({
     artifacts: true,
     run: async ({ target, artifactsDir, config, configProvenance }) =>
-      openRun({ target, artifactsDir, config, configProvenance }, (store) => {
+      openRun({ target, artifactsDir, config, configProvenance, kind: "inquiry" }, (store) => {
         preflightReading(target);
         recomputeBlocked(store, target);
         writeReadingRepairs(artifactsDir, repairReadingLeftovers(target, store, basename(artifactsDir)));

@@ -20,8 +20,8 @@
  * close would release work across a domain boundary the flow keeps closed. Each one the repair left
  * alone is named on stderr rather than silently skipped.
  */
+import { isExperimentLeftover } from "../../scripts/experiment-frontier.ts";
 import { inProgressIssues, recordFailedAttempt, type Store } from "../../scripts/store.ts";
-import { EXPERIMENT_TYPE } from "../../beads-dag-experiment-run/scripts/ticket.ts";
 
 /** What one leftover was resolved to: a released claim, or a status this executor leaves to its owner. */
 export type ExperimentRepair = {
@@ -48,7 +48,7 @@ export function reconcileExperiments(target: string, store: Store): ExperimentRe
   const repairs: ExperimentRepair[] = [];
   for (const issue of inProgressIssues(store, target)) {
     const label = issue.handle ?? issue.id;
-    if (issue.type !== EXPERIMENT_TYPE) {
+    if (!isExperimentLeftover(issue)) {
       const reason = `a ${issue.type} issue's status is not this executor's to repair: it claims experiment tickets only`;
       console.error(`${label}: left alone: ${reason}`);
       repairs.push({ id: issue.id, handle: issue.handle, outcome: "left-alone", reason });

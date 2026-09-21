@@ -25,18 +25,20 @@ const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SKILLS = join(REPO, "skills");
 const PACK = join(REPO, ".archon", "workflows", "beads-dag");
 
-const USAGE = `usage: loom <install|check|init> [options]
+const USAGE = `usage: loom <install|check|init|attention> [options]
 
-  install   copy every member of skills/ into the shared root, then check; point the pack link
-  check     compare the installed members and the pack link against this checkout
-  init      turn a git repo into a Target: store, yaml knobs, AGENTS.md pointers — no contract copy
+  install     copy every member of skills/ into the shared root, then check; point the pack link
+  check       compare the installed members and the pack link against this checkout
+  init        turn a git repo into a Target: store, yaml knobs, AGENTS.md pointers — no contract copy
+  attention   print the Target's attention object (cwd). Session boot. Read-only.
 
   beads-dag is an alias for loom.
 
   --dest <dir>         where skills are installed (default $HOME/.agents/skills)
   --archon-home <dir>  where the pack link lives (default $HOME/.archon/workflows)
-  --dir <dir>          init: the git repo (default cwd)
-  --prefix <name>      init: beads issue prefix (default: directory name)`;
+  --dir <dir>          init/attention: the git repo (default cwd)
+  --prefix <name>      init: beads issue prefix (default: directory name)
+  --json               attention: print the session object`;
 
 const FLOW_BEGIN = "<!-- BEGIN BEADS-DAG FLOW -->";
 const FLOW_END = "<!-- END BEADS-DAG FLOW -->";
@@ -45,7 +47,7 @@ const FLOW_BLOCK = `## Agent skills
 
 ### Issue tracker
 
-Beads store in this repo. The contract is the installed skill \`ask-loom/issue-tracker.md\` — one copy per machine, not a file in this repo. Flow vocabulary: \`ask-loom/flow-context.md\`. Landing: \`/ask-loom\`.
+Beads store in this repo. Boot with \`loom attention --json\` in the Target; do not open the contract to find work. The contract is the installed skill \`ask-loom/issue-tracker.md\` — one copy per machine, not a file in this repo. Development \`closed\` is the drain's act, as \`merged <branch>\`; a session does not \`--claim\` or \`bd close\` a work issue. Flow vocabulary: \`ask-loom/flow-context.md\`. Landing: \`/ask-loom\`.
 
 ### Triage labels
 
@@ -284,6 +286,27 @@ function init(dir: string, prefix: string | undefined): boolean {
   return true;
 }
 
+function attention(dir: string, json: boolean): boolean {
+  const root = resolve(dir);
+  const script = join(PACK, "scripts", "attention.ts");
+  if (!existsSync(script)) {
+    console.error(`no attention command in the pack: ${script}`);
+    return false;
+  }
+  const args = [script];
+  if (json) args.push("--json");
+  const result = spawnSync(process.execPath, args, {
+    cwd: root,
+    stdio: "inherit",
+    env: { ...process.env, BD_READONLY: "1" },
+  });
+  if (result.error) {
+    console.error(`cannot run attention: ${result.error.message}`);
+    return false;
+  }
+  return result.status === 0;
+}
+
 const argv = process.argv.slice(2);
 const verb = argv[0];
 function flag(name: string): string | undefined {
@@ -307,7 +330,9 @@ if (import.meta.main) {
         ? report(dest, archonHome)
         : verb === "init"
           ? init(flag("--dir") ?? process.cwd(), flag("--prefix"))
-          : undefined;
+          : verb === "attention"
+            ? attention(flag("--dir") ?? process.cwd(), argv.includes("--json"))
+            : undefined;
 
   if (ok === undefined) {
     console.error(USAGE);

@@ -1,5 +1,9 @@
 # beads-matt-dag
 
+**Sandbox clone.** Isolated copy of the live lab at `/data3/yky/beads-matt-dag` for the
+attention-and-contract work. See `SANDBOX.md`. Do not `loom install` from here; do not drain this
+checkout as the machine's Target — `postMerge` is empty so a merge here cannot retarget the pack.
+
 Lab repo for building and validating the beads-based issue-tracker flow for the matt-pocock
 engineering skills. Design record: `docs/specs/2026-09-11-beads-issue-tracker-consensus.md`.
 
@@ -19,7 +23,9 @@ sessions and drain runs here, not there. The clone's experiment-map prose is arc
 
 Issues live in this repo's own beads store, driven with `bd`; the prose stays as markdown under
 `.scratch/<feature>/issues/` and the store holds identity, status, edges, labels and comments. See
-`docs/agents/issue-tracker.md`.
+`docs/agents/issue-tracker.md`. Boot with `bun tools/flow.ts attention --json` (do not `loom install`
+from this sandbox). Take the first nonempty bucket and stop. Human face of that object: `bun tools/attention-ui/serve.ts`. Development `closed` is the drain's act,
+as `merged <branch>`; a session does not `--claim` or `bd close` a work issue.
 
 ### Triage labels
 

@@ -13,15 +13,18 @@
  */
 import { configLine, type ConfigProvenance, type PackConfig } from "./config.ts";
 import { nodeLine, OPENED } from "./node-outcomes.ts";
-import { recordRunLock, releaseRunLock, stoleLine, takeRunLock } from "./run-lock.ts";
+import { recordRunLock, releaseRunLock, stoleLine, takeRunLock, type RunKind } from "./run-lock.ts";
 import { preflightStore, type Store } from "./store.ts";
 
-/** What the shell is handed: the Target, this run's artifacts, and the config the line is built from. */
+export type { RunKind };
+
+/** What the shell is handed: the Target, this run's artifacts, the config the line is built from, and which executor this is. */
 export type OpenRunEnv = {
   target: string;
   artifactsDir: string;
   config: PackConfig;
   configProvenance: ConfigProvenance;
+  kind: RunKind;
 };
 
 /**
@@ -41,8 +44,8 @@ export async function openRun(
   env: OpenRunEnv,
   work: (store: Store) => void | Promise<void>,
 ): Promise<string> {
-  const { target, artifactsDir, config, configProvenance } = env;
-  const lock = takeRunLock(target, artifactsDir);
+  const { target, artifactsDir, config, configProvenance, kind } = env;
+  const lock = takeRunLock(target, artifactsDir, kind);
   try {
     const stole = stoleLine(lock);
     if (stole !== undefined) console.error(stole);

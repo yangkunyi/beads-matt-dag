@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 Implement the work described by the user in a spec or an issue.
 
-An issue reaches you as a **handle** (`<feature>/<NN>`) and the **path to its published body**. Read the body first: it is what to build, it is frozen, and the issue's state is the tracker's — the contract is the installed sibling `ask-loom/issue-tracker.md`. Unsure? `/ask-loom`.
+An issue reaches you as a **handle** (`<feature>/<NN>`) and the **path to its published body**. Read the YAML head first (`goal`, `acceptance`): that is the contract. The prose below is disclosed — open it only when the head is not enough. A body with no head is still the brief; read the whole file. The body is frozen, and the issue's state is the tracker's — the contract is the installed sibling `ask-loom/issue-tracker.md`. Unsure? `/ask-loom`.
 
 This skill is **development** work. `closed` means the merge is already on Main (merge-before-stamp). Inquiry and experiments have their own executors; do not implement those here. A spec path is a brief too, and a spec is not an issue: it has no handle, no claim and no branch of its own, so its work happens on the branch you are already on.
 

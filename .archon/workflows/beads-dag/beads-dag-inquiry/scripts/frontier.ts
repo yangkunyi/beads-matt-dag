@@ -78,11 +78,16 @@ function exclusionRule(issue: StoreIssue, attempted: ReadonlySet<string>): Exclu
  * A question this run itself claimed is left out - it is the run's own, already in `attempted-ids.json`,
  * and re-reporting it every cycle would say nothing.
  */
-function composeFrontier(
+/**
+ * The dry reading frontier: ready and in-progress lists in, no store read. Pick queries, then calls
+ * this; attention passes lists it already holds. Sort is part of the frontier, so the two askers
+ * cannot order the same questions two ways.
+ */
+export function composeReadingFrontier(
   ready: StoreIssue[],
   inProgress: StoreIssue[],
   attempted: ReadonlySet<string>,
-): { candidates: StoreIssue[]; excluded: ExcludedIssue[] } {
+): ReadingFrontier {
   const candidates: StoreIssue[] = [];
   const excluded: ExcludedIssue[] = [];
   for (const issue of ready) {
@@ -96,7 +101,10 @@ function composeFrontier(
     if (!issue.labels.includes(READING_LEG_LABEL) && !issue.labels.includes(DRAFT_LABEL)) continue;
     excluded.push({ id: issue.id, handle: issue.handle, rule: "already-claimed" });
   }
-  return { candidates, excluded };
+  return {
+    candidates: candidates.sort((a, b) => compareHandles(handleOrId(a), handleOrId(b))),
+    excluded,
+  };
 }
 
 /**
@@ -143,10 +151,9 @@ export function readingFrontier(
   target: string,
   attempted: ReadonlySet<string>,
 ): ReadingFrontier {
-  const { candidates, excluded } = composeFrontier(
+  return composeReadingFrontier(
     readyIssues(store, target),
     inProgressIssues(store, target),
     attempted,
   );
-  return { candidates: candidates.sort((a, b) => compareHandles(handleOrId(a), handleOrId(b))), excluded };
 }

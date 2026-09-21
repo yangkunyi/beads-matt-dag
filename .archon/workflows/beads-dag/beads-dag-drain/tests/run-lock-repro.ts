@@ -94,11 +94,11 @@ try {
     const stealLines = opened.stderr.split("\n").filter((line) => line.includes("run lock: stole"));
     expectEqual("one line says the lock was stolen", stealLines.length, 1);
     expect("naming the dead holder", stealLines[0]!.includes("the-killed-run") && stealLines[0]!.includes("2147483647"), stealLines[0]);
-    expectEqual("the lock now names this run", readFileSync(runLock, "utf8"), `${process.pid}\n${basename(artifacts)}\n`);
+    expectEqual("the lock now names this run", readFileSync(runLock, "utf8"), `${process.pid}\n${basename(artifacts)}\ndrain\n`);
     expectEqual(
       "and the run's own record says what it took over",
       JSON.parse(readFileSync(join(artifacts, RUN_LOCK_FILE), "utf8")),
-      { run: basename(artifacts), pid: process.pid, path: runLock, stole: { pid: 2147483647, name: "the-killed-run" } },
+      { run: basename(artifacts), pid: process.pid, path: runLock, kind: "drain", stole: { pid: 2147483647, name: "the-killed-run" } },
     );
     expect("the run proceeded", existsSync(join(artifacts, "review-base")));
   });
@@ -112,11 +112,11 @@ try {
     const opened = runScript(drain.script("open"), root, { ARTIFACTS_DIR: artifacts });
     expectEqual("a run with no holder opens", opened.status, 0);
     expectEqual("and speaks the protocol", opened.stdout, "opened\n");
-    expectEqual("taking the lock", readFileSync(runLock, "utf8"), `${process.pid}\n${basename(artifacts)}\n`);
+    expectEqual("taking the lock", readFileSync(runLock, "utf8"), `${process.pid}\n${basename(artifacts)}\ndrain\n`);
     expectEqual(
       "and saying so in its artifacts",
       JSON.parse(readFileSync(join(artifacts, RUN_LOCK_FILE), "utf8")),
-      { run: basename(artifacts), pid: process.pid, path: runLock },
+      { run: basename(artifacts), pid: process.pid, path: runLock, kind: "drain" },
     );
 
     // The Main lock is untouched by the run lock: its own writes still run, and do not wait a run's
@@ -153,7 +153,7 @@ try {
     expectEqual("a lock with no readable pid does not block the next drain", opened.status, 0);
     expectEqual("which opens", opened.stdout, "opened\n");
     expect("and the steal says what it found", opened.stderr.includes("no readable pid"), opened.stderr);
-    expectEqual("the lock is this run's now", readFileSync(runLock, "utf8"), `${process.pid}\n${basename(artifacts)}\n`);
+    expectEqual("the lock is this run's now", readFileSync(runLock, "utf8"), `${process.pid}\n${basename(artifacts)}\ndrain\n`);
     expectEqual(
       "and its record says the same",
       JSON.parse(readFileSync(join(artifacts, RUN_LOCK_FILE), "utf8")).stole,

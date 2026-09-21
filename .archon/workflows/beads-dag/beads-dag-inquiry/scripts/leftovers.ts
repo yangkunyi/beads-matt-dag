@@ -34,7 +34,7 @@ import { mkdirSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { commentIssue, inProgressIssues, recordFailedAttempt, reopenIssue, type Store, type StoreIssue } from "../../scripts/store.ts";
 import { DRAFT_LABEL } from "../../beads-dag-read/scripts/reading.ts";
-import { READING_LEG_LABEL } from "./inquiry.ts";
+import { GRILL_LABEL, READING_LEG_LABEL } from "./inquiry.ts";
 
 /**
  * What one leftover was resolved to: the reading landed and the status was stale, the reading never
@@ -55,8 +55,23 @@ export const NO_DRAFT_REASON = "leftover in progress and no draft answer on the 
 const REPAIRS_FILE = "repairs.json";
 
 /** A `decision` issue a reading run may have claimed: the leg label gates the frontier, the draft label marks a landing. */
-function isReadingClaim(issue: StoreIssue): boolean {
-  return issue.labels.includes(READING_LEG_LABEL) || issue.labels.includes(DRAFT_LABEL);
+export function isReadingClaim(issue: StoreIssue): boolean {
+  return issue.type === "decision" && (issue.labels.includes(READING_LEG_LABEL) || issue.labels.includes(DRAFT_LABEL));
+}
+
+/** A `decision` issue a grill run's seed may have claimed. Reading repair leaves these alone. */
+export function isGrillClaim(issue: StoreIssue): boolean {
+  return issue.type === "decision" && issue.labels.includes(GRILL_LABEL);
+}
+
+/** In-progress questions this executor would repair, not leave alone. */
+export function readingLeftovers(issues: readonly StoreIssue[]): StoreIssue[] {
+  return issues.filter(isReadingClaim);
+}
+
+/** In-progress grilling claims. Grill itself does not repair; attention still names them. */
+export function grillLeftovers(issues: readonly StoreIssue[]): StoreIssue[] {
+  return issues.filter((issue) => isGrillClaim(issue) && !isReadingClaim(issue));
 }
 
 /**

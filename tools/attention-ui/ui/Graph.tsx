@@ -1,14 +1,7 @@
 /**
- * React Flow as a view of the store graph. Positions live in this component. Issues sit in three
- * domain lanes; the default frame is the neighbourhood of the selection, and Show all opts into the
- * full graph. onConnect proposes into the write door — same-domain `blocks`, cross-domain a pick of
- * `relates-to` or `discovered-from` — and never lands an edge on React state. A successful write
- * re-reads the store and the canvas keeps the coordinates already dragged; a refusal leaves the view
- * unchanged. Dragging a box selects the issues inside it; Shift adds to the selection. Delete on a
- * node opens confirm delete for the selected set; Delete on an edge still writes `remove-edge`.
- * `fitView` runs once on init, never after a write.
+ * Beads graph on the attention page. Positions live here. Issues sit in three domain lanes.
+ * Connect proposes into the tagged write door; it does not land an edge on React state.
  */
-
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Lightbulb, Link2 } from "lucide-react";
 import { toast } from "sonner";
@@ -29,37 +22,46 @@ import {
 	type NodeChange,
 	type NodeProps,
 } from "@xyflow/react";
-import { postOperatorAction } from "../client.ts";
-import {
-	LANE_LABEL,
-	projectGraph,
-	proposeConnect,
-	type ViewNodeData,
-} from "../graph-view.ts";
+import { postOperatorAction } from "../../operator-ui/client.ts";
+import { LANE_LABEL, projectGraph, proposeConnect, type ViewNodeData } from "../../operator-ui/graph-view.ts";
+import type { Overview, OverviewDomain } from "../../operator-ui/model.ts";
 import { cn } from "./cn.ts";
-import { Button, Label, Popover } from "./kit.tsx";
-import type { Overview, OverviewDomain } from "../model.ts";
+import { Button, Label } from "./kit.tsx";
+import "@xyflow/react/dist/style.css";
 
 type IssueNode = Node<ViewNodeData, "issue">;
 type LaneNode = Node<{ domain: OverviewDomain }, "lane">;
 type CanvasNode = IssueNode | LaneNode;
 type RelationEdge = Edge<{ relation: string }>;
 
+const DOMAIN_BORDER: Record<OverviewDomain, string> = {
+	inquiry: "border-inquiry",
+	development: "border-development",
+	experiment: "border-experiment",
+};
+
+const LANE_FILL: Record<OverviewDomain, string> = {
+	inquiry: "bg-inquiry/10",
+	development: "bg-development/10",
+	experiment: "bg-experiment/10",
+};
+
 function IssueNodeView({ data, selected }: NodeProps<IssueNode>) {
 	return (
 		<div
 			className={cn(
-				"issue-node",
-				`domain-${data.domain}`,
-				`status-${data.status}`,
-				selected && "selected",
-				data.live && "live",
+				"relative h-[52px] w-[200px] rounded-lg border-2 bg-card px-3 py-2 text-xs",
+				DOMAIN_BORDER[data.domain],
+				data.status === "in_progress" && "bg-warning",
+				data.status === "closed" && "bg-muted",
+				selected && "border-4",
+				data.live && "border-live border-[3px]",
 			)}
 		>
 			<Handle type="target" position={Position.Left} />
-			<div className="issue-id">{data.handle}</div>
-			<div className="issue-title">{data.title}</div>
-			{data.live ? <span className="live-tag">live</span> : null}
+			<div className="font-semibold">{data.handle}</div>
+			<div className="truncate text-muted-foreground">{data.title}</div>
+			{data.live ? <span className="absolute top-1.5 right-2.5 text-[10px] font-bold text-live">live</span> : null}
 			<Handle type="source" position={Position.Right} />
 		</div>
 	);
@@ -67,8 +69,10 @@ function IssueNodeView({ data, selected }: NodeProps<IssueNode>) {
 
 function LaneNodeView({ data }: NodeProps<LaneNode>) {
 	return (
-		<div className={cn("lane-band", `lane-${data.domain}`)}>
-			<span className="lane-label">{LANE_LABEL[data.domain]}</span>
+		<div className={cn("relative pointer-events-none h-full w-full rounded-[10px] border border-dashed border-border", LANE_FILL[data.domain])}>
+			<span className="absolute top-2 left-3 text-[11px] font-semibold tracking-wider uppercase text-muted-foreground">
+				{LANE_LABEL[data.domain]}
+			</span>
 		</div>
 	);
 }
@@ -111,32 +115,25 @@ function toFlow(
 			source: edge.source,
 			target: edge.target,
 			data: { relation: edge.relation },
-			className: edge.relation === "blocks" ? "edge-blocks" : "edge-handoff",
 			style: edge.relation === "blocks" ? undefined : { strokeDasharray: "6 4" },
 			markerEnd: { type: MarkerType.ArrowClosed },
 		})),
 	};
 }
 
-function sameIdSet(left: readonly string[], right: readonly string[]): boolean {
-	if (left.length !== right.length) return false;
-	const rightSet = new Set(right);
-	return left.every((id) => rightSet.has(id));
-}
-
 function GraphCanvas(props: {
 	overview: Overview;
-	selected: string[];
-	onSelect: (ids: string[]) => void;
-	onAskDelete?: () => void;
+	selectedId: string | undefined;
+	onSelect: (id: string | undefined) => void;
 	writeEndpoint: string | null;
 	onWritten: () => void;
 }) {
-	const { overview, selected, onSelect, onAskDelete, writeEndpoint, onWritten } = props;
+	const { overview, selectedId, onSelect, writeEndpoint, onWritten } = props;
 	const dragged = useRef<Record<string, { x: number; y: number }>>({});
-	const boxSelecting = useRef(false);
 	const fitted = useRef(false);
 	const [showAll, setShowAll] = useState(false);
+	/** Memoised on the id: a fresh `[]`/`[id]` every render re-set React Flow's store forever. */
+	const selected = useMemo(() => (selectedId === undefined ? [] : [selectedId]), [selectedId]);
 	const projected = useMemo(() => toFlow(overview, selected, showAll), [overview, selected, showAll]);
 	const [nodes, setNodes] = useState<CanvasNode[]>(projected.nodes);
 	const [edges, setEdges] = useState<RelationEdge[]>(projected.edges);
@@ -152,23 +149,20 @@ function GraphCanvas(props: {
 		setEdges(projected.edges);
 	}, [projected]);
 
-	const onNodesChange = useCallback(
-		(changes: NodeChange<CanvasNode>[]) => {
-			if (changes.some((change) => change.type === "remove")) onAskDelete?.();
-			const kept = changes.filter((change) => change.type !== "remove");
-			if (kept.length === 0) return;
-			setNodes((current) => {
-				const next = applyNodeChanges(kept, current);
-				for (const change of kept) {
-					if (change.type === "position" && change.position !== undefined && !change.id.startsWith("lane:")) {
-						dragged.current[change.id] = change.position;
-					}
+	// `select` is dropped: the page owns selection, and applying it here fights the projection.
+	const onNodesChange = useCallback((changes: NodeChange<CanvasNode>[]) => {
+		const kept = changes.filter((change) => change.type !== "remove" && change.type !== "select");
+		if (kept.length === 0) return;
+		setNodes((current) => {
+			const next = applyNodeChanges(kept, current);
+			for (const change of kept) {
+				if (change.type === "position" && change.position !== undefined && !change.id.startsWith("lane:")) {
+					dragged.current[change.id] = change.position;
 				}
-				return next;
-			});
-		},
-		[onAskDelete],
-	);
+			}
+			return next;
+		});
+	}, []);
 
 	const writeEdge = useCallback(
 		(intent: "add-edge" | "remove-edge", from: string, to: string, type: string) => {
@@ -183,8 +177,6 @@ function GraphCanvas(props: {
 					setStatus(reason);
 					toast.error(reason);
 				})
-				// Either way the choice is spent: the edge landed, or the door refused it and said why. A
-				// picker left open after a success let the operator post the same crossing twice.
 				.finally(() => setPick(null));
 		},
 		[writeEndpoint, onWritten],
@@ -196,12 +188,7 @@ function GraphCanvas(props: {
 			const sourceIssue = overview.issues.find((issue) => issue.id === connection.source);
 			const targetIssue = overview.issues.find((issue) => issue.id === connection.target);
 			if (sourceIssue === undefined || targetIssue === undefined) return;
-			const proposal = proposeConnect(
-				connection.source,
-				connection.target,
-				sourceIssue.domain,
-				targetIssue.domain,
-			);
+			const proposal = proposeConnect(connection.source, connection.target, sourceIssue.domain, targetIssue.domain);
 			if ("pick" in proposal) {
 				setPick({ from: proposal.from, to: proposal.to });
 				return;
@@ -214,46 +201,31 @@ function GraphCanvas(props: {
 	const onEdgesChange = useCallback(
 		(changes: EdgeChange<RelationEdge>[]) => {
 			const kept = changes.filter((change) => change.type !== "remove");
-			if (kept.length > 0) {
-				setEdges((current) => applyEdgeChanges(kept, current));
-			}
-			const selectedSet = new Set(selected);
+			if (kept.length > 0) setEdges((current) => applyEdgeChanges(kept, current));
 			for (const change of changes) {
 				if (change.type !== "remove") continue;
 				const edge = edges.find((item) => item.id === change.id);
 				const relation = edge?.data?.relation;
 				if (edge === undefined || relation === undefined) continue;
-				// A node Delete also removes connected edges in React Flow; those are not an edge write.
-				if (selectedSet.has(edge.source) || selectedSet.has(edge.target)) continue;
+				if (edge.source === selectedId || edge.target === selectedId) continue;
 				writeEdge("remove-edge", edge.source, edge.target, relation);
 			}
 		},
-		[edges, selected, writeEdge],
+		[edges, selectedId, writeEdge],
 	);
 
-	const onSelectionChange = useCallback(
-		({ nodes: next }: { nodes: Array<{ id: string }>; edges: unknown[] }) => {
-			const ids = next.map((node) => node.id);
-			if (sameIdSet(ids, selected)) return;
-			onSelect(ids);
+	// Selection is written up only by clicks. Also subscribing to `onSelectionChange` made the page and
+	// React Flow's store own the same fact, and the two echoed each other into React #185.
+	const onNodeClick = useCallback(
+		(_event: unknown, node: CanvasNode) => {
+			if (node.type !== "issue") return;
+			onSelect(node.id);
 		},
-		[onSelect, selected],
+		[onSelect],
 	);
-
-	const onSelectionStart = useCallback(() => {
-		boxSelecting.current = true;
-	}, []);
-
-	const onSelectionEnd = useCallback(() => {
-		// React Flow also fires onPaneClick at the end of a box drag; keep the flag through that click.
-		requestAnimationFrame(() => {
-			boxSelecting.current = false;
-		});
-	}, []);
 
 	const onPaneClick = useCallback(() => {
-		if (boxSelecting.current) return;
-		onSelect([]);
+		onSelect(undefined);
 	}, [onSelect]);
 
 	const onInit = useCallback((instance: { fitView: () => void }) => {
@@ -262,57 +234,44 @@ function GraphCanvas(props: {
 		instance.fitView();
 	}, []);
 
-	const onBeforeDelete = useCallback(
-		async ({ nodes: removing }: { nodes: Array<{ id: string }>; edges: unknown[] }) => {
-			if (removing.length === 0) return true;
-			onAskDelete?.();
-			return false;
-		},
-		[onAskDelete],
-	);
-
 	const writable = writeEndpoint !== null;
 
 	return (
-		<div className="relative">
+		<div className="relative h-full">
 			<ReactFlow
 				nodes={nodes}
 				edges={edges}
 				onNodesChange={onNodesChange}
 				onEdgesChange={onEdgesChange}
 				onConnect={onConnect}
-				onSelectionChange={onSelectionChange}
-				onSelectionStart={onSelectionStart}
-				onSelectionEnd={onSelectionEnd}
+				onNodeClick={onNodeClick}
 				onPaneClick={onPaneClick}
 				onInit={onInit}
-				onBeforeDelete={onBeforeDelete}
 				nodeTypes={nodeTypes}
-				deleteKeyCode={writable ? ["Backspace", "Delete"] : null}
-				multiSelectionKeyCode="Shift"
+				deleteKeyCode={null}
+				multiSelectionKeyCode={null}
 				selectionKeyCode={null}
-				selectionOnDrag
-				panOnDrag={[1, 2]}
+				panOnDrag
 				nodesConnectable={writable}
 			>
 				<Background />
 				<Controls />
-				<Panel position="top-right" className="graph-frame-control">
-					<Label>
+				<Panel position="top-right" className="m-2 rounded-md border border-border bg-card px-2.5 py-1.5">
+					<Label className="inline-flex items-center gap-2 text-xs">
 						<input
 							id="graph-show-all"
 							type="checkbox"
 							checked={showAll}
 							onChange={() => setShowAll((on) => !on)}
-						/>{" "}
+						/>
 						Show all
 					</Label>
 				</Panel>
 			</ReactFlow>
 			{pick === null ? null : (
-				<Popover label="Choose crossing kind" open className="right-4 top-4">
-					<p className="muted">Cross-domain connect cannot be blocks. Pick a crossing kind.</p>
-					<div className="connect-pick-actions">
+				<div className="absolute top-4 right-4 z-10 w-72 rounded-md border border-border bg-card p-3 shadow-sm">
+					<p className="text-sm text-muted-foreground">Cross-domain connect cannot be blocks. Pick a crossing kind.</p>
+					<div className="mt-2 flex flex-wrap gap-2">
 						<Button type="button" onClick={() => writeEdge("add-edge", pick.from, pick.to, "relates-to")}>
 							<Link2 aria-hidden="true" size={14} />
 							relates-to
@@ -321,14 +280,14 @@ function GraphCanvas(props: {
 							<Lightbulb aria-hidden="true" size={14} />
 							discovered-from
 						</Button>
-						<Button type="button" onClick={() => setPick(null)}>
+						<Button type="button" variant="outline" onClick={() => setPick(null)}>
 							Cancel
 						</Button>
 					</div>
-				</Popover>
+				</div>
 			)}
 			{status ? (
-				<p className="graph-status" id="graph-status">
+				<p id="graph-status" className="absolute top-3 left-3 z-10 max-w-[calc(100%-24px)] rounded-md border border-warning-border bg-warning px-2.5 py-2 text-sm">
 					{status}
 				</p>
 			) : null}
@@ -338,9 +297,8 @@ function GraphCanvas(props: {
 
 export function Graph(props: {
 	overview: Overview;
-	selected: string[];
-	onSelect: (ids: string[]) => void;
-	onAskDelete?: () => void;
+	selectedId: string | undefined;
+	onSelect: (id: string | undefined) => void;
 	writeEndpoint: string | null;
 	onWritten: () => void;
 }) {
@@ -348,9 +306,5 @@ export function Graph(props: {
 	useEffect(() => {
 		setReady(true);
 	}, []);
-	return (
-		<div id="graph-wrap" data-graph="react-flow">
-			{ready ? <GraphCanvas {...props} /> : null}
-		</div>
-	);
+	return <div id="graph-wrap" data-graph="react-flow">{ready ? <GraphCanvas {...props} /> : null}</div>;
 }

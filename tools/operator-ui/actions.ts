@@ -2,8 +2,9 @@
  * The operator surface's one write door.
  *
  * A tagged intent goes in; a store write or a run launch comes out, or a refusal and nothing
- * is written. Comment is `bd comment` on the selected issue. Create requires a type (the domain),
- * lands as `needs-triage` without the gate, and writes a body of handle and prose. Start launches
+ * is written. Comment is `bd comment` on the selected issue. Create captures a `decision`
+ * (`needs-triage`, no gate, body of handle and prose); optional `from` hangs it off that issue.
+ * Start launches
  * that domain's existing run with the selected ids as the allow-list; grill launches the grill run
  * with the one selected id as its seed. Neither claims, merges, or stamps `closed`. Intra-domain
  * `blocks` is `bd dep add` / `bd dep remove`. Crossing `relates-to`
@@ -16,7 +17,7 @@
  */
 
 import { addComment } from "./comment";
-import { createIssue, parseCreateInput } from "./create";
+import { attachGrownFrom, createIssue, parseCreateInput } from "./create";
 import { deleteIssue } from "./delete";
 import { parseAnswerRoundBody, serializeGrillAnswers } from "./round";
 import { domainOf } from "./model";
@@ -271,8 +272,8 @@ export type OperatorActionExtras = {
 };
 
 /**
- * Apply one tagged write. Accepted intents are `comment` (`bd comment`), `create` (body plus
- * `bd create`), `start` (launch that domain's existing run with the selected ids as the
+ * Apply one tagged write. Accepted intents are `comment` (`bd comment`), `create` (a decision,
+ * body plus `bd create`; optional `from` hangs it off an existing issue), `start` (launch that domain's existing run with the selected ids as the
  * allow-list; does not write the store), `grill` (launch the grill run with the one selected id as
  * its seed; does not write the store either), `add-edge` / `remove-edge` (store deps), `triage`
  * (one of the five labels, replacing the rest of the family), `delete` (`bd delete --force`
@@ -296,7 +297,16 @@ export function applyOperatorAction(bd: BdWriteRunner, raw: string, extras: Oper
 			if (dir === undefined || dir === "") {
 				throw new OperatorActionRefused("create needs a target");
 			}
-			createIssue(bd, input, dir);
+			const source =
+				input.from === undefined ? undefined : findIssue(extras.issues ?? [], input.from);
+			if (input.from !== undefined && source === undefined) {
+				throw new OperatorActionRefused("create needs a known issue");
+			}
+			const id = createIssue(bd, input, dir);
+			if (source !== undefined) {
+				if (id === "") throw new OperatorActionRefused("create needs a source");
+				attachGrownFrom(bd, id, source);
+			}
 		} catch (error) {
 			asRefused(error, ["create needs"]);
 		}

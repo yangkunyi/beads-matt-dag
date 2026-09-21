@@ -124,6 +124,8 @@ export type StoreIssue = {
   id: string;
   /** The issue's type. `decision` is the other domain: it never enters a drain's frontier. */
   type: string;
+  /** The issue's title, as the store answers it. Attention prints it; pick does not read it. */
+  title: string;
   status: string;
   labels: string[];
   /** `<feature>/<NN>`, when the tracker published one: what branch and worktree names derive from. */
@@ -181,6 +183,7 @@ function toStoreIssue(raw: unknown, command: string): StoreIssue {
   return {
     id,
     type: text(issue.issue_type) ?? "",
+    title: text(issue.title) ?? "",
     status: text(issue.status) ?? "",
     labels: Array.isArray(issue.labels) ? issue.labels.filter((l): l is string => typeof l === "string") : [],
     handle: text(metadata.handle),

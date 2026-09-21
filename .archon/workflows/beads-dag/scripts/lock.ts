@@ -58,13 +58,14 @@ export function lockFilePath(target: string): string {
   return join(gitDir(target), LOCK_NAME);
 }
 
-/** What a lock file records: the holder's pid, and the holder's own name when it wrote one. */
+/** What a lock file records: the holder's pid, and an optional name. Extra lines are the caller's. */
 export type LockHolder = { pid: number; name?: string };
 
 /**
- * A lock file's holder, read the one way: the pid on the first line, the holder's name (if any) after
- * it. An unreadable file or an unusable pid reads as no holder, which every caller treats as a dead
- * one - a lock half-written by a kill must be stolen, never waited for.
+ * A lock file's holder, read the one way: pid on the first line, name on the second. Further lines
+ * are ignored here — the run lock writes a kind on a third line and reads it itself. An unreadable
+ * file or an unusable pid reads as no holder, which every caller treats as a dead one - a lock
+ * half-written by a kill must be stolen, never waited for.
  */
 export function readLockHolder(path: string): LockHolder | undefined {
   let raw: string;
@@ -76,8 +77,10 @@ export function readLockHolder(path: string): LockHolder | undefined {
   const lines = raw.split("\n");
   const pid = Number((lines[0] ?? "").trim());
   if (!Number.isInteger(pid) || pid <= 0) return undefined;
-  const name = lines.slice(1).join("\n").trim();
-  return name === "" ? { pid } : { pid, name };
+  const name = (lines[1] ?? "").trim();
+  const holder: LockHolder = { pid };
+  if (name !== "") holder.name = name;
+  return holder;
 }
 
 /**
@@ -95,14 +98,24 @@ export function lockHolderAlive(holder: LockHolder | undefined): boolean {
   }
 }
 
-/**
- * Create a lock file exclusively for this holder. The one place a lock file is written, so the pid
- * first-line format has one producer; EEXIST is the caller's to interpret.
- */
-export function createLockFile(path: string, holder: LockHolder): number {
+/** Pid, then name when there is one. The Main lock writes this; the run lock writes its own body. */
+function lockFileBody(holder: LockHolder): string {
+  if (holder.name !== undefined && holder.name !== "") {
+    return `${holder.pid}\n${holder.name}\n`;
+  }
+  return `${holder.pid}\n`;
+}
+
+/** Exclusive create of a lock file. EEXIST is the caller's to interpret. */
+export function createExclusiveFile(path: string, body: string): number {
   const fd = openSync(path, constants.O_CREAT | constants.O_EXCL | constants.O_RDWR);
-  writeFileSync(fd, holder.name === undefined ? `${holder.pid}\n` : `${holder.pid}\n${holder.name}\n`);
+  writeFileSync(fd, body);
   return fd;
+}
+
+/** Create the Main lock file exclusively for this holder. */
+export function createLockFile(path: string, holder: LockHolder): number {
+  return createExclusiveFile(path, lockFileBody(holder));
 }
 
 /** Remove a lock file this process found dead, tolerating a waiter that got there first. */

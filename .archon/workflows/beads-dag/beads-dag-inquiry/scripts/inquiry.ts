@@ -23,6 +23,9 @@ import { EFFORT_ROOT_REL } from "../../beads-dag-read/scripts/reading.ts";
  */
 export const READING_LEG_LABEL = "wayfinder:research";
 
+/** The grilling leg. A reading run leaves these claims alone; attention names them as grill leftovers. */
+export const GRILL_LABEL = "wayfinder:grilling";
+
 /**
  * The map's own label. A map is a container, not a ticket, and it never leaves the frontier as one - even
  * though requiring the leg label already excludes it, so that the exclusions report can name the map by

@@ -18,6 +18,8 @@ below — if a term can only be explained by a command, it belongs in a spec.
 - **body** — an issue's prose: the file at `.scratch/<feature>/issues/<NN>-<slug>.md`, frozen once
   published. It carries the handle and no status — identity belongs in a document, state does not
   (ADR-0005).
+- **contract** — the YAML document that may open a body. It names the domain's required keys and no
+  state. A body with no contract is still the brief.
 - **inquiry** — the flow's half before work: literature, notes and ideas turned into decided
   questions. Its issues are the `decision` type, and it produces decisions, not deliverables. The
   design record's "research half" (§8) means this half. Called the front end until 2026-09-14, when the
@@ -43,6 +45,11 @@ below — if a term can only be explained by a command, it belongs in a spec.
 - **frontier** — what a drain may start right now: unblocked, unclaimed, gated, not already attempted
   by this drain, and not already merged. In grilling, the questions whose prerequisites are already
   settled.
+- **attention** — a read-only view of the Target: leftovers, stuck, drafts, the three domain frontiers,
+  unread experiments, and braked issues. Not an executor and not a store snapshot. A session starts
+  from it.
+- **attention UI** — the human renderer of that object: an inbox of the first nonempty bucket and the
+  beads graph on the same page. Not an executor.
 - **attempted** — an issue this drain has started at least once. Recorded per run, outside the store.
 - **Target** — the repository a drain operates on. It owns its own store.
 - **Main** — the Target's main branch: what merges land on.
@@ -53,9 +60,10 @@ below — if a term can only be explained by a command, it belongs in a spec.
 - **operator** — the human acting on the Target's issue graph without a session. Not an agent role and
   not a triage label.
 - **operator surface** — a view of that graph: issues and edges, plus the live overlay of a run. Not
-  an executor and not a local editor. A write goes to the store; the view reloads from the store and
-  keeps layout positions. Starting work still means starting the domain's existing run (drain,
-  inquiry, experiment, or grill).
+  an executor and not a local editor. The human renderer is the attention UI. A write goes to the store;
+  the view reloads from the store and keeps layout positions. Capture on the surface is a `decision`
+  (ungated); development and experiment issues are a `/to-tickets` graduation. Starting work still means
+  starting the domain's existing run (drain, inquiry, experiment, or grill).
 - **grill round** — the current numbered questions on an issue, each with choices and a recommended
   answer. The human face of grilling on the operator surface; the body stays the agent's brief. Not
   the drain frontier.

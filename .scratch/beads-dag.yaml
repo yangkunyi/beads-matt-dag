@@ -17,14 +17,6 @@ model: packy/deepseek-flash
 thinkingLevel: high
 concurrency: 1
 
-# The Target's post-merge act (pack README, "The post-merge act"): one command this repository runs
-# itself after a merge lands, so the machine's copies of the flow never describe work Main does not have.
-# `bun tools/flow.ts install` refreshes ~/.agents/skills/ from this checkout and checks the pack symlink
-# ~/.archon/workflows/beads-dag; it is idempotent, it costs about a second, and it replaces the
-# "remember to run install afterwards" step a ticket brief used to carry. `check` alone would only
-# report the drift this act exists to prevent.
-#
-# What it copies is this checkout's working tree, not HEAD: during a drain that tree sits at Main with a
-# clean skills/, which is why "right after a merge" is the correct moment for it. A session that edits
-# skills/ itself installs again once the edit is committed.
-postMerge: bun tools/flow.ts install
+# SANDBOX: postMerge is empty. `bun tools/flow.ts install` from this clone would retarget the
+# machine pack away from the live lab. Refresh the machine from /data3/yky/beads-matt-dag only.
+postMerge: ""

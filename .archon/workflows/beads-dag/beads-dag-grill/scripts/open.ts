@@ -22,7 +22,7 @@ if (import.meta.main) {
     artifacts: true,
     seed: true,
     run: async ({ target, artifactsDir, config, configProvenance, seedId }) =>
-      openRun({ target, artifactsDir, config, configProvenance }, (store) => {
+      openRun({ target, artifactsDir, config, configProvenance, kind: "grill" }, (store) => {
         const issue = issueById(store, target, seedId);
         if (issue.type !== "decision") {
           throw new Error(

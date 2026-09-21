@@ -50,11 +50,11 @@ try {
     expectEqual("open exits clean", opened.status, 0);
 
     const lock = runLockFilePath(root);
-    expectEqual("the shared run lock names this run", readFileSync(lock, "utf8"), `${process.pid}\n${basename(artifacts)}\n`);
+    expectEqual("the shared run lock names this run", readFileSync(lock, "utf8"), `${process.pid}\n${basename(artifacts)}\nexperiment\n`);
     expectEqual(
       "and the run's own artifacts record it",
       JSON.parse(readFileSync(join(artifacts, RUN_LOCK_FILE), "utf8")),
-      { run: basename(artifacts), pid: process.pid, path: lock },
+      { run: basename(artifacts), pid: process.pid, path: lock, kind: "experiment" },
     );
   });
 
