@@ -23,7 +23,9 @@
  * that lands as a store comment and survives a re-read; an issue with no round has no round form;
  * a round's number is its `round N` marker, so a second round on the same issue is a new form rather
  * than the previous round's picks; an `answer-round` body whose id is not the door's issue-id shape
- * is refused 400 by the door itself, as `answer-round`.
+ * is refused 400 by the door itself, as `answer-round`; the served snapshot is one store read,
+ * warmed at listen and rebuilt by a write through the door, so repeated GETs, the write itself,
+ * and a refused intent do not re-read `bd`.
  *
  *   bun tools/operator-ui/overview-test.ts
  */
@@ -3073,6 +3075,73 @@ expect(
 	),
 );
 await new Promise<void>((resolve, reject) => startServer.close((err) => (err ? reject(err) : resolve())));
+
+const cacheTmp = mkdtempSync(join(tmpdir(), "operator-ui-cache-"));
+const cacheLog = join(cacheTmp, "store.log");
+const cacheBd = join(cacheTmp, "cache-bd");
+writeFileSync(
+	cacheBd,
+	`#!/usr/bin/env bun
+const fs = require("fs");
+const args = process.argv.slice(2);
+if (args[0] === "--readonly") args.shift();
+fs.appendFileSync(${JSON.stringify(cacheLog)}, JSON.stringify(args) + "\\n");
+if (args.includes("list")) {
+  process.stdout.write(${JSON.stringify(listJson)});
+  process.exit(0);
+}
+if (args.includes("show")) {
+  process.stdout.write(${JSON.stringify(showJson)});
+  process.exit(0);
+}
+if (args.includes("comment")) {
+  process.exit(0);
+}
+process.stderr.write("unexpected " + args.join(" "));
+process.exit(1);
+`,
+);
+chmodSync(cacheBd, 0o755);
+const cacheServer = createOverviewServer({ dir: cacheTmp, store: cacheBd });
+const cachePort = await new Promise<number>((resolve, reject) => {
+	cacheServer.once("error", reject);
+	cacheServer.listen(0, "127.0.0.1", () => {
+		const address = cacheServer.address();
+		if (typeof address === "object" && address !== null) resolve(address.port);
+		else reject(new Error("server has no port"));
+	});
+});
+const storeReads = () =>
+	(existsSync(cacheLog) ? readFileSync(cacheLog, "utf8").trim() : "")
+		.split("\n")
+		.filter((line) => line !== "" && (JSON.parse(line) as string[]).includes("list")).length;
+expectEqual("listening warms the snapshot with one store read", storeReads(), 1);
+const cacheWarm = await fetch(`http://127.0.0.1:${cachePort}/`);
+expectEqual("GET / on the warm snapshot is 200", cacheWarm.status, 200);
+expectEqual("GET / serves the warm snapshot without another store read", storeReads(), 1);
+const cacheJson = await fetch(`http://127.0.0.1:${cachePort}/overview`);
+expectEqual("GET /overview is 200", cacheJson.status, 200);
+expectEqual("GET /overview shares the same snapshot", storeReads(), 1);
+const cachePost = await fetch(`http://127.0.0.1:${cachePort}/comment`, {
+	method: "POST",
+	headers: { "content-type": "application/json" },
+	body: JSON.stringify({ intent: "comment", id: "from-bd", text: "door reply" }),
+});
+expectEqual("POST /comment on the cache server is 204", cachePost.status, 204);
+expectEqual("the write itself reads the store no more", storeReads(), 1);
+const cacheAfter = await fetch(`http://127.0.0.1:${cachePort}/`);
+expectEqual("a door write still answers the next GET", cacheAfter.status, 200);
+expectEqual("a door write rebuilds the snapshot as the second store read", storeReads(), 2);
+const cacheRefused = await fetch(`http://127.0.0.1:${cachePort}/comment`, {
+	method: "POST",
+	headers: { "content-type": "application/json" },
+	body: JSON.stringify({ intent: "close", id: "from-bd" }),
+});
+expectEqual("POST close on the cache server is 400", cacheRefused.status, 400);
+const cacheRefusedAfter = await fetch(`http://127.0.0.1:${cachePort}/`);
+expectEqual("a refused intent still answers the next GET", cacheRefusedAfter.status, 200);
+expectEqual("a refused intent does not rebuild the snapshot", storeReads(), 2);
+await new Promise<void>((resolve, reject) => cacheServer.close((err) => (err ? reject(err) : resolve())));
 
 const contract = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "..", "docs", "agents", "issue-tracker.md"), "utf8");
 expect("contract: UI writes bd comment", contract.includes("write `bd comment`"));

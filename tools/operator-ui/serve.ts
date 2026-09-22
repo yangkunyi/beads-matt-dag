@@ -6,7 +6,10 @@
  *
  *   bun tools/operator-ui/serve.ts [--dir <target>] [--store <bd>] [--archon <bin>] [--actor <name>] [--port <n>] [--host <addr>]
  *
- * The graph is `bd list` / `bd show`, never `.beads/issues.jsonl`. The page is a React app with a
+ * The graph is `bd list` / `bd show`, never `.beads/issues.jsonl`. Those reads are one cached
+ * snapshot: listen warms it, a write through the door drops it so the next read rebuilds, and a
+ * store write from outside the door becomes visible then or at the next server start. The page is a
+ * React app with a
  * shadcn-style kit; React Flow projects the store. The client is two cached assets (`/app.js`,
  * `/app.css`) rather than 1.2 MB inlined into every response, so a second request costs the snapshot
  * JSON and nothing else. Writes go through one tagged door: a comment is
@@ -30,7 +33,14 @@ import { assembleOverview, type Overview } from "./model";
 import { fetchLive, makeArchonRunner, resolveArchon, targetRunHeld } from "./overlay";
 import { clientAssets, renderPage, type ClientAssets } from "./page";
 import { launchWithArchon, type RunLauncher } from "./start";
-import { fetchStore, makeRunner, makeWriteRunner, resolveBd, type BdWriteRunner } from "./store";
+import {
+	fetchStore,
+	makeRunner,
+	makeWriteRunner,
+	resolveBd,
+	type BdWriteRunner,
+	type FetchedStore,
+} from "./store";
 
 const USAGE = `usage: bun tools/operator-ui/serve.ts [--dir <target>] [--store <bd>] [--archon <bin>] [--actor <name>] [--port <n>] [--host <addr>]
 
@@ -43,7 +53,9 @@ const USAGE = `usage: bun tools/operator-ui/serve.ts [--dir <target>] [--store <
 
 Routes: GET / is the page, GET /overview is the same snapshot as JSON — what a write re-reads
 instead of reloading the page — GET /app.js and /app.css are the client the page links (cacheable,
-revalidated by ETag), and POST /comment is the tagged write door.
+revalidated by ETag), and POST /comment is the tagged write door. The page's store read is cached:
+listen warms it, a write through the door rebuilds it; a store write from outside the door becomes
+visible then or at the next server start.
 
 The graph is read via bd, not the jsonl export. Writes go through one tagged door. An operator
 reply is bd comment on the selected issue. Create requires a type (the domain), writes a body of
@@ -102,6 +114,12 @@ export type OverviewHandler = {
 	launchRun?: RunLauncher;
 	issues?: () => ReadonlyArray<OperatorIssue>;
 	targetHeld?: () => boolean;
+	/**
+	 * Drop the cached store read so the next page / overview rebuilds from bd. Called after a write
+	 * attempt that was not refused: a refusal writes nothing, so the snapshot it was refused against
+	 * still holds.
+	 */
+	invalidate?: () => void;
 };
 
 /**
@@ -176,10 +194,13 @@ export async function handleOverviewRequest(
 				targetHeld: handler.targetHeld?.() ?? false,
 				actor: handler.actor,
 			});
+			handler.invalidate?.();
 			return { status: 204, headers: {}, body: "" };
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			const client = error instanceof OperatorActionRefused;
+			// A refusal wrote nothing and the snapshot still holds; any other failure may have half-written.
+			if (!client) handler.invalidate?.();
 			return {
 				status: client ? 400 : 500,
 				headers: { "content-type": "text/plain; charset=utf-8" },
@@ -205,14 +226,9 @@ export type ServeOptions = {
 	targetHeld?: () => boolean;
 };
 
-function buildOverview(dir: string, store: string, archon?: string): Overview {
-	const fetched = fetchStore(makeRunner(store, dir));
-	const live = fetchLive(dir, { archon });
-	return assembleOverview(fetched.issues, fetched.commentsById, (issue) => documentsFor(issue, dir), live);
-}
-
-function buildPage(dir: string, store: string, archon?: string, actor?: string): string {
-	return renderPage(buildOverview(dir, store, archon), {
+/** The served page over one overview: what every GET / renders. */
+function pageOf(overview: Overview, actor?: string): string {
+	return renderPage(overview, {
 		commentEndpoint: "/comment",
 		overviewEndpoint: "/overview",
 		cacheClient: true,
@@ -220,13 +236,39 @@ function buildPage(dir: string, store: string, archon?: string, actor?: string):
 	});
 }
 
-function buildOverviewJson(dir: string, store: string, archon?: string, actor?: string): string {
+/** The same overview as JSON: what a write re-reads instead of reloading the page. */
+function overviewJsonOf(overview: Overview, actor?: string): string {
 	return JSON.stringify({
-		...buildOverview(dir, store, archon),
+		...overview,
 		commentEndpoint: "/comment",
 		overviewEndpoint: "/overview",
 		actor: actor ?? null,
 	});
+}
+
+/**
+ * The store read behind the page, as one cache. `fetchStore` is seconds of bd, so it is read once,
+ * warmed at listen, and re-read only after a door write drops it. The cheap joins — the live run,
+ * the documents — are rebuilt per overview, so they stay as fresh as the store read allows.
+ */
+function makeSnapshot(dir: string, store: string, archon?: string): {
+	read: () => FetchedStore;
+	overview: () => Overview;
+	drop: () => void;
+} {
+	let cached: FetchedStore | undefined;
+	const read = (): FetchedStore => (cached ??= fetchStore(makeRunner(store, dir)));
+	return {
+		read,
+		overview: () => {
+			const fetched = read();
+			const live = fetchLive(dir, { archon });
+			return assembleOverview(fetched.issues, fetched.commentsById, (issue) => documentsFor(issue, dir), live);
+		},
+		drop: () => {
+			cached = undefined;
+		},
+	};
 }
 
 function defaultLaunchRun(dir: string, archon?: string): RunLauncher {
@@ -248,12 +290,13 @@ export type OverviewServer = {
 export function createOverviewServer(options: ServeOptions): OverviewServer {
 	const write = options.write ?? makeWriteRunner(options.store, options.dir);
 	const actor = options.actor;
-	const page = options.page ?? (() => buildPage(options.dir, options.store, options.archon, actor));
-	const overviewJson =
-		options.overview ?? (() => buildOverviewJson(options.dir, options.store, options.archon, actor));
+	// One store read per generation: warmed at listen, dropped by a write through the door.
+	const snapshot = makeSnapshot(options.dir, options.store, options.archon);
+	const page = options.page ?? (() => pageOf(snapshot.overview(), actor));
+	const overviewJson = options.overview ?? (() => overviewJsonOf(snapshot.overview(), actor));
 	const assets = options.assets ?? (() => clientAssets());
 	const dir = options.dir;
-	const issues = options.issues ?? (() => fetchStore(makeRunner(options.store, options.dir)).issues);
+	const issues = options.issues ?? (() => snapshot.read().issues);
 	const targetHeld = options.targetHeld ?? (() => targetRunHeld(options.dir));
 	const launchRun = options.launchRun ?? defaultLaunchRun(options.dir, options.archon);
 	const handler: OverviewHandler = {
@@ -266,6 +309,7 @@ export function createOverviewServer(options: ServeOptions): OverviewServer {
 		launchRun,
 		issues,
 		targetHeld,
+		invalidate: snapshot.drop,
 	};
 	let server: ReturnType<typeof Bun.serve> | undefined;
 	let onError: ((err: Error) => void) | undefined;
@@ -294,6 +338,23 @@ export function createOverviewServer(options: ServeOptions): OverviewServer {
 						return new Response(out.body, { status: out.status, headers: out.headers });
 					},
 				});
+				// The first store read is seconds of bd and the client build is more: pay both here, at
+				// listen, so no first screen pays for them. A failure here is not fatal — the first
+				// request retries it and reports.
+				if (options.page === undefined || options.overview === undefined || options.issues === undefined) {
+					try {
+						snapshot.read();
+					} catch {
+						// the first request retries the read and reports
+					}
+				}
+				if (options.assets === undefined) {
+					try {
+						clientAssets();
+					} catch {
+						// the first /app.js request retries the build and reports
+					}
+				}
 				listeningListener?.();
 			} catch (error) {
 				onError?.(error instanceof Error ? error : new Error(String(error)));
