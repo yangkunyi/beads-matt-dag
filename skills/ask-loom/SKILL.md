@@ -24,8 +24,9 @@ merge onto it. Everything else is standalone, or a vocabulary layer underneath.
 - New machine: clone this checkout, run `./install.sh`, put `~/.loom/bin` on PATH. That fetches
   bun / bd / Archon at the pinned versions, then `loom install`. `archon setup` for credentials.
 - New repo: `git init` then `loom init`. Store, yaml knobs, AGENTS.md pointers. No contract copy.
-- Already a Target: skip init. Read `issue-tracker.md` and `flow-context.md` in this folder. Product
-  words: this repo's `docs/CONTEXT.md`.
+- Already a Target: skip init. Boot with `loom attention --json` (from the loom checkout:
+  `bun tools/flow.ts attention --json`). Take the first row of `work` and stop. Do not
+  open `issue-tracker.md` to find work. Product words: this repo's `docs/CONTEXT.md`.
 
 ## Which domain
 
@@ -144,8 +145,9 @@ Off the main flow, still this set.
 
 - **Operator** — human on the graph without a coding session. Writes the store through the tagged
   door. Starts the domain's existing run. Does not merge, does not close development work.
-- **Session / drain worker** — claims, implements, merges, then stamps. `closed` in development
-  means the merge is already on Main.
+- **Session / drain worker** — a drain-launched worker implements and makes no store writes. The drain
+  claims, merges, then stamps. `closed` in development means the merge is already on Main. A session
+  does not `--claim` or `bd close` a work issue.
 
 ## Paths (short)
 

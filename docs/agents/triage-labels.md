@@ -12,5 +12,5 @@ The operator face is three acts: park, run, drop. Beads primitives do the parkin
 
 `ready-for-agent` remains the drain gate. `wontfix` remains a label.
 
-These strings still exist in the family for old issues, but Capture does not stamp them and the
-inbox does not offer them: `needs-triage`, `needs-info`, `ready-for-human`.
+`needs-triage`, `needs-info`, and `ready-for-human` are not read and not offered. A question that
+is not running is `deferred`. A direction is `pinned`.

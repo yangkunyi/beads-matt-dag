@@ -16,19 +16,20 @@ import { existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { EFFORT_ROOT_REL } from "../../beads-dag-read/scripts/reading.ts";
 
-/**
- * The leg label that gates this executor's frontier, the role `ready-for-agent` plays for the drain: a
- * question nobody has labelled for a reading is not the reading executor's work. It is the flow's
- * existing word for the leg (`wayfinder:<research|prototype|grilling|task>`), so no new vocabulary.
- */
-export const READING_LEG_LABEL = "wayfinder:research";
+/** The reading gate: `bd set-state <id> leg=research` writes this label as the fast cache. */
+export const READING_LEG_LABEL = "leg:research";
 
-/**
- * The map's own label. A map is a container, not a ticket, and it never leaves the frontier as one - even
- * though requiring the leg label already excludes it, so that the exclusions report can name the map by
- * the reason that is about maps rather than by "no reading label".
- */
-export const MAP_LABEL = "wayfinder:map";
+/** The grilling leg: `bd set-state <id> leg=grilling`. A reading run leaves these claims alone. */
+export const GRILL_LABEL = "leg:grilling";
+
+/** A map is a pinned decision. It is a direction, not a ticket. */
+export function isMapContainer(issue: { status: string }): boolean {
+  return issue.status === "pinned";
+}
+
+export function hasReadingLeg(issue: { labels: readonly string[] }): boolean {
+  return issue.labels.includes(READING_LEG_LABEL);
+}
 
 /** The Target's copy of the reading tools, relative to it. Copied in, never installed. */
 export const READING_TOOLS_REL = join("tools", "inquiry");

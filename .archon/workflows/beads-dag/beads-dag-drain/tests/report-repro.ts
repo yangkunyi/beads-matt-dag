@@ -285,8 +285,7 @@ try {
       slug: "the-second-issue",
       labels: [GATE_LABEL],
     });
-    gitC(root, "add", "-A");
-    gitC(root, "commit", "-m", "the second brief");
+    commitFile(root, "SECOND.md", "second\n", "the second brief");
     const secondBrief = gitC(root, "rev-parse", "main");
 
     const open2 = runScript(drain.script("open"), root, { ARTIFACTS_DIR: run2 });

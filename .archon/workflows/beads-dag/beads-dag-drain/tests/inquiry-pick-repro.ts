@@ -32,8 +32,8 @@ import {
 } from "./target.ts";
 
 const REPORT = "pick-exclusions.json";
-const READING = "wayfinder:research";
-const MAP = "wayfinder:map";
+const READING = "leg:research";
+
 const DRAFT = "answer:draft";
 
 type ExclusionReport = {
@@ -63,8 +63,8 @@ try {
   // question the store offered and this step left out, claimed-by-someone-else included.
   await withTarget(async (root, artifacts) => {
     const eligible = publishIssue(root, { title: "eligible", type: "decision", handle: "q/01", slug: "eligible", labels: [READING] });
-    const unlabelled = publishIssue(root, { title: "grilling, not reading", type: "decision", handle: "q/02", slug: "grilling", labels: ["wayfinder:grilling"] });
-    const map = publishIssue(root, { title: "the map", type: "decision", handle: "q/03", slug: "the-map", labels: [MAP] });
+    const unlabelled = publishIssue(root, { title: "grilling, not reading", type: "decision", handle: "q/02", slug: "grilling", labels: ["leg:grilling"] });
+    const map = publishIssue(root, { title: "the map", type: "decision", handle: "q/03", slug: "the-map", status: "pinned" });
     const landed = publishIssue(root, { title: "already read", type: "decision", handle: "q/04", slug: "already-read", labels: [READING, DRAFT] });
     const claimed = publishIssue(root, { title: "someone is reading it", type: "decision", handle: "q/05", slug: "someone-is-reading-it", labels: [READING] });
     bd(root, "update", claimed.id, "-s", "in_progress");
@@ -76,14 +76,14 @@ try {
 
     const report = readReport(artifacts);
     expectEqual("the report names what was picked", report.picked, [{ id: eligible.id, handle: "q/01" }]);
-    expectEqual("the map is excluded by its own label", ruleFor(report, map.id), "map-container");
+    expectEqual("a pinned map never reaches this step", ruleFor(report, map.id), undefined);
     expectEqual("a question with no reading label is excluded", ruleFor(report, unlabelled.id), "missing-reading-label");
     expectEqual("a question whose reading landed is excluded", ruleFor(report, landed.id), "reading-already-landed");
     expectEqual("a question someone else claimed is reported too", ruleFor(report, claimed.id), "already-claimed");
     expectEqual(
       "every candidate this step left out is named, and no other question",
       report.excluded.map((e) => e.id).sort(),
-      [map.id, unlabelled.id, landed.id, claimed.id].sort(),
+      [unlabelled.id, landed.id, claimed.id].sort(),
     );
     expectEqual("the unlabelled question was not claimed", storeIssue(root, unlabelled.id).status, "open");
     expectEqual("the landed question was not claimed", storeIssue(root, landed.id).status, "open");

@@ -269,7 +269,6 @@ try {
             slug: "an-unmerged-attempt",
             branch,
             worktreeRel,
-            bodyRel: join(".scratch", "feat", "issues", "05-an-unmerged-attempt.md"),
           }),
         ),
       /refusing to remove/,

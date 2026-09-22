@@ -16,7 +16,7 @@
  *
  * What is pinned, in the order the walk happens:
  *
- *   1. the operator's publication: a `decision` ticket labelled `wayfinder:research`, carrying the handle
+ *   1. the operator's publication: a `decision` ticket labelled `leg:research`, carrying the handle
  *      and slug the note's path derives from, with its body at the handle's path;
  *   2. the executable half: `open` takes the run lock, `pick` offers exactly that handle, the reading
  *      lands (one path-scoped commit carrying the note and the receipt; a comment whose first line is the
@@ -71,7 +71,7 @@ if (!existsSync(join(TOOLS, "note.ts"))) {
 const HANDLE = "walk/01";
 const SLUG = "what-the-source-holds";
 const QUESTION = "what does the walk's source hold?";
-const READING = "wayfinder:research";
+const READING = "leg:research";
 const DRAFT = "answer:draft";
 const SOURCE_ID = "url:https://example.invalid/walk";
 const RECEIPT_TEXT = "the walk's source says one thing";
@@ -202,7 +202,7 @@ try {
     expectEqual("the turn is the reading role", turn.role, "read");
     expectEqual("keyed by the question's handle", turn.sessionKey, HANDLE);
     expectEqual("running where the Target is", turn.cwd, root);
-    expect("its brief is the body's path", turn.prompt.startsWith(bodyPath), turn.prompt);
+    expect("its brief is the description", turn.prompt.startsWith(issue.brief), turn.prompt);
     expect("plus the corpus", turn.prompt.includes(`Corpus: ${corpusRel}`), turn.prompt);
     expect("plus the note path", turn.prompt.includes(`Note: ${noteRel}`), turn.prompt);
 

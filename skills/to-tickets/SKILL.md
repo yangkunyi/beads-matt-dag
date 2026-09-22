@@ -69,25 +69,49 @@ Iterate until the user approves the breakdown.
 
 Publish in dependency order — blockers first, so every edge already has an issue to point at — following the contract's publish step. A tracker that numbers its own issues keeps those numbers; the contract says how an issue is identified there. What publication does:
 
-- **One issue per slice.** The body is that issue's prose — the end-to-end behaviour, not a layer-by-layer list — written once, at publication.
-- **The two keys go on with the issue.** `handle` (`<feature>/<NN>`) and `slug` are published together, by the contract's creation step, and the branch, the worktree and the body's path derive from those two keys and nothing else — so a hand-run and a drain compute the same names.
+- **One issue per slice.** The brief is that issue's contract — YAML head, then optional disclosed prose — written once, into `--description`.
+- **The two keys go on with the issue.** `handle` (`<feature>/<NN>`) and `slug` are published together, by the contract's creation step, and the branch and the worktree derive from those two keys and nothing else — so a hand-run and a drain compute the same names.
 - **A handle names one issue.** Look the handle up first, with the contract's by-handle lookup; when one already carries it, stop and name that existing issue instead of publishing a second. Two issues under one handle answer to the same git names, and the drain's lookup refuses a handle that names two.
 - **Every `Blocked by` entry becomes one blocking edge**: the blocker blocks the dependent. The edge is the whole of waiting — a blocked issue is held back by its blocker's closure, and by nothing else.
-- **The gate label goes on at publication, unconditionally.** Every published issue carries `ready-for-agent`, blockers included: readiness is the tracker's own derivation from the edges, so no issue waits on a label move.
+- **The gate label is development-only.** Development publication applies `ready-for-agent` in the same act, blockers included. Inquiry and experiments never get that gate.
+- **The brief is `--description`.** Do not write a sidecar `.scratch/.../issues/*.md`. Do not also copy the head into `--acceptance` or `--design`.
+- **Refuse** a `Status:` line, and refuse a development description with no YAML head naming `goal` and `acceptance`. Inquiry needs `question`; experiments need `metric`, `reference`, and `pin`.
 
-Publication creates: it closes no issue — `closed` means the work is in Main — and it leaves any parent issue untouched.
+Publication creates: it closes no issue — development `closed` means the work is in Main — and it leaves any parent issue untouched.
 
-<issue-body-template>
+<issue-body-template domain="development">
 
-# <handle> — <issue title>
+---
+goal: <one sentence, user-visible behaviour>
+acceptance:
+  - <checkable criterion>
+# spec: docs/specs/<date>-<slug>.md
+---
 
-**What to build:** the end-to-end behaviour this issue makes work, from the user's perspective — not a layer-by-layer implementation list.
-
-- [ ] Acceptance criterion 1
-- [ ] Acceptance criterion 2
+Optional disclosed prose.
 
 </issue-body-template>
 
-The skeleton above is the prose every issue carries; the contract's convention adds whatever header the tracker needs around it. Keep the body to that prose. Avoid specific file paths or code snippets — they go stale fast. Exception: if a prototype produced a snippet that encodes a decision more precisely than prose can (state machine, reducer, schema, type shape), inline it and note briefly that it came from a prototype. Trim to the decision-rich parts — not a working demo, just the important bits.
+<issue-body-template domain="inquiry">
+
+---
+question: <one sentence>
+must_cite: true
+done_when: <what the draft/note must contain>
+---
+
+</issue-body-template>
+
+<issue-body-template domain="experiments">
+
+---
+metric: <name> from <source>
+reference: <threshold | baseline | exploratory>
+pin: data=<…> commit=<…>
+---
+
+</issue-body-template>
+
+Keep optional prose short. Avoid specific file paths or code snippets — they go stale fast. Exception: if a prototype produced a snippet that encodes a decision more precisely than prose can (state machine, reducer, schema, type shape), inline it and note briefly that it came from a prototype. Trim to the decision-rich parts — not a working demo, just the important bits.
 
 Work the **frontier**: any issue whose blockers are all done. For a purely linear chain that means top to bottom.

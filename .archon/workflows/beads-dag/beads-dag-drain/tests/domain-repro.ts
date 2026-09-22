@@ -293,8 +293,8 @@ try {
     expectEqual("not even the gate-labelled ready one", storeIssue(root, ready.id).status, "open");
     expectEqual("nor the experiment under way", storeIssue(root, running.id).status, "in_progress");
     const report = readReport(artifacts);
-    expectEqual("the ready decision is reported by type", ruleFor(report, ready.id), "non-work-type");
-    expectEqual("and the claimed ones were never in the store's answer", report.excluded.map((e) => e.id), [ready.id]);
+    expectEqual("the ready decision never reaches this step", ruleFor(report, ready.id), undefined);
+    expectEqual("and the claimed ones were never in the store's answer", report.excluded.map((e) => e.id), []);
   });
 
   // The same walk, into the other non-work type: an experiment issue's closure means its result is

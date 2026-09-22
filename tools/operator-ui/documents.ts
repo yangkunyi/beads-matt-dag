@@ -1,7 +1,8 @@
 /**
  * The documents one issue owns, derived from its handle and slug — never discovered by walking.
  *
- * Body, note and record paths are the same names the tracker and the executors already use. An issue
+ * Note and record paths are the same names the executors already write. The brief is the bead's
+ * description, not a file. An issue
  * whose metadata cannot name a file contributes no documents rather than failing the overview: a view
  * still shows the store's issue.
  */
@@ -25,10 +26,6 @@ export function issueNames(issue: { id: string; handle: string | undefined; slug
 	const parts = HANDLE.exec(issue.handle);
 	if (!parts || !SLUG.test(issue.slug)) return undefined;
 	return { handle: issue.handle, feature: parts[1]!, number: parts[2]!, slug: issue.slug };
-}
-
-export function bodyRel(names: IssueNames): string {
-	return join(".scratch", names.feature, "issues", `${names.number}-${names.slug}.md`);
 }
 
 export function noteRel(names: IssueNames): string {
@@ -61,7 +58,7 @@ export function documentsFor(issue: StoreIssue, targetOrProbe: string | FileProb
 	const names = issueNames(issue);
 	if (names === undefined) return [];
 	const probe = typeof targetOrProbe === "string" ? probeTarget(targetOrProbe) : targetOrProbe;
-	const docs: OverviewDocument[] = [document("body", bodyRel(names), probe)];
+	const docs: OverviewDocument[] = [];
 	if (issue.type === "decision") docs.push(document("note", noteRel(names), probe));
 	if (issue.type === "experiment") docs.push(document("record", recordRel(names), probe));
 	return docs;

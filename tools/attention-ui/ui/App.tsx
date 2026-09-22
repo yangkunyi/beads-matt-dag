@@ -1,0 +1,578 @@
+/**
+ * Attention inbox: the human face of the same JSON a session boots from. The first row is the
+ * default selection. A row's `next` is the primary act. Any open issue can also start a grill, and
+ * the current round — already parsed on the overview — is choices, not a wall of markdown.
+ */
+import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
+import { AlertCircle, Inbox, Play, Plus } from "lucide-react";
+import { useCallback, useMemo, useState, type FormEvent } from "react";
+import { Group, Panel, Separator as ResizeSeparator } from "react-resizable-panels";
+import { Toaster, toast } from "sonner";
+import { postOperatorAction } from "../../operator-ui/client.ts";
+const FACE_LABELS = ["wontfix"] as const;
+import { isLaunchNext, type AttentionNext, type AttentionRow, type AttentionSnapshot } from "../snapshot.ts";
+import { featureOf, type Overview, type OverviewComment } from "../../operator-ui/model.ts";
+import type { GrillRound } from "../../operator-ui/round.ts";
+import { GraphPane } from "./GraphPane.tsx";
+import { Grill } from "./Grill.tsx";
+import {
+	Badge,
+	Button,
+	Dialog,
+	Input,
+	Label,
+	ScrollArea,
+	Separator,
+	Textarea,
+	Tooltip,
+	TooltipProvider,
+} from "./kit.tsx";
+
+export type PageAttention = {
+	snapshot: AttentionSnapshot;
+	commentEndpoint: string | null;
+	attentionEndpoint: string | null;
+	overviewEndpoint: string | null;
+	graph: Overview | null;
+	actor: string | null;
+};
+
+function nextLabel(next: AttentionNext): string {
+	if (next === "wait") return "Wait";
+	if (next === "drain") return "Start drain";
+	if (next === "inquiry") return "Start inquiry";
+	if (next === "experiment") return "Start experiment";
+	if (next === "grill") return "Start grill";
+	if (next === "release") return "Run reading";
+	if (next === "accept-draft") return "Accept, edit, or reject in a session";
+	if (next === "unstick") return "Waiting on a blocker";
+	return "Read or decline in a session";
+}
+
+function launchIntent(next: AttentionNext): "start" | undefined {
+	if (next === "drain" || next === "inquiry" || next === "experiment") return "start";
+	return undefined;
+}
+
+export function App({ attention }: { attention: PageAttention }) {
+	const client = useMemo(
+		() =>
+			new QueryClient({
+				defaultOptions: {
+					queries: { retry: false, refetchOnWindowFocus: false, staleTime: Number.POSITIVE_INFINITY },
+				},
+			}),
+		[],
+	);
+	return (
+		<QueryClientProvider client={client}>
+			<TooltipProvider>
+				<InboxPage attention={attention} />
+				<Toaster />
+			</TooltipProvider>
+		</QueryClientProvider>
+	);
+}
+
+function InboxPage({ attention }: { attention: PageAttention }) {
+	const queryClient = useQueryClient();
+	const query = useQuery({
+		queryKey: ["attention"],
+		queryFn: async () => {
+			const endpoint = attention.attentionEndpoint;
+			if (endpoint === null) return attention.snapshot;
+			const res = await fetch(endpoint);
+			if (!res.ok) throw new Error(await res.text());
+			return (await res.json()) as AttentionSnapshot;
+		},
+		initialData: attention.snapshot,
+		enabled: attention.attentionEndpoint !== null,
+	});
+	const snapshot = query.data ?? attention.snapshot;
+	const rows = snapshot.work;
+	const [selectedId, setSelectedId] = useState<string | undefined>(rows[0]?.id);
+	const selected = rows.find((row) => row.id === selectedId);
+	const [captureOpen, setCaptureOpen] = useState(false);
+
+	const overviewQuery = useQuery({
+		queryKey: ["overview"],
+		queryFn: async () => {
+			const endpoint = attention.overviewEndpoint;
+			if (endpoint === null) {
+				if (attention.graph === null) throw new Error("overview endpoint missing");
+				return attention.graph;
+			}
+			const res = await fetch(endpoint);
+			if (!res.ok) throw new Error(await res.text());
+			return (await res.json()) as Overview;
+		},
+		initialData: attention.graph ?? undefined,
+		enabled: attention.overviewEndpoint !== null,
+		refetchInterval: (current) => (current.state.data?.live ? 5000 : false),
+	});
+	const overviewIssue = overviewQuery.data?.issues.find((issue) => issue.id === selectedId);
+	const captureSource =
+		selected !== undefined
+			? { id: selected.id, handle: selected.handle }
+			: overviewIssue === undefined
+				? undefined
+				: { id: overviewIssue.id, handle: overviewIssue.handle ?? overviewIssue.id };
+
+	// Stable: `onWritten` reaches React Flow through `onConnect`/`onEdgesChange`, and a new identity
+	// every render made its store re-set those props forever.
+	const refresh = useCallback((): void => {
+		void queryClient.invalidateQueries({ queryKey: ["attention"] });
+		void queryClient.invalidateQueries({ queryKey: ["overview"] });
+	}, [queryClient]);
+
+	return (
+		<div className="flex h-full flex-col overflow-hidden bg-muted text-foreground" data-app="react" data-kit="shadcn">
+			<header className="flex shrink-0 items-center justify-between gap-4 border-b border-border bg-card px-4 py-3">
+				<div>
+					<h1 className="flex items-center gap-2 text-lg font-semibold">
+						<Inbox size={18} aria-hidden="true" />
+						Attention
+					</h1>
+					<p className="text-sm text-muted-foreground">{snapshot.target}</p>
+				</div>
+				<div className="flex items-center gap-2">
+					<RunBanner run={snapshot.run} />
+					{attention.commentEndpoint === null ? null : (
+						<Button id="capture-open" variant="outline" onClick={() => setCaptureOpen(true)}>
+							<Plus size={14} aria-hidden="true" />
+							Capture
+						</Button>
+					)}
+				</div>
+			</header>
+			<Group id="panels" className="min-h-0 flex-1" orientation="horizontal">
+				<Panel id="inbox-panel" defaultSize="18rem" minSize="12rem" className="min-h-0 overflow-hidden">
+					<main id="focus" className="h-full min-h-0 bg-muted/40">
+						{rows.length === 0 ? (
+							<p id="empty" className="p-8 text-sm text-muted-foreground">
+								No work is waiting.
+							</p>
+						) : (
+							<ScrollArea className="h-full">
+								<ul id="attention-list" className="list-none divide-y divide-border bg-card p-0">
+									{rows.map((row) => (
+										<li key={row.id} className="list-none">
+											<button
+												type="button"
+												className={`attention-row flex w-full min-w-0 items-center justify-between gap-3 px-4 py-3 text-left hover:bg-accent ${selected?.id === row.id ? "bg-accent" : ""}`}
+												data-handle={row.handle}
+												data-next={row.next}
+												data-id={row.id}
+												onClick={() => setSelectedId(row.id)}
+											>
+												<span className="min-w-0">
+													<span className="block truncate font-medium">{row.handle}</span>
+													<span className="block truncate text-sm text-muted-foreground">{row.title ?? row.type ?? ""}</span>
+												</span>
+												<Badge className="shrink-0" data-next={row.next}>
+													{row.next}
+												</Badge>
+											</button>
+										</li>
+									))}
+								</ul>
+							</ScrollArea>
+						)}
+					</main>
+				</Panel>
+				<ResizeSeparator className={resizeHandleClass} />
+				<Panel id="graph-panel" defaultSize="50%" minSize="20%" className="min-h-0 overflow-hidden">
+					{attention.overviewEndpoint === null && attention.graph === null ? (
+						<section id="graph" className="h-full min-h-0" />
+					) : (
+						<GraphPane
+							overview={overviewQuery.data}
+							error={overviewQuery.isError}
+							selectedId={selectedId}
+							onSelect={setSelectedId}
+							writeEndpoint={attention.commentEndpoint}
+							onWritten={refresh}
+						/>
+					)}
+				</Panel>
+				<ResizeSeparator className={resizeHandleClass} />
+				<Panel id="detail-panel" defaultSize="18rem" minSize="14rem" className="min-h-0 overflow-hidden">
+					<aside className="h-full overflow-y-auto bg-card p-4">
+						{selected !== undefined ? (
+							<IssueDetail
+								id={selected.id}
+								handle={selected.handle}
+								title={selected.title}
+								status={selected.status}
+								row={selected}
+								comments={overviewIssue?.comments ?? []}
+								round={overviewIssue?.round ?? null}
+								held={snapshot.run.held}
+								endpoint={attention.commentEndpoint}
+								onWrote={refresh}
+							/>
+						) : overviewIssue !== undefined ? (
+							<IssueDetail
+								id={overviewIssue.id}
+								handle={overviewIssue.handle ?? overviewIssue.id}
+								title={overviewIssue.title}
+								status={overviewIssue.status}
+								comments={overviewIssue.comments}
+								round={overviewIssue.round}
+								held={snapshot.run.held}
+								endpoint={attention.commentEndpoint}
+								onWrote={refresh}
+							/>
+						) : (
+							<p className="text-sm text-muted-foreground">Pick a row.</p>
+						)}
+					</aside>
+				</Panel>
+			</Group>
+			<CaptureDialog
+				open={captureOpen}
+				onClose={() => setCaptureOpen(false)}
+				endpoint={attention.commentEndpoint}
+				source={captureSource}
+				onWrote={() => {
+					setCaptureOpen(false);
+					refresh();
+				}}
+			/>
+		</div>
+	);
+}
+
+const resizeHandleClass = "w-1.5 bg-border hover:bg-ring/40";
+
+function RunReadingButton(props: { id: string; endpoint: string | null; onWrote: () => void }) {
+	if (props.endpoint === null) return null;
+	return (
+		<Button
+			id="act"
+			data-act="run-reading"
+			onClick={() => {
+				void postOperatorAction(props.endpoint as string, { intent: "run-reading", id: props.id })
+					.then(() => {
+						toast.success("Run reading");
+						props.onWrote();
+					})
+					.catch((error: unknown) => toast.error(error instanceof Error ? error.message : String(error)));
+			}}
+		>
+			<Play size={14} aria-hidden="true" />
+			Run reading
+		</Button>
+	);
+}
+
+function CloseMapButton(props: { id: string; endpoint: string | null; onWrote: () => void }) {
+	if (props.endpoint === null) return null;
+	return (
+		<Button
+			id="act"
+			data-act="close-map"
+			variant="outline"
+			onClick={() => {
+				void postOperatorAction(props.endpoint as string, { intent: "close-map", id: props.id })
+					.then(() => {
+						toast.success("Map closed");
+						props.onWrote();
+					})
+					.catch((error: unknown) => toast.error(error instanceof Error ? error.message : String(error)));
+			}}
+		>
+			Close map
+		</Button>
+	);
+}
+
+function TriageButtons(props: { id: string; endpoint: string | null; onWrote: () => void }) {
+	if (props.endpoint === null) return null;
+	const endpoint = props.endpoint;
+	return (
+		<div id="act" data-act="triage" className="flex flex-wrap gap-1">
+			{FACE_LABELS.map((label) => (
+				<Button
+					key={label}
+					variant="outline"
+					onClick={() => {
+						void postOperatorAction(endpoint, { intent: "triage", id: props.id, label })
+							.then(() => {
+								toast.success(label);
+								props.onWrote();
+							})
+							.catch((error: unknown) => toast.error(error instanceof Error ? error.message : String(error)));
+					}}
+				>
+					{label}
+				</Button>
+			))}
+		</div>
+	);
+}
+
+function RunBanner({ run }: { run: AttentionSnapshot["run"] }) {
+	if (!run.held) {
+		return (
+			<p id="run" data-held="false" className="text-sm text-muted-foreground">
+				Run free
+			</p>
+		);
+	}
+	return (
+		<p id="run" data-held="true" className="flex items-center gap-2 rounded-md border border-warning-border bg-warning px-2 py-1 text-sm">
+			<AlertCircle size={14} aria-hidden="true" />
+			Held{run.kind !== undefined ? ` ${run.kind}` : ""} {run.runId}
+		</p>
+	);
+}
+
+function IssueDetail(props: {
+	id: string;
+	handle: string;
+	title: string;
+	status: string;
+	row?: AttentionRow;
+	comments: OverviewComment[];
+	round: GrillRound | null;
+	held: boolean;
+	endpoint: string | null;
+	onWrote: () => void;
+}) {
+	const row = props.row;
+	const waiting =
+		row?.waiting_on === undefined || row.waiting_on.length === 0
+			? ""
+			: row.waiting_on.map((item) => `${item.handle} (${item.why})`).join(", ");
+	const aside =
+		row !== undefined
+			? null
+			: props.status === "pinned"
+				? "A map is a pinned direction, not a ticket. Close it when the way is clear."
+				: "Not in this attention list.";
+	return (
+		<div id="detail" className="flex flex-col gap-3">
+			<div>
+				<p className="font-medium">{props.handle}</p>
+				<p className="text-sm text-muted-foreground">{props.title}</p>
+			</div>
+			{row === undefined ? null : (
+				<div className="flex flex-wrap gap-1">
+					<Badge>{row.next}</Badge>
+					{row.contract === "missing" ? <Badge className="border-warning-border bg-warning">contract missing</Badge> : null}
+					{row.contract === "present" ? <Badge>contract present</Badge> : null}
+					{row.attempts_failed !== undefined && row.attempts_failed > 0 ? (
+						<Badge>attempts {row.attempts_failed}</Badge>
+					) : null}
+				</div>
+			)}
+			{waiting === "" ? null : <p className="text-sm">Waiting on {waiting}</p>}
+			{aside === null ? null : <p className="text-sm text-muted-foreground">{aside}</p>}
+			<Grill
+				issueId={props.id}
+				round={props.round}
+				closed={props.status === "closed"}
+				held={props.held}
+				endpoint={props.endpoint}
+				onWrote={props.onWrote}
+			/>
+			<CommentList comments={props.comments} />
+			<Separator />
+			{row === undefined ? (
+				<GraphActs id={props.id} status={props.status} endpoint={props.endpoint} onWrote={props.onWrote} />
+			) : (
+				<PrimaryAct row={row} held={props.held} endpoint={props.endpoint} onWrote={props.onWrote} />
+			)}
+			<CommentForm issueId={props.id} endpoint={props.endpoint} onWrote={props.onWrote} />
+		</div>
+	);
+}
+
+function GraphActs(props: { id: string; status: string; endpoint: string | null; onWrote: () => void }) {
+	if (props.status === "closed") return null;
+	if (props.status === "pinned") return <CloseMapButton id={props.id} endpoint={props.endpoint} onWrote={props.onWrote} />;
+	if (props.status === "deferred") return <RunReadingButton id={props.id} endpoint={props.endpoint} onWrote={props.onWrote} />;
+	return <TriageButtons id={props.id} endpoint={props.endpoint} onWrote={props.onWrote} />;
+}
+
+/** A node's comments are `bd comment` on the bead; this is that same store text, read back. */
+function CommentList({ comments }: { comments: OverviewComment[] }) {
+	return (
+		<div className="flex flex-col gap-2">
+			<p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">Comments</p>
+			{comments.length === 0 ? (
+				<p className="text-sm text-muted-foreground">None.</p>
+			) : (
+				<ul id="comments" className="flex flex-col gap-2">
+					{comments.map((comment) => (
+						<li key={comment.id} className="rounded-md border border-border bg-muted/40 px-2 py-1.5">
+							<p className="text-xs text-muted-foreground">
+								{comment.author}
+								{comment.createdAt === "" ? "" : ` · ${comment.createdAt}`}
+							</p>
+							<p className="text-sm break-words whitespace-pre-wrap">{comment.text}</p>
+						</li>
+					))}
+				</ul>
+			)}
+		</div>
+	);
+}
+
+function CommentForm(props: {
+	issueId: string;
+	endpoint: string | null;
+	onWrote: () => void;
+}) {
+	const [text, setText] = useState("");
+	const endpoint = props.endpoint;
+	if (endpoint === null) return null;
+	return (
+		<form
+			id="comment-form"
+			className="flex flex-col gap-2"
+			onSubmit={(event: FormEvent) => {
+				event.preventDefault();
+				if (text.trim() === "") return;
+				void postOperatorAction(endpoint, { intent: "comment", id: props.issueId, text: text.trim() })
+					.then(() => {
+						setText("");
+						toast.success("Commented");
+						props.onWrote();
+					})
+					.catch((error: unknown) => toast.error(error instanceof Error ? error.message : String(error)));
+			}}
+		>
+			<Textarea value={text} onChange={(event) => setText(event.target.value)} placeholder="Comment" />
+			<Button type="submit">Comment</Button>
+		</form>
+	);
+}
+
+function PrimaryAct(props: {
+	row: AttentionRow;
+	held: boolean;
+	endpoint: string | null;
+	onWrote: () => void;
+}) {
+	const { row, held, endpoint, onWrote } = props;
+	if (endpoint === null) {
+		return <p className="text-sm text-muted-foreground">{nextLabel(row.next)}</p>;
+	}
+	if (row.next === "wait" || (held && isLaunchNext(row.next))) {
+		return (
+			<p id="act" data-act="wait" className="text-sm">
+				Target already held
+			</p>
+		);
+	}
+	if (row.next === "grill") return null;
+	const launch = launchIntent(row.next);
+	if (launch !== undefined) {
+		return (
+			<Tooltip label={nextLabel(row.next)}>
+				<Button
+					id="act"
+					data-act={launch}
+					onClick={() => {
+						void postOperatorAction(endpoint, { intent: launch, ids: [row.id] })
+							.then(() => {
+								toast.success(nextLabel(row.next));
+								onWrote();
+							})
+							.catch((error: unknown) => toast.error(error instanceof Error ? error.message : String(error)));
+					}}
+				>
+					<Play size={14} aria-hidden="true" />
+					{nextLabel(row.next)}
+				</Button>
+			</Tooltip>
+		);
+	}
+	if (row.next === "release") {
+		return <RunReadingButton id={row.id} endpoint={endpoint} onWrote={onWrote} />;
+	}
+	return (
+		<p id="act" data-act="comment" className="text-sm text-muted-foreground">
+			{nextLabel(row.next)}
+		</p>
+	);
+}
+
+function CaptureDialog(props: {
+	open: boolean;
+	onClose: () => void;
+	endpoint: string | null;
+	source?: { id: string; handle: string };
+	onWrote: () => void;
+}) {
+	if (props.endpoint === null) return null;
+	return (
+		<Dialog id="create" open={props.open} onClose={props.onClose} title="Capture" description="A question is deferred. A direction is pinned. Prose lives on the bead.">
+			<CaptureFields
+				key={props.source?.id ?? "bare"}
+				endpoint={props.endpoint}
+				source={props.source}
+				onWrote={props.onWrote}
+			/>
+		</Dialog>
+	);
+}
+
+function CaptureFields(props: {
+	endpoint: string;
+	source?: { id: string; handle: string };
+	onWrote: () => void;
+}) {
+	const [feature, setFeature] = useState(featureOf(props.source?.handle));
+	const [title, setTitle] = useState("");
+	const [prose, setProse] = useState("");
+	const [map, setMap] = useState(false);
+	return (
+		<form
+			id="create-form"
+			className="flex flex-col gap-2"
+			onSubmit={(event: FormEvent) => {
+				event.preventDefault();
+				void postOperatorAction(props.endpoint, {
+					intent: "create",
+					feature,
+					title,
+					prose,
+					...(map ? { map: true } : {}),
+					...(props.source === undefined ? {} : { from: props.source.id }),
+				})
+					.then(() => {
+						setTitle("");
+						setProse("");
+						toast.success("Captured");
+						props.onWrote();
+					})
+					.catch((error: unknown) => toast.error(error instanceof Error ? error.message : String(error)));
+			}}
+		>
+			{props.source === undefined ? null : (
+				<p id="create-from" className="text-sm text-muted-foreground" data-from={props.source.id}>
+					Grow from {props.source.handle}
+				</p>
+			)}
+			<Label htmlFor="create-feature">Feature</Label>
+			<Input id="create-feature" value={feature} onChange={(event) => setFeature(event.target.value)} />
+			<Label htmlFor="create-title">Title</Label>
+			<Input id="create-title" value={title} onChange={(event) => setTitle(event.target.value)} />
+			<Label htmlFor="create-prose">Prose</Label>
+			<Textarea id="create-prose" value={prose} onChange={(event) => setProse(event.target.value)} />
+			<label className="flex items-center gap-2 text-sm" htmlFor="create-map">
+				<input
+					id="create-map"
+					type="checkbox"
+					checked={map}
+					onChange={(event) => setMap(event.target.checked)}
+				/>
+				This is a direction (pinned map), not a question
+			</label>
+			<Button type="submit">Capture</Button>
+		</form>
+	);
+}

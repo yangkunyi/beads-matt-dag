@@ -42,10 +42,10 @@
  * The record the run leaves behind (`run-lock.json`, one line in ARTIFACTS_DIR) is the other half: an
  * operator refused by this lock can read the holder run's artifacts and see what held it.
  */
-import { closeSync, mkdirSync, writeFileSync } from "node:fs";
+import { closeSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import {
-  createLockFile,
+  createExclusiveFile,
   gitDir,
   lockHolderAlive,
   readLockHolder,
@@ -59,6 +59,15 @@ export const RUN_LOCK_NAME = "beads-dag-run.lock";
 /** The run-lock record in ARTIFACTS_DIR: the lock this run holds, one JSON line. */
 export const RUN_LOCK_FILE = "run-lock.json";
 
+/** The four executors that take the Target run lock. Attention reports this so a session waits instead of starting a second run. */
+export type RunKind = "drain" | "inquiry" | "experiment" | "grill";
+
+const RUN_KINDS = new Set<RunKind>(["drain", "inquiry", "experiment", "grill"]);
+
+function asRunKind(value: string | undefined): RunKind | undefined {
+  return value !== undefined && RUN_KINDS.has(value as RunKind) ? (value as RunKind) : undefined;
+}
+
 /** What this run's lock is, once taken. */
 export type RunLock = {
   /** The lock file. */
@@ -67,18 +76,41 @@ export type RunLock = {
   pid: number;
   /** The holder's name: this run's id, the basename of its artifacts directory. */
   run: string;
+  /** Which executor took the lock. */
+  kind: RunKind;
   /** What a dead holder left, when this run took over a killed run's lock instead of creating it. */
   stole?: LockHolder | "unreadable";
 };
+
+/** Attention's view of the lock: held or not, and which run if so. */
+export type RunLockView =
+  | { held: false }
+  | { held: true; runId: string; kind?: RunKind };
 
 /** The run lock's one path: the Target's git directory, beside the Main lock. */
 export function runLockFilePath(target: string): string {
   return join(gitDir(target), RUN_LOCK_NAME);
 }
 
-/** What this run's lock records: the runner pid, and the run id its artifacts directory names. */
+/** What this run's lock records: the runner pid and the run id its artifacts directory names. */
 function thisHolder(artifactsDir: string): LockHolder & { name: string } {
   return { pid: process.ppid, name: basename(artifactsDir) };
+}
+
+/** The run lock's body: pid, run id, executor kind. One write, so a kill cannot leave a two-line file. */
+function runLockBody(holder: LockHolder & { name: string }, kind: RunKind): string {
+  return `${holder.pid}\n${holder.name}\n${kind}\n`;
+}
+
+/** Kind on the third line, when it is one of the four executors. Missing or unknown is omitted. */
+function readRunLockKind(path: string): RunKind | undefined {
+  let raw: string;
+  try {
+    raw = readFileSync(path, "utf8");
+  } catch {
+    return undefined;
+  }
+  return asRunKind((raw.split("\n")[2] ?? "").trim() || undefined);
 }
 
 /** One holder as a line names it: its run id when it has one, and always its pid. */
@@ -95,10 +127,10 @@ function refusalLine(path: string, holder: LockHolder): string {
 }
 
 /** Create the lock for this run, or false when someone else holds it. */
-function tryCreate(path: string, holder: LockHolder): boolean {
+function tryCreate(path: string, holder: LockHolder & { name: string }, kind: RunKind): boolean {
   let fd: number;
   try {
-    fd = createLockFile(path, holder);
+    fd = createExclusiveFile(path, runLockBody(holder, kind));
   } catch (e) {
     if ((e as { code?: string }).code === "EEXIST") return false;
     throw e;
@@ -116,13 +148,13 @@ function tryCreate(path: string, holder: LockHolder): boolean {
  * anywhere leaves the next drain working. Losing the retry means another process won the steal and is
  * alive, which refuses like any other live holder.
  */
-export function takeRunLock(target: string, artifactsDir: string): RunLock {
+export function takeRunLock(target: string, artifactsDir: string, kind: RunKind): RunLock {
   const path = runLockFilePath(target);
   const holder = thisHolder(artifactsDir);
   let stole: LockHolder | "unreadable" | undefined;
   for (;;) {
-    if (tryCreate(path, holder)) {
-      const lock: RunLock = { path, pid: holder.pid, run: holder.name };
+    if (tryCreate(path, holder, kind)) {
+      const lock: RunLock = { path, pid: holder.pid, run: holder.name, kind };
       return stole === undefined ? lock : { ...lock, stole };
     }
     const found = readLockHolder(path);
@@ -174,7 +206,25 @@ export function recordRunLock(artifactsDir: string, lock: RunLock): void {
     run: lock.run,
     pid: lock.pid,
     path: lock.path,
+    kind: lock.kind,
     ...(lock.stole === undefined ? {} : { stole: lock.stole }),
   };
   writeFileSync(join(artifactsDir, RUN_LOCK_FILE), `${JSON.stringify(record)}\n`);
+}
+
+/**
+ * Whether a live run holds the Target, and which one. Attention reads this; it never takes or
+ * releases the lock. A dead holder's file is not held: the next open will steal it.
+ */
+export function inspectRunLock(target: string): RunLockView {
+  let holder: LockHolder | undefined;
+  try {
+    holder = readLockHolder(runLockFilePath(target));
+  } catch {
+    return { held: false };
+  }
+  if (!lockHolderAlive(holder) || holder === undefined) return { held: false };
+  const runId = holder.name !== undefined && holder.name !== "" ? holder.name : `pid-${holder.pid}`;
+  const kind = readRunLockKind(runLockFilePath(target));
+  return kind === undefined ? { held: true, runId } : { held: true, runId, kind };
 }

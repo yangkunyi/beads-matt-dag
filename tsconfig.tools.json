@@ -1,5 +1,5 @@
-// Typecheck gate for the Target-side tooling: the inquiry domain's tools, the experiment script, and the
-// operator-ui overview (including the React surface). Dev-only,
+// Typecheck gate for the Target-side tooling: the inquiry domain's tools, the experiment script, the
+// write door, and attention-ui. Dev-only,
 // and it lives here rather than beside the tools for the same reason the pack's gate does: what a Target
 // copies in must carry nothing the runtime cannot use.
 //
@@ -12,7 +12,7 @@
 // the real DVC, so a stale caller can sit there for a long time unnoticed.
 //
 // `types: ["node", "bun"]` is spelled out for the same reason as in tsconfig.pack.json: a `node:`
-// specifier does not resolve without the node declarations in the program, and the operator-ui client
+// specifier does not resolve without the node declarations in the program, and the attention-ui client
 // build calls `Bun.build` because the command line takes no plugins (Tailwind is one).
 {
   "compilerOptions": {

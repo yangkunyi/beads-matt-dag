@@ -124,11 +124,15 @@ export type StoreIssue = {
   id: string;
   /** The issue's type. `decision` is the other domain: it never enters a drain's frontier. */
   type: string;
+  /** The issue's title, as the store answers it. Attention prints it; pick does not read it. */
+  title: string;
   status: string;
   labels: string[];
   /** `<feature>/<NN>`, when the tracker published one: what branch and worktree names derive from. */
   handle: string | undefined;
   slug: string | undefined;
+  /** Work-memory prose. Capture and /to-tickets write this; workers read it (ADR-0005). */
+  description?: string;
   /**
    * The parent the store answers for a `parent-child` edge, when the issue has one. The domain
    * preflight reads it beside the edges: the store propagates a parent's blocked-ness down that
@@ -181,10 +185,12 @@ function toStoreIssue(raw: unknown, command: string): StoreIssue {
   return {
     id,
     type: text(issue.issue_type) ?? "",
+    title: text(issue.title) ?? "",
     status: text(issue.status) ?? "",
     labels: Array.isArray(issue.labels) ? issue.labels.filter((l): l is string => typeof l === "string") : [],
     handle: text(metadata.handle),
     slug: text(metadata.slug),
+    description: text(issue.description),
     parent: text(issue.parent),
     commentCount: toCount(issue.comment_count),
     dependencies: toDependencies(issue.dependencies),
@@ -219,8 +225,8 @@ function issueList(store: Store, target: string, args: string[]): StoreIssue[] {
  * before any policy the store does not hold (the gate label, the decision domain, what this run already
  * tried). A drain works exactly what comes back here.
  */
-export function readyIssues(store: Store, target: string): StoreIssue[] {
-  return issueList(store, target, READY_ARGS);
+export function readyIssues(store: Store, target: string, extra: readonly string[] = []): StoreIssue[] {
+  return issueList(store, target, extra.length === 0 ? READY_ARGS : [...READY_ARGS, ...extra]);
 }
 
 /**

@@ -41,7 +41,7 @@ import { addAttempted } from "../../scripts/attempted.ts";
 import { loadConfig, type PackConfig } from "../../scripts/config.ts";
 import { commitDocuments, documentSubject } from "../../scripts/doc-commit.ts";
 import { revParse } from "../../scripts/git.ts";
-import { bodyPath, issueNames } from "../../scripts/naming.ts";
+import { issueBrief, issueNames } from "../../scripts/naming.ts";
 import { runNode } from "../../scripts/node-entry.ts";
 import { CLOSED, FAILED, nodeLine, REGISTERED } from "../../scripts/node-outcomes.ts";
 import { roleAgent } from "../../scripts/roles.ts";
@@ -175,7 +175,7 @@ export async function runExperiment(target: string, issueHandle: string, opts: R
       role: "experiment",
       args: {
         handle: names.handle,
-        bodyPath: bodyPath(target, names),
+        brief: issueBrief(issue),
         recordRel,
       },
       // The turn runs in the Target, not in a worktree: an experiment writes no branch of its own, and

@@ -30,7 +30,7 @@
  * release implementation work across a domain boundary that ADR-0004 exists to keep closed. The repair
  * reports each one it left alone instead.
  */
-import { NON_WORK_TYPES } from "../../scripts/domains.ts";
+import { isDevelopmentLeftover } from "../../scripts/dev-frontier.ts";
 import { mergedOnMain } from "./main-writes.ts";
 import { issueNames, type IssueNames } from "../../scripts/naming.ts";
 import { settleFailed, settleMerged } from "./settle.ts";
@@ -77,7 +77,7 @@ export async function reconcileLeftovers(target: string, store: Store, artifacts
   const repairs: Repair[] = [];
   for (const issue of inProgressIssues(store, target)) {
     const label = issue.handle ?? issue.id;
-    if (NON_WORK_TYPES.has(issue.type)) {
+    if (!isDevelopmentLeftover(issue)) {
       const reason = `a ${issue.type} issue's status is not this drain's to repair: nothing in this flow claims one`;
       console.error(`${label}: left alone: ${reason}`);
       repairs.push({ id: issue.id, handle: issue.handle, outcome: "left-alone", reason });

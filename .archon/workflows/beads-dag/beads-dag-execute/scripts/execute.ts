@@ -33,7 +33,7 @@ import { loadConfig, type PackConfig } from "../../scripts/config.ts";
 import { isAncestor, revParse } from "../../scripts/git.ts";
 import { withMainLock } from "../../scripts/lock.ts";
 import { ensureWorktreesIgnored } from "../../beads-dag-drain/scripts/main-writes.ts";
-import { bodyPath, issueNames } from "../../scripts/naming.ts";
+import { issueBrief, issueNames } from "../../scripts/naming.ts";
 import { runNode } from "../../scripts/node-entry.ts";
 import { FAILED, MERGED, nodeLine } from "../../scripts/node-outcomes.ts";
 import {
@@ -111,7 +111,7 @@ export async function executeIssue(target: string, issueHandle: string, opts: Ex
     const turn = await runAgent(
       roleAgent({
         role: "conflict",
-        args: { handle: names.handle, bodyPath: bodyPath(target, names) },
+        args: { handle: names.handle, brief: issueBrief(issue) },
         cwd: worktree.path,
         artifactsDir: opts.artifactsDir,
         config,
@@ -157,7 +157,7 @@ export async function executeIssue(target: string, issueHandle: string, opts: Ex
   const turn = await runAgent(
     roleAgent({
       role: "implement",
-      args: { handle: names.handle, bodyPath: bodyPath(target, names) },
+      args: { handle: names.handle, brief: issueBrief(issue) },
       cwd: worktree.path,
       artifactsDir: opts.artifactsDir,
       config,

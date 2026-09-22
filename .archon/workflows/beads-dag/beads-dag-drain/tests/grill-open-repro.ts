@@ -47,11 +47,11 @@ try {
     expectEqual("the grill run opens", opened.status, 0);
     expectEqual("with the token alone on stdout", opened.stdout, "opened\n");
     expect("and the configuration line on stderr", opened.stderr.includes("beads-dag: config:"), opened.stderr);
-    expectEqual("the run lock is this run's", readFileSync(runLock, "utf8"), `${process.pid}\n${basename(artifacts)}\n`);
+    expectEqual("the run lock is this run's", readFileSync(runLock, "utf8"), `${process.pid}\n${basename(artifacts)}\ngrill\n`);
     expectEqual(
       "and the run says so in its own record",
       JSON.parse(readFileSync(join(artifacts, RUN_LOCK_FILE), "utf8")),
-      { run: basename(artifacts), pid: process.pid, path: runLock },
+      { run: basename(artifacts), pid: process.pid, path: runLock, kind: "grill" },
     );
     expectEqual("the seed stays open", storeIssue(root, seed.id).status, "open");
   });

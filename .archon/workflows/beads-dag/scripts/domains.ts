@@ -35,6 +35,15 @@ import { allIssues, type Store, type StoreIssue } from "./store.ts";
  */
 export const NON_WORK_TYPES: ReadonlySet<string> = new Set(["decision", "experiment"]);
 
+/** The three domains an issue belongs to. Type is the domain; everything that is not a non-work type is development. */
+export type IssueDomain = "development" | "inquiry" | "experiments";
+
+export function issueDomain(issue: { type: string }): IssueDomain {
+  if (issue.type === "experiment") return "experiments";
+  if (issue.type === "decision") return "inquiry";
+  return "development";
+}
+
 /** The hierarchy edge's name, spelled once: the walk and the chain's rendering both use it. */
 const PARENT_CHILD = "parent-child";
 
@@ -72,6 +81,18 @@ function blockingHops(issue: StoreIssue): { id: string; edge: string }[] {
     .map((dependency) => ({ id: dependency.id, edge: dependency.type }));
   if (issue.parent !== undefined) hops.push({ id: issue.parent, edge: PARENT_CHILD });
   return hops;
+}
+
+/** The issues this one waits on through a blocking edge. Attention's stuck walk uses this so it cannot invent a fourth blocking type. */
+export function blockingWaitIds(issue: StoreIssue): string[] {
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  for (const hop of blockingHops(issue)) {
+    if (seen.has(hop.id)) continue;
+    seen.add(hop.id);
+    ids.push(hop.id);
+  }
+  return ids;
 }
 
 /**

@@ -28,7 +28,7 @@ import {
   type StoreIssue,
 } from "../../scripts/store.ts";
 import { DRAFT_LABEL } from "../../beads-dag-read/scripts/reading.ts";
-import { MAP_LABEL, READING_LEG_LABEL } from "./inquiry.ts";
+import { hasReadingLeg, isMapContainer } from "./inquiry.ts";
 
 /**
  * Why a question the store offered was left out. These are the rules this module applies, and the only
@@ -61,8 +61,8 @@ export type ReadingFrontier = {
  * the reading gate, then the landing, then this run's own memory.
  */
 function exclusionRule(issue: StoreIssue, attempted: ReadonlySet<string>): ExclusionRule | undefined {
-  if (issue.labels.includes(MAP_LABEL)) return "map-container";
-  if (!issue.labels.includes(READING_LEG_LABEL)) return "missing-reading-label";
+  if (isMapContainer(issue)) return "map-container";
+  if (!hasReadingLeg(issue)) return "missing-reading-label";
   if (issue.labels.includes(DRAFT_LABEL)) return "reading-already-landed";
   if (attempted.has(issue.id)) return "attempted-by-this-run";
   return undefined;
@@ -78,11 +78,16 @@ function exclusionRule(issue: StoreIssue, attempted: ReadonlySet<string>): Exclu
  * A question this run itself claimed is left out - it is the run's own, already in `attempted-ids.json`,
  * and re-reporting it every cycle would say nothing.
  */
-function composeFrontier(
+/**
+ * The dry reading frontier: ready and in-progress lists in, no store read. Pick queries, then calls
+ * this; attention passes lists it already holds. Sort is part of the frontier, so the two askers
+ * cannot order the same questions two ways.
+ */
+export function composeReadingFrontier(
   ready: StoreIssue[],
   inProgress: StoreIssue[],
   attempted: ReadonlySet<string>,
-): { candidates: StoreIssue[]; excluded: ExcludedIssue[] } {
+): ReadingFrontier {
   const candidates: StoreIssue[] = [];
   const excluded: ExcludedIssue[] = [];
   for (const issue of ready) {
@@ -93,10 +98,13 @@ function composeFrontier(
   for (const issue of inProgress) {
     if (issue.type !== "decision") continue;
     if (attempted.has(issue.id)) continue;
-    if (!issue.labels.includes(READING_LEG_LABEL) && !issue.labels.includes(DRAFT_LABEL)) continue;
+    if (!hasReadingLeg(issue) && !issue.labels.includes(DRAFT_LABEL)) continue;
     excluded.push({ id: issue.id, handle: issue.handle, rule: "already-claimed" });
   }
-  return { candidates, excluded };
+  return {
+    candidates: candidates.sort((a, b) => compareHandles(handleOrId(a), handleOrId(b))),
+    excluded,
+  };
 }
 
 /**
@@ -143,10 +151,9 @@ export function readingFrontier(
   target: string,
   attempted: ReadonlySet<string>,
 ): ReadingFrontier {
-  const { candidates, excluded } = composeFrontier(
+  return composeReadingFrontier(
     readyIssues(store, target),
     inProgressIssues(store, target),
     attempted,
   );
-  return { candidates: candidates.sort((a, b) => compareHandles(handleOrId(a), handleOrId(b))), excluded };
 }

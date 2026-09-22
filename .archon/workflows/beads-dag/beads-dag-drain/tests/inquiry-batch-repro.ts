@@ -46,7 +46,7 @@ import {
   type PublishedIssue,
 } from "./target.ts";
 
-const READING = "wayfinder:research";
+const READING = "leg:research";
 const DRAFT = "answer:draft";
 const REPORT = "report.md";
 
@@ -166,6 +166,7 @@ function noteRel(n: string): string {
 /** Stage the Target's own files - the bodies, the config - so the run's commits hold the run's work only. */
 function stageTarget(root: string): void {
   gitC(root, "add", "-A");
+  if (gitC(root, "status", "--porcelain") === "") return;
   gitC(root, "commit", "-m", "lab setup");
 }
 

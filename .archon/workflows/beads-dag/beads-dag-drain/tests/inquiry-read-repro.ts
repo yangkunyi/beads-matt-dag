@@ -54,7 +54,7 @@ import {
   type PublishOpts,
 } from "./target.ts";
 
-const READING = "wayfinder:research";
+const READING = "leg:research";
 const DRAFT = "answer:draft";
 
 /** The environment variables this file sets; restored in full at the end, whatever happens. */
@@ -159,7 +159,7 @@ try {
     expectEqual("keyed by the question's handle", turn.sessionKey, "q/01");
     expectEqual("running where the Target is", turn.cwd, root);
     expectEqual("with the store read-only", turn.env({})[READONLY_ENV], "1");
-    expect("its brief is the body's path", turn.prompt.startsWith(bodyPath), turn.prompt);
+    expect("its brief is the description", turn.prompt.startsWith("# q/01 - what does the tool hold"), turn.prompt);
     expect("plus the corpus the run commits", turn.prompt.includes(`Corpus: ${corpusRel}`), turn.prompt);
     expect("plus the note path", turn.prompt.includes(`Note: ${noteRel}`), turn.prompt);
 

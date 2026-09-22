@@ -11,7 +11,7 @@
  * - `in_progress` without it: the reading never landed. Back to `open` with the ordinal and the shape an
  *   ordinary failed attempt has, so the retry channel is the frontier itself.
  *
- * Only this executor's claims are repaired: a claim of another leg - a `wayfinder:grilling` question a
+ * Only this executor's claims are repaired: a claim of another leg - a `leg:grilling` question a
  * session took - is left exactly where it was found and reported, and an implementation issue's status is
  * the drain's. All of it runs at `open`, before pick, so a question repaired to `open` is a candidate of
  * the very same run.
@@ -39,14 +39,14 @@ try {
       type: "decision",
       handle: "q/01",
       slug: "landed-but-left-claimed",
-      labels: ["wayfinder:research", "answer:draft"],
+      labels: ["leg:research", "answer:draft"],
     });
     const noDraft = publishIssue(root, {
       title: "claimed and never read",
       type: "decision",
       handle: "q/02",
       slug: "claimed-and-never-read",
-      labels: ["wayfinder:research"],
+      labels: ["leg:research"],
     });
     // A question another leg's session claimed: not this executor's to reopen.
     const otherLeg = publishIssue(root, {
@@ -54,7 +54,7 @@ try {
       type: "decision",
       handle: "q/03",
       slug: "being-grilled",
-      labels: ["wayfinder:grilling"],
+      labels: ["leg:grilling"],
     });
     // An implementation issue: the drain's, never this executor's.
     const work = publishIssue(root, { title: "work in progress", handle: "q/04", slug: "work-in-progress", labels: ["ready-for-agent"] });
@@ -115,7 +115,7 @@ try {
       type: "decision",
       handle: "q/01",
       slug: "failed-before-claimed-again",
-      labels: ["wayfinder:research"],
+      labels: ["leg:research"],
     });
     bd(root, "update", twice.id, "-s", "in_progress");
     bd(root, "comment", twice.id, "attempt 1 failed: the proxy was not running");

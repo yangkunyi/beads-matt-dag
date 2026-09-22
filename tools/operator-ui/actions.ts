@@ -2,17 +2,16 @@
  * The operator surface's one write door.
  *
  * A tagged intent goes in; a store write or a run launch comes out, or a refusal and nothing
- * is written. Comment is `bd comment` on the selected issue. Create requires a type (the domain),
- * lands as `needs-triage` without the gate, and writes a body of handle and prose. Start launches
+ * is written. Comment is `bd comment` on the selected issue. Create captures a `decision`
+ * (`deferred`, no gate, `--description`); a map is `pinned`. Optional `from` is `--deps`.
+ * Start launches
  * that domain's existing run with the selected ids as the allow-list; grill launches the grill run
  * with the one selected id as its seed. Neither claims, merges, or stamps `closed`. Intra-domain
  * `blocks` is `bd dep add` / `bd dep remove`. Crossing `relates-to`
  * is `bd dep relate` / `bd dep unrelate`. Crossing `discovered-from` is `bd dep add --type
  * discovered-from` / `bd dep remove`. Cross-domain `blocks` and `parent-child` are refused. Triage
- * moves one of the five labels, replacing the rest of the family; `wontfix` is a label, not a
- * close. Answering a grill round is `bd comment` with the answers as data. Close, `reading:`,
- * non-triage labels, and unknown intents are refused. `bd human respond` is not used. Close,
- * `reading:`, and other domain label acts stay the session's (ADR-0006).
+ * `wontfix` is a label, not a close. `run-reading` undefer + `set-state leg=research`.
+ * `close-map` unpins then closes a pinned decision. Ordinary close and `reading:` stay refused.
  */
 
 import { addComment } from "./comment";
@@ -43,6 +42,8 @@ const ACCEPTED_INTENTS = new Set([
 	"triage",
 	"delete",
 	"answer-round",
+	"run-reading",
+	"close-map",
 ]);
 const EDGE_KINDS = new Set(["blocks", "relates-to", "discovered-from"]);
 
@@ -50,6 +51,7 @@ export type OperatorIssue = {
 	id: string;
 	type: string;
 	status?: string;
+	labels?: ReadonlyArray<string>;
 	dependencies?: ReadonlyArray<{ id: string; type: string }>;
 };
 
@@ -242,6 +244,29 @@ function issueIdOf(record: Record<string, unknown>, need: string): string {
 	return record.id.trim();
 }
 
+function isMapIssue(issue: OperatorIssue): boolean {
+	return issue.status === "pinned";
+}
+
+function applyRunReading(bd: BdWriteRunner, id: string, issues: ReadonlyArray<OperatorIssue>): void {
+	const issue = findIssue(issues, id);
+	if (issue === undefined) throw new OperatorActionRefused("unknown issue");
+	if (issue.type !== "decision") throw new OperatorActionRefused("run-reading needs a decision");
+	if (isMapIssue(issue)) throw new OperatorActionRefused("run-reading refuses a map");
+	bd(["update", id, "-s", "open"]);
+	bd(["set-state", id, "leg=research", "--reason", "operator run"]);
+}
+
+function applyCloseMap(bd: BdWriteRunner, id: string, issues: ReadonlyArray<OperatorIssue>): void {
+	const issue = findIssue(issues, id);
+	if (issue === undefined) throw new OperatorActionRefused("unknown issue");
+	if (issue.type !== "decision" || !isMapIssue(issue)) {
+		throw new OperatorActionRefused("close-map needs a pinned decision");
+	}
+	if (issue.status === "pinned") bd(["update", id, "-s", "open"]);
+	bd(["close", id, "--reason", "way is clear"]);
+}
+
 function asRefused(error: unknown, prefixes: string[]): never {
 	if (error instanceof OperatorActionRefused) throw error;
 	const message = error instanceof Error ? error.message : String(error);
@@ -259,7 +284,7 @@ function asRefused(error: unknown, prefixes: string[]): never {
 	throw error;
 }
 
-/** Create needs the target dir. Start and grill need the graph (start for the domain, grill for a known seed) and a launcher. Edges need the graph. Comment takes the door's actor, never a body field. */
+/** Create needs the target dir only for call-site compatibility. Start and grill need the graph and a launcher. Edges, run-reading and close-map need the graph. Comment takes the door's actor. */
 export type OperatorActionExtras = {
 	/** Target root. Create writes the body file here. */
 	dir?: string;
@@ -271,15 +296,8 @@ export type OperatorActionExtras = {
 };
 
 /**
- * Apply one tagged write. Accepted intents are `comment` (`bd comment`), `create` (body plus
- * `bd create`), `start` (launch that domain's existing run with the selected ids as the
- * allow-list; does not write the store), `grill` (launch the grill run with the one selected id as
- * its seed; does not write the store either), `add-edge` / `remove-edge` (store deps), `triage`
- * (one of the five labels, replacing the rest of the family), `delete` (`bd delete --force`
- * after the door has refused `in_progress` and dependents; `--cascade` is never passed), and
- * `answer-round` (`bd comment` with the answers as data, so a re-read shows them).
- * Anything carrying `closed`, `reading:`, a non-triage label, or an unknown intent is refused
- * and the store is not written. Cross-domain `blocks` and `parent-child` are refused the same way.
+ * Apply one tagged write. `create` is a deferred decision (or a pinned map) with `--description`.
+ * `run-reading` opens a parked question and stamps `leg:research`. `close-map` unpins then closes.
  */
 export function applyOperatorAction(bd: BdWriteRunner, raw: string, extras: OperatorActionExtras = {}): void {
 	const record = asObject(raw);
@@ -296,7 +314,13 @@ export function applyOperatorAction(bd: BdWriteRunner, raw: string, extras: Oper
 			if (dir === undefined || dir === "") {
 				throw new OperatorActionRefused("create needs a target");
 			}
-			createIssue(bd, input, dir);
+			const source =
+				input.from === undefined ? undefined : findIssue(extras.issues ?? [], input.from);
+			if (input.from !== undefined && source === undefined) {
+				throw new OperatorActionRefused("create needs a known issue");
+			}
+			const id = createIssue(bd, input, dir, source);
+			if (id === "" && source !== undefined) throw new OperatorActionRefused("create needs a source");
 		} catch (error) {
 			asRefused(error, ["create needs"]);
 		}
@@ -352,6 +376,24 @@ export function applyOperatorAction(bd: BdWriteRunner, raw: string, extras: Oper
 			addComment(bd, body.id, serializeGrillAnswers(body.answers), extras.actor);
 		} catch (error) {
 			asRefused(error, ["answer-round needs", "comment needs"]);
+		}
+		return;
+	}
+	if (intent === "run-reading") {
+		const id = issueIdOf(record, "run-reading needs an issue id");
+		try {
+			applyRunReading(bd, id, extras.issues ?? []);
+		} catch (error) {
+			asRefused(error, ["run-reading"]);
+		}
+		return;
+	}
+	if (intent === "close-map") {
+		const id = issueIdOf(record, "close-map needs an issue id");
+		try {
+			applyCloseMap(bd, id, extras.issues ?? []);
+		} catch (error) {
+			asRefused(error, ["close-map"]);
 		}
 		return;
 	}

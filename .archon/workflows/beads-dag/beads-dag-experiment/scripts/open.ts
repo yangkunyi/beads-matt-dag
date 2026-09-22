@@ -24,7 +24,7 @@ if (import.meta.main) {
   await runNode({
     artifacts: true,
     run: ({ target, artifactsDir, config, configProvenance }) =>
-      openRun({ target, artifactsDir, config, configProvenance }, (store) => {
+      openRun({ target, artifactsDir, config, configProvenance, kind: "experiment" }, (store) => {
         requireExperimentTools(target);
         resolveRunTool();
         // After the premises, before the repair: a change made outside the flow cannot leave a stale

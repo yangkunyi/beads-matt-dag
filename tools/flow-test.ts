@@ -15,6 +15,8 @@ const inserted = upsertFlowBlock("# video-policy\n\nWhere the ideas are worked.\
 expect("inserts after the title", inserted.startsWith("# video-policy\n\n<!-- BEGIN BEADS-DAG FLOW -->"));
 expect("keeps the rest", inserted.includes("Where the ideas are worked."));
 expect("names the installed contract, not a repo copy", inserted.includes("ask-loom/issue-tracker.md") && !inserted.includes("`docs/agents/issue-tracker.md`"));
+expect("boots from attention", inserted.includes("loom attention --json"));
+expect("overrides beads close/claim", inserted.includes("merged <branch>") && inserted.includes("`--claim`"));
 
 const again = upsertFlowBlock(inserted);
 expect("second init is idempotent", again === inserted);

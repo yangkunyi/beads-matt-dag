@@ -83,7 +83,7 @@ try {
   // The role call composes the agent seam's options out of the table and the call's own arguments.
   const call = roleAgent({
     role: "implement",
-    args: { handle: "feat/01", bodyPath: "/target/.scratch/feat/issues/01-body.md" },
+    args: { handle: "feat/01", brief: "the description" },
     cwd: "/worktree",
     artifactsDir: "/artifacts",
     config: CONFIG,
@@ -91,7 +91,7 @@ try {
   expectEqual("the session key is the issue the role runs for", call.sessionKey, "feat/01");
   expectEqual("the role is the one the node named", call.role, "implement");
   expectEqual("the persona is the table's", call.persona, implementPersona());
-  expectEqual("the brief is the body's path", call.prompt, "/target/.scratch/feat/issues/01-body.md");
+  expectEqual("the brief is the description", call.prompt, "the description");
   expectEqual("the wall clock is the table's", call.wallMs, AGENT_WALL_MS);
   expectEqual("the model comes from the config", call.model, CONFIG.model);
   expectEqual("the thinking level comes from the config", call.thinkingLevel, CONFIG.thinkingLevel);
@@ -103,7 +103,7 @@ try {
   // the same wall clock - so a conflicting merge cannot be handed a differently-clock ed turn.
   const conflict = roleAgent({
     role: "conflict",
-    args: { handle: "feat/01", bodyPath: "/target/.scratch/feat/issues/01-body.md" },
+    args: { handle: "feat/01", brief: "the description" },
     cwd: "/worktree",
     artifactsDir: "/artifacts",
     config: CONFIG,
@@ -112,7 +112,7 @@ try {
   expectEqual("the conflict turn keys the same issue session", conflict.sessionKey, call.sessionKey);
   expectEqual("its persona is the conflict resolver's", conflict.persona, conflictPersona());
   expect("which is not the implementer's", conflict.persona !== call.persona, conflict.persona.slice(0, 40));
-  expectEqual("its brief is the same body's path", conflict.prompt, call.prompt);
+  expectEqual("its brief is the same description", conflict.prompt, call.prompt);
   expectEqual("and its wall clock is the same", conflict.wallMs, AGENT_WALL_MS);
   expectEqual("it runs in the same worktree", conflict.cwd, "/worktree");
   // The decision this pins: the conflict turn shares the issue's session key, so both sessions sit

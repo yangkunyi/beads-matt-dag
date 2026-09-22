@@ -115,14 +115,14 @@ try {
     // The report: what was claimed, and the rule that left each other candidate out.
     const report = readReport(artifacts);
     expectEqual("the report names what was picked", report.picked.map((p) => p.handle).sort(), ["feat/01", "feat/06"]);
-    expectEqual("the report names the brand new flavour by its type", ruleFor(report, decision.id), "non-work-type");
-    expectEqual("the report names a decision with no wayfinder label too", ruleFor(report, bareDecision.id), "non-work-type");
-    expectEqual("and names the experiment ticket by its type as well", ruleFor(report, experiment.id), "non-work-type");
+    expectEqual("a decision never reaches this step", ruleFor(report, decision.id), undefined);
+    expectEqual("a decision with no leg label never reaches this step", ruleFor(report, bareDecision.id), undefined);
+    expectEqual("an experiment ticket never reaches this step", ruleFor(report, experiment.id), undefined);
     expectEqual("the report names the missing gate label", ruleFor(report, unlabelled.id), "missing-gate-label");
     expectEqual(
       "the report explains every candidate it left out, and no other issue",
       report.excluded.map((e) => e.id).sort(),
-      [bareDecision.id, decision.id, experiment.id, unlabelled.id].sort(),
+      [unlabelled.id].sort(),
     );
     // The blocked issue never reached this step: the store excluded it, so there is no rule to report.
     expectEqual("a blocked issue is not this step's to explain", ruleFor(report, blocked.id), undefined);

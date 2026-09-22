@@ -1,15 +1,10 @@
 /**
- * The five triage roles. One at a time: applying one replaces the other four of the family.
- * `wontfix` is a member of this family, not a close.
+ * The two labels a person still applies. One replaces the other.
+ * `ready-for-agent` is the drain gate. `wontfix` is abandon, not a close.
+ * Parking is `deferred`, not a label.
  */
 
-export const TRIAGE_LABELS = [
-	"needs-triage",
-	"needs-info",
-	"ready-for-agent",
-	"ready-for-human",
-	"wontfix",
-] as const;
+export const TRIAGE_LABELS = ["ready-for-agent", "wontfix"] as const;
 
 export type TriageLabel = (typeof TRIAGE_LABELS)[number];
 

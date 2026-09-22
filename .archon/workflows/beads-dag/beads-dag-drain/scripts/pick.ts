@@ -2,10 +2,13 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { applyAllowList } from "../../scripts/allow-list.ts";
 import { addAttempted, readAttempted } from "../../scripts/attempted.ts";
-import { assertNoCrossDomainEdges, NON_WORK_TYPES } from "../../scripts/domains.ts";
+import { composeDevelopmentFrontier, GATE_LABEL } from "../../scripts/dev-frontier.ts";
+import { assertNoCrossDomainEdges } from "../../scripts/domains.ts";
 import { runNode } from "../../scripts/node-entry.ts";
 import { nodeLine } from "../../scripts/node-outcomes.ts";
 import { claimIssues, preflightStore, readyIssues, type StoreIssue } from "../../scripts/store.ts";
+
+export { GATE_LABEL };
 
 /**
  * The frontier: what this drain may start, in one token — a JSON array of issue handles, so the same
@@ -33,53 +36,14 @@ import { claimIssues, preflightStore, readyIssues, type StoreIssue } from "../..
  * claims nothing at all.
  */
 
-/** The only way into the frontier: an issue without this label is not this drain's work. */
-export const GATE_LABEL = "ready-for-agent";
-
-/**
- * Why an issue that the store offered was left out. These are the rules the pack applies, and the only
- * ones it can explain: anything the store itself excluded (blocked, in progress, closed) never reaches
- * this step and is answered by asking the store.
- */
-type ExclusionRule = "non-work-type" | "missing-gate-label" | "attempted-by-this-run" | "outside-allow-list";
-
-type ExcludedIssue = { id: string; handle: string | undefined; rule: ExclusionRule };
-
 /** What the run keeps of this cycle's frontier: what was claimed, and why each other candidate was not. */
 type ExclusionReport = {
   picked: { id: string; handle: string }[];
-  excluded: ExcludedIssue[];
+  excluded: { id: string; handle: string | undefined; rule: string }[];
 };
 
 /** The artifact pick rewrites each cycle, relative to ARTIFACTS_DIR. */
 const EXCLUSION_REPORT_FILE = "pick-exclusions.json";
-
-/**
- * The rule that keeps an issue out of the frontier, or undefined when nothing does. The order is what
- * decides which rule a multiply-excluded issue is reported under: the domain first (it is never this
- * drain's work at all), then the operator's gate, then this run's own bookkeeping.
- */
-function exclusionRule(issue: StoreIssue, attempted: Set<string>): ExclusionRule | undefined {
-  if (NON_WORK_TYPES.has(issue.type)) return "non-work-type";
-  if (!issue.labels.includes(GATE_LABEL)) return "missing-gate-label";
-  if (attempted.has(issue.id)) return "attempted-by-this-run";
-  return undefined;
-}
-
-/** The store's answer with this step's type, gate and attempted rules applied. */
-function composeFrontier(
-  issues: StoreIssue[],
-  attempted: Set<string>,
-): { candidates: StoreIssue[]; excluded: ExcludedIssue[] } {
-  const candidates: StoreIssue[] = [];
-  const excluded: ExcludedIssue[] = [];
-  for (const issue of issues) {
-    const rule = exclusionRule(issue, attempted);
-    if (rule === undefined) candidates.push(issue);
-    else excluded.push({ id: issue.id, handle: issue.handle, rule });
-  }
-  return { candidates, excluded };
-}
 
 /**
  * The handle a claimed issue is handed to its worker under. It comes from the metadata the tracker
@@ -107,7 +71,10 @@ if (import.meta.main) {
     run: ({ target, artifactsDir, config, allowList }) => {
       const store = preflightStore(target, config);
       const attempted = readAttempted(artifactsDir);
-      const composed = composeFrontier(readyIssues(store, target), attempted);
+      const composed = composeDevelopmentFrontier(
+        readyIssues(store, target, ["--exclude-type", "decision,experiment,epic"]),
+        attempted,
+      );
       const { kept: candidates, dropped } = applyAllowList(composed.candidates, allowList);
       const excluded = [...composed.excluded, ...dropped];
       // The graph preflight again, behind the frontier read and ahead of every claim this cycle makes. It

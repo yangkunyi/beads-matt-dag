@@ -31,7 +31,7 @@ if (import.meta.main) {
   await runNode({
     artifacts: true,
     run: async ({ target, artifactsDir, config, configProvenance }) =>
-      openRun({ target, artifactsDir, config, configProvenance }, async (store) => {
+      openRun({ target, artifactsDir, config, configProvenance, kind: "drain" }, async (store) => {
         assertNoCrossDomainEdges(store, target);
         recomputeBlocked(store, target);
         writeRepairs(artifactsDir, await reconcileLeftovers(target, store, artifactsDir));

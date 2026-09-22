@@ -24,17 +24,8 @@ import { applyAllowList } from "../../scripts/allow-list.ts";
 import { readAttempted } from "../../scripts/attempted.ts";
 import { runNode } from "../../scripts/node-entry.ts";
 import { nodeLine } from "../../scripts/node-outcomes.ts";
+import { composeExperimentFrontier } from "../../scripts/experiment-frontier.ts";
 import { preflightStore, readyIssues, type StoreIssue } from "../../scripts/store.ts";
-import { EXPERIMENT_LABEL, EXPERIMENT_TYPE } from "../../beads-dag-experiment-run/scripts/ticket.ts";
-
-/**
- * Why an issue the store offered was left out. These are the rules this executor applies, and the only
- * ones it can explain: anything the store itself excluded (blocked, in progress, closed) never reaches
- * this step and is answered by asking the store.
- */
-type ExclusionRule = "not-experiment-type" | "missing-experiment-label" | "attempted-by-this-run" | "outside-allow-list";
-
-type ExcludedIssue = { id: string; handle: string | undefined; rule: ExclusionRule };
 
 /** One issue the frontier may hand to a run node: the fields the run's name derives from. */
 type Candidate = { id: string; handle: string; slug: string };
@@ -42,23 +33,11 @@ type Candidate = { id: string; handle: string; slug: string };
 /** What the run keeps of this cycle's frontier: what is left to work, and why each candidate is not. */
 type ExclusionReport = {
   picked: { id: string; handle: string }[];
-  excluded: ExcludedIssue[];
+  excluded: { id: string; handle: string | undefined; rule: string }[];
 };
 
 /** The artifact pick rewrites each cycle, relative to ARTIFACTS_DIR — the drain's own convention. */
 const EXCLUSION_REPORT_FILE = "pick-exclusions.json";
-
-/**
- * The rule that keeps an issue out of the frontier, or undefined when nothing does. The order decides
- * which rule a multiply-excluded issue is reported under: the type first (it is not this domain's work
- * at all), then the label, then this run's own bookkeeping.
- */
-function exclusionRule(issue: StoreIssue, attempted: Set<string>): ExclusionRule | undefined {
-  if (issue.type !== EXPERIMENT_TYPE) return "not-experiment-type";
-  if (!issue.labels.includes(EXPERIMENT_LABEL)) return "missing-experiment-label";
-  if (attempted.has(issue.id)) return "attempted-by-this-run";
-  return undefined;
-}
 
 /**
  * The handle a picked issue is handed to its run node under. There is no fallback: it is the metadata the
@@ -99,25 +78,6 @@ function compareCandidates(a: Candidate, b: Candidate): number {
   return a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : 0;
 }
 
-/** The store's answer with this step's type, label and attempted rules applied. */
-function composeFrontier(
-  issues: StoreIssue[],
-  attempted: Set<string>,
-): { candidates: Candidate[]; excluded: ExcludedIssue[] } {
-  const candidates: Candidate[] = [];
-  const excluded: ExcludedIssue[] = [];
-  for (const issue of issues) {
-    const rule = exclusionRule(issue, attempted);
-    if (rule !== undefined) {
-      excluded.push({ id: issue.id, handle: issue.handle, rule });
-      continue;
-    }
-    const handle = handleOf(issue);
-    candidates.push({ id: issue.id, handle, slug: issue.slug ?? "" });
-  }
-  return { candidates, excluded };
-}
-
 function writeExclusionReport(artifactsDir: string, report: ExclusionReport): void {
   mkdirSync(artifactsDir, { recursive: true });
   writeFileSync(join(artifactsDir, EXCLUSION_REPORT_FILE), `${JSON.stringify(report, null, 2)}\n`);
@@ -129,8 +89,13 @@ if (import.meta.main) {
     run: ({ target, artifactsDir, config, allowList }) => {
       const store = preflightStore(target, config);
       const attempted = readAttempted(artifactsDir);
-      const composed = composeFrontier(readyIssues(store, target), attempted);
-      const { kept: candidates, dropped } = applyAllowList(composed.candidates, allowList);
+      const composed = composeExperimentFrontier(readyIssues(store, target), attempted);
+      const named: Candidate[] = composed.candidates.map((issue) => ({
+        id: issue.id,
+        handle: handleOf(issue),
+        slug: issue.slug ?? "",
+      }));
+      const { kept: candidates, dropped } = applyAllowList(named, allowList);
       const excluded = [...composed.excluded, ...dropped];
       const picked = candidates
         .sort(compareCandidates)

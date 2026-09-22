@@ -17,7 +17,6 @@ model: packy/deepseek-flash
 thinkingLevel: high
 concurrency: 1
 
-# Machine loom/skills currently come from /data3/yky/beads-attention (operator switch 2026-09-20).
-# A postMerge install from this checkout would retarget ~/.archon/workflows/beads-dag and overwrite
-# those skills. Keep empty until the clone is merged back.
+# SANDBOX: postMerge is empty. `bun tools/flow.ts install` from this clone would retarget the
+# machine pack away from the live lab. Refresh the machine from /data3/yky/beads-matt-dag only.
 postMerge: ""
