@@ -1,8 +1,13 @@
 # Three statuses; the rest is derived
 
-An issue has one of three statuses: `open`, `in_progress`, `closed`. `BLOCKED` and `READY` are not
+An issue's **orchestration** statuses remain three: `open`, `in_progress`, `closed`. `BLOCKED` and `READY` are not
 statuses — blocked-ness is derived by the store from the graph, and readiness is `open` plus
-not-blocked. `MERGING`, `CONFLICT` and `RESOLVING` are not statuses either: merging and resolving are
+not-blocked. Beads also ships frozen built-ins `deferred` and `pinned`. Those are **parking**, not
+orchestration steps: a captured question is `deferred` until the operator runs it; a map is `pinned`
+until the operator turns it off. They are not a second copy of ready/blocked. Do not use stored
+`blocked` as a status the pack writes.
+
+Amended 2026-09-21 (beads-native loom). `MERGING`, `CONFLICT` and `RESOLVING` are not statuses either: merging and resolving are
 steps *inside* a running issue, `in_progress` already keeps a second drain off it, and the worktree's
 own git state is what records whether a merge is under way or left conflicts behind.
 

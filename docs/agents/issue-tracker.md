@@ -21,13 +21,20 @@ something different by *closed*:
 **The operator decides what to open; the session types it.** Which skill does a piece of work is
 `/ask-loom`'s question — this table only decides *where a thing belongs*.
 
-A session opens by looking at three things:
+A session opens with one command in the Target:
 
 ```bash
-bd ready                                          # what can start now — a map bead is a container, not work
-bd list -t experiment -s closed -l reading:none   # results nobody has read yet
-bd list -t decision -s open -l answer:draft       # questions whose reading landed and await my word
+loom attention --json
 ```
+
+From this checkout: `bun tools/flow.ts attention --json`. The JSON is leftovers, stuck chains, drafts,
+the three ready frontiers, unread experiment results, and braked issues. Take the first nonempty bucket
+and stop. Empty arrays mean that bucket is clear. This contract is disclosed reference — open it when a
+command fails or a domain rule is in doubt, not at boot.
+
+`bd prime` and the generic beads skill are beads' own help, not this flow: they teach `bd close` and
+`--claim`, which a session must not do to a development issue. Development `closed` is the drain's act,
+as `merged <branch>`.
 
 Nothing blocks across domains, in either direction: a question waiting on an experiment is not *blocked*
 by it — it stays open until the result is read and the answer written in. What crosses is a link, never a
@@ -55,16 +62,19 @@ to `PATH` — an operator who set it meant it to be used.
   Documents never live in the store, and are never issues.
 - Implementation issues are one **body file** per issue at `.scratch/<feature>/issues/<NN>-<slug>.md`,
   numbered from `01` — never a single combined tickets file. The issue itself is a bead in the store.
-- The body carries the handle and the prose, and nothing about state: **no `Status:` line, no blocker
-  list, no comment thread**. State moves in the store, not in the file.
+- The body is the contract. New publication writes a YAML head with that domain's required keys, then
+  optional disclosed prose. The head carries no status, no edges, no labels. **no `Status:` line, no blocker
+  list, no comment thread**. State moves in the store, not in the file. A body with no head remains
+  drainable — attention marks it `contract: missing` on ready development.
 - Comments and conversation history append to the issue in the store (`bd comment`), never to the body.
 
 ## Operator surface
 
 The operator UI is a view of the Target's beads graph, not an executor and not a local editor
 (ADR-0007). Beads remains the only graph and the only comment store. After a write the view reads the
-store again and keeps layout positions. The operator may, without a session: create an issue (type is
-the domain; that domain's identity labels go on at create; default triage is `needs-triage`); add or
+store again and keeps layout positions. The operator may, without a session: capture a `decision` (default triage is `needs-triage`; never the
+gate; optional `from` hangs it off the selected issue — `blocks` when that issue is inquiry,
+`discovered-from` when it is development or experiment); add or
 remove intra-domain `blocks`; add crossing `relates-to` and `discovered-from`; write `bd comment`;
 move the five triage labels (gate, brake, `wontfix`); delete an issue that is not `in_progress` and
 has no dependents, after confirm (ADR-0008); answer the current grill round on a selected issue
@@ -120,9 +130,43 @@ a status (below).
 
 Write the body and create the bead:
 
-1. Write the body file at `.scratch/<feature>/issues/<NN>-<slug>.md` — the handle and the prose, no
-   state of any kind.
-2. Create the bead with both metadata keys and the gate label:
+1. Write the body file at `.scratch/<feature>/issues/<NN>-<slug>.md` — YAML head, then optional prose, no
+   state of any kind. Refuse a `Status:` line. Refuse a development body with no `goal` and `acceptance`.
+   Do not pass `--description`: the body file is the brief, not a store copy of it.
+
+Development:
+
+```yaml
+---
+goal: <one sentence, user-visible behaviour>
+acceptance:
+  - <checkable criterion>
+# spec: docs/specs/<date>-<slug>.md
+---
+```
+
+Inquiry (`decision`; never `ready-for-agent`):
+
+```yaml
+---
+question: <one sentence>
+must_cite: true
+done_when: <what the draft/note must contain>
+---
+```
+
+Experiments (`experiment`; never `ready-for-agent`):
+
+```yaml
+---
+metric: <name> from <source>
+reference: <threshold | baseline | exploratory>
+pin: data=<…> commit=<…>
+---
+```
+
+2. Create the bead with both metadata keys. Development applies the gate in the same act; inquiry and
+   experiments never do:
 
 ```bash
 bd create "<title>" --type task --silent \
@@ -139,6 +183,8 @@ bd dep add <blocked-id> <blocker-id>        # default type: blocks
 Publication writes no initial status: `bd create` opens the issue, and a blocker is an edge rather than
 a value, so the store derives readiness by itself. Metadata is written here, at publication, and read
 back with `bd show <id> --json` or `bd list --metadata-field handle=<handle> --all --json --limit 0`.
+Optional `--spec-id` may point at a disclosed spec document. Do not also write the head to `--acceptance`
+or `--design`.
 
 ## The frontier and the claim
 
@@ -449,8 +495,8 @@ experiment`), and never the gate label: nothing about an experiment ticket is a 
 
 ## Maps
 
-There is no separate wayfinder skill. `/grill` produces the child questions; the **map** is a git
-document; the **child issues** are beads of type `decision`.
+There is no separate wayfinder skill. `/grill` produces the child questions; the **map** is a pinned
+`decision` (prose in `description`); the **child issues** are beads of type `decision`.
 
 A **grill run** (`beads-dag-grill`) is the same interview as a run, not a session: it takes one seed
 issue id, writes the next round onto that issue as a comment, and stops for answers. A later turn that
@@ -461,16 +507,15 @@ this run is the griller. The round travels as the run's own tool call (`submit_r
 an empty frontier) rather than as prose, and the comment it writes is the shape that surface renders as
 choices — sibling skill `grill-round` is that contract, `grill` is the same interview in conversation.
 
-- **Map**: one issue of type `decision` labelled `wayfinder:map`, its Notes / Decisions-so-far / Fog in
-  a git document.
-- **Child issue**: a bead of type `decision`, labelled `wayfinder:<research|prototype|grilling|task>`,
-  with the question as its body file at the handle path — the same body convention as an
-  implementation issue. A decision issue never enters a drain.
-- **Blocking**: the same `blocks` edges (`bd dep add`); an issue is unblocked when every issue blocking
+- **Map**: one issue of type `decision` with status `pinned` (legacy label `wayfinder:map` still counts).
+  Destination / Notes / Fog live in `description`. Optional `spec_id` may point at a git product map.
+  Turn it off with unpin then `bd close` (the attention UI's Close map). Not an `epic`.
+- **Child issue**: a bead of type `decision`. The reading gate is `leg:research`. Capture parks a
+  question as `deferred`; Run reading undefer + set-state. A decision issue never enters a drain.
+- **Blocking**: the same `blocks` edges (`bd dep add` / `bd create --deps`); an issue is unblocked when every issue blocking
   it is closed.
 - **Frontier**: the `decision`-typed issues in the store's ready answer, minus the claimed ones and minus
-  the map itself — the map carries `wayfinder:map` and is a container, not a ticket, so a query that only
-  filters the type hands it back. The first by handle (`01` before `02`) is the one to take.
+  pinned maps and questions without `leg:research`. The first by handle (`01` before `02`) is the one to take.
 - **Claim**: `bd update <id> -s in_progress`, and record the driving dev with the store's assignee
   field (`bd update <id> --assignee <dev>`) — for a decision issue that assignee is the claim a
   concurrent session reads.

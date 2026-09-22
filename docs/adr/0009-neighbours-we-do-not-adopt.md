@@ -13,7 +13,7 @@ three of the candidates below were believed to be adoptable until they were run.
 | `bd worktree` | It creates at `./<name>`; it cannot derive a name from the issue's handle and slug, which the pack's tests assert |
 | `bd query` | Our filters run over an in-memory snapshot the canvas, list and detail pane share; the verb would buy a second round trip for the same data |
 | `bd graph` | It does compute the same layering, but the canvas needs TS coordinates for React Flow |
-| `bd set-state` for the five triage labels | They are bare words; dimensionising them renames a documented vocabulary. (It *is* adopted for `reading:` — beads-dag/38) |
+| `bd set-state` for the five triage labels | The face no longer offers those five. Parking is `deferred`; maps are `pinned`; the reading gate is `set-state leg=research` (same pattern as `reading:`). `ready-for-agent` stays a pack gate label. `wontfix` stays a label, never a close. |
 | `bd --readonly` / `--sandbox` | Nothing to adopt: `--readonly` is the CLI spelling of the `BD_READONLY` the pack sets, and `--sandbox` only stops Dolt auto-push, which is off by default |
 | `archon isolation cleanup` / `archon complete` | **Unavailable to us.** `archon complete <branch>` answers `no active isolation environment`, because the pack sets `worktree.enabled: false` and Archon's registry therefore holds none of ours. The removal already exists in `main-writes.ts` (`git worktree prune`, then `worktree remove --force`) |
 | `archon workflow get` for the overlay | The overlay's other sources are pack-written facts (`run-lock.json`, `attempted-ids.json`, the reports), which no Archon command knows about. `workflow status --json`, already used, is the process list |
