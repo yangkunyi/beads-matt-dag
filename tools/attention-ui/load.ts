@@ -9,10 +9,12 @@ import { parseAttentionSnapshot, type AttentionSnapshot } from "./snapshot";
 
 const FLOW = join(dirname(fileURLToPath(import.meta.url)), "..", "flow.ts");
 
-/** Fresh enough for the page and its follow-up GET /attention; a write busts it. */
-const SNAPSHOT_TTL_MS = 5000;
-
-type CachedSnapshot = { dir: string; at: number; snapshot: AttentionSnapshot };
+/**
+ * One snapshot per generation: the attention verb costs over a second, more than any fresh window,
+ * so a TTL made every visit pay it again. Dropped by a write through the door; a write made outside
+ * the door lands on the next door write or server start.
+ */
+type CachedSnapshot = { dir: string; snapshot: AttentionSnapshot };
 let cached: CachedSnapshot | undefined;
 
 export function invalidateAttentionSnapshot(dir?: string): void {
@@ -21,8 +23,7 @@ export function invalidateAttentionSnapshot(dir?: string): void {
 
 export function loadAttentionSnapshot(dir: string): AttentionSnapshot {
 	const root = resolve(dir);
-	const now = Date.now();
-	if (cached !== undefined && cached.dir === root && now - cached.at < SNAPSHOT_TTL_MS) return cached.snapshot;
+	if (cached !== undefined && cached.dir === root) return cached.snapshot;
 	const result = spawnSync(process.execPath, [FLOW, "attention", "--json", "--dir", root], {
 		encoding: "utf8",
 		env: { ...process.env, BD_READONLY: "1" },
@@ -33,6 +34,6 @@ export function loadAttentionSnapshot(dir: string): AttentionSnapshot {
 		throw new Error(detail === "" ? `attention exited ${result.status}` : detail);
 	}
 	const snapshot = parseAttentionSnapshot(result.stdout);
-	cached = { dir: root, at: now, snapshot };
+	cached = { dir: root, snapshot };
 	return snapshot;
 }

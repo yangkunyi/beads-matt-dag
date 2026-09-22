@@ -5,13 +5,14 @@
  *
  *   bun tools/attention-ui/attention-ui-test.ts
  */
-import { readFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { RunLaunch } from "../operator-ui/start";
 import type { BdWriteRunner } from "../operator-ui/store";
 import { doorIssues, emptySnapshot, parseAttentionSnapshot, type AttentionRow, type AttentionSnapshot } from "./snapshot";
-import { handleAttentionRequest } from "./serve";
+import { createAttentionServer, handleAttentionRequest } from "./serve";
 import { pageCarriesHandle, pageIsReactApp, pageOffersCreate, renderAttentionPage } from "./page";
 
 let failed = 0;
@@ -188,6 +189,98 @@ expectEqual("unknown path is 404", missing.status, 404);
 
 const graphGone = await handleAttentionRequest({ method: "GET", url: "/graph" }, "", handler);
 expectEqual("GET /graph is not a route", graphGone.status, 404);
+
+const cacheTmp = mkdtempSync(join(tmpdir(), "attention-cache-"));
+const cacheLog = join(cacheTmp, "store.log");
+const cacheBd = join(cacheTmp, "cache-bd");
+const cacheListJson = JSON.stringify([
+	{
+		id: "from-bd",
+		title: "From bd",
+		status: "open",
+		issue_type: "task",
+		labels: [],
+		metadata: { handle: "demo/01", slug: "from-bd" },
+		dependencies: [],
+		comment_count: 1,
+	},
+]);
+const cacheShowJson = JSON.stringify([
+	{
+		id: "from-bd",
+		title: "From bd",
+		status: "open",
+		issue_type: "task",
+		labels: [],
+		metadata: { handle: "demo/01", slug: "from-bd" },
+		dependencies: [],
+		comment_count: 1,
+		comments: [{ id: "n1", issue_id: "from-bd", author: "op", text: "store comment", created_at: "2026-09-22T00:00:00Z" }],
+	},
+]);
+writeFileSync(
+	cacheBd,
+	`#!/usr/bin/env bun
+const fs = require("fs");
+const args = process.argv.slice(2);
+if (args[0] === "--readonly") args.shift();
+fs.appendFileSync(${JSON.stringify(cacheLog)}, JSON.stringify(args) + "\\n");
+if (args.includes("list")) {
+  process.stdout.write(${JSON.stringify(cacheListJson)});
+  process.exit(0);
+}
+if (args.includes("show")) {
+  process.stdout.write(${JSON.stringify(cacheShowJson)});
+  process.exit(0);
+}
+if (args.includes("comment")) {
+  process.exit(0);
+}
+process.stderr.write("unexpected " + args.join(" "));
+process.exit(1);
+`,
+);
+chmodSync(cacheBd, 0o755);
+const cacheServer = createAttentionServer({ dir: cacheTmp, store: cacheBd, snapshot: () => leftoverReady });
+const cachePort = await new Promise<number>((resolve, reject) => {
+	cacheServer.once("error", reject);
+	cacheServer.listen(0, "127.0.0.1", () => {
+		const address = cacheServer.address();
+		if (typeof address === "object" && address !== null) resolve(address.port);
+		else reject(new Error("server has no port"));
+	});
+});
+const storeReads = () =>
+	(existsSync(cacheLog) ? readFileSync(cacheLog, "utf8").trim() : "")
+		.split("\n")
+		.filter((line) => line !== "" && (JSON.parse(line) as string[]).includes("list")).length;
+expectEqual("listening warms the overview with one store read", storeReads(), 1);
+const cacheWarm = await fetch(`http://127.0.0.1:${cachePort}/`);
+expectEqual("GET / on the warm cache is 200", cacheWarm.status, 200);
+expectEqual("GET / serves the warm cache without another store read", storeReads(), 1);
+const cacheJson = await fetch(`http://127.0.0.1:${cachePort}/overview`);
+expectEqual("GET /overview is 200", cacheJson.status, 200);
+expectEqual("GET /overview shares the same snapshot", storeReads(), 1);
+const cachePost = await fetch(`http://127.0.0.1:${cachePort}/comment`, {
+	method: "POST",
+	headers: { "content-type": "application/json" },
+	body: JSON.stringify({ intent: "comment", id: "from-bd", text: "door reply" }),
+});
+expectEqual("POST /comment on the cache server is 204", cachePost.status, 204);
+expectEqual("the write itself reads the store no more", storeReads(), 1);
+const cacheAfter = await fetch(`http://127.0.0.1:${cachePort}/`);
+expectEqual("a door write still answers the next GET", cacheAfter.status, 200);
+expectEqual("a door write rebuilds the cache as the second store read", storeReads(), 2);
+const cacheRefused = await fetch(`http://127.0.0.1:${cachePort}/comment`, {
+	method: "POST",
+	headers: { "content-type": "application/json" },
+	body: JSON.stringify({ intent: "close", id: "from-bd" }),
+});
+expectEqual("POST close on the cache server is 400", cacheRefused.status, 400);
+const cacheRefusedAfter = await fetch(`http://127.0.0.1:${cachePort}/`);
+expectEqual("a refused intent still answers the next GET", cacheRefusedAfter.status, 200);
+expectEqual("a refused intent does not rebuild the cache", storeReads(), 2);
+await new Promise<void>((resolve, reject) => cacheServer.close((err) => (err ? reject(err) : resolve())));
 
 if (failed > 0) {
 	console.error(`${failed} failed`);

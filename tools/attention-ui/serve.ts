@@ -31,7 +31,9 @@ const USAGE = `usage: bun tools/attention-ui/serve.ts [--dir <target>] [--store 
   --host <addr>     listen address (default: 127.0.0.1)
 
 Routes: GET / is the inbox and graph on one page, GET /attention is the snapshot JSON,
-GET /overview is the beads graph JSON after a write, POST /comment is the tagged write door.
+GET /overview is the beads graph JSON after a write, POST /comment is the tagged write door. The
+store reads behind the page are cached: warmed at listen, rebuilt after a door write; a store write
+from outside the door becomes visible then or at the next server start.
 Capture is a deferred decision or a pinned map. Run-reading undefer + leg=research. Close-map
 unpins then closes. Start/grill launch the existing domain run.`;
 
@@ -209,8 +211,6 @@ export type AttentionServer = {
 	once(event: "error", listener: (err: Error) => void): AttentionServer;
 };
 
-const OVERVIEW_TTL_MS = 5000;
-
 export function createAttentionServer(options: ServeOptions): AttentionServer {
 	const write = options.write ?? makeWriteRunner(options.store, options.dir);
 	const actor = options.actor;
@@ -229,17 +229,15 @@ export function createAttentionServer(options: ServeOptions): AttentionServer {
 	const assets = options.assets ?? (() => clientAssets());
 	const targetHeld = options.targetHeld ?? (() => snapshot().run.held);
 	const launchRun = options.launchRun ?? defaultLaunchRun(options.dir, options.archon);
-	let overviewAt = 0;
-	let overviewValue: Overview | undefined;
-	const loadOverview = (): Overview => {
-		const now = Date.now();
-		if (overviewValue !== undefined && now - overviewAt < OVERVIEW_TTL_MS) return overviewValue;
+	const buildOverview = (): Overview => {
 		const fetched = fetchStore(makeRunner(options.store, options.dir));
 		const live = fetchLive(options.dir, { archon: options.archon });
-		overviewValue = assembleOverview(fetched.issues, fetched.commentsById, (issue) => documentsFor(issue, options.dir), live);
-		overviewAt = now;
-		return overviewValue;
+		return assembleOverview(fetched.issues, fetched.commentsById, (issue) => documentsFor(issue, options.dir), live);
 	};
+	// One store read per generation: a TTL cannot carry this — the read costs more than any fresh
+	// window, so every request paid it again. Warmed at listen, dropped by a write through the door.
+	let overviewValue: Overview | undefined;
+	const loadOverview = (): Overview => (overviewValue ??= buildOverview());
 	const issues = options.issues ?? (() => loadOverview().issues);
 	const handler: AttentionHandler = {
 		write,
@@ -256,7 +254,6 @@ export function createAttentionServer(options: ServeOptions): AttentionServer {
 			}),
 		onWrite: () => {
 			overviewValue = undefined;
-			overviewAt = 0;
 		},
 		dir: options.dir,
 		launchRun,
@@ -290,6 +287,28 @@ export function createAttentionServer(options: ServeOptions): AttentionServer {
 						return new Response(out.body, { status: out.status, headers: out.headers });
 					},
 				});
+				// The first store reads are seconds of bd and the client build is more: pay them here, at
+				// listen, so no first screen pays for them. A failure here is not fatal — the first
+				// request retries it and reports.
+				if (options.snapshot === undefined) {
+					try {
+						snapshot();
+					} catch {
+						// the first request retries the read and reports
+					}
+				}
+				try {
+					loadOverview();
+				} catch {
+					// the first request retries the read and reports
+				}
+				if (options.assets === undefined) {
+					try {
+						clientAssets();
+					} catch {
+						// the first request retries the build and reports
+					}
+				}
 				listeningListener?.();
 			} catch (error) {
 				onError?.(error instanceof Error ? error : new Error(String(error)));
