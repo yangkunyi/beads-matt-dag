@@ -111,6 +111,9 @@ expect("canvas does not pass a controlled selected flag", !graphSrc.includes("se
 expect("page keeps its refresh stable", !appSrc.includes("function refresh("));
 expect("page shows a node's comments", appSrc.includes("function CommentList") && appSrc.includes("comment.text"));
 expect("comment form is not gated on next", appSrc.includes('id="comment-form"') && appSrc.includes("function CommentForm"));
+const grillSrc = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "ui", "Grill.tsx"), "utf8");
+expect("an open issue can start a grill", appSrc.includes("<Grill") && grillSrc.includes('data-act="grill"') && grillSrc.includes('intent: "grill"'));
+expect("a round is choices posted as answer-round", grillSrc.includes('id="grill-round"') && grillSrc.includes('intent: "answer-round"') && grillSrc.includes('role="radiogroup"'));
 expect("canvas fits the camera when the selection changes", graphSrc.includes("fitView") && graphSrc.includes("fittedSelection"));
 expect("inbox rows are not a bulleted list", appSrc.includes('id="attention-list"') && appSrc.includes("list-none"));
 expect("columns are resizable", appSrc.includes('from "react-resizable-panels"') && html.includes('id="panels"'));

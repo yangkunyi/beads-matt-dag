@@ -1,6 +1,7 @@
 /**
  * Attention inbox: the human face of the same JSON a session boots from. The first row is the
- * default selection. A row's `next` is the only primary act. The beads graph sits on the same page.
+ * default selection. A row's `next` is the primary act. Any open issue can also start a grill, and
+ * the current round — already parsed on the overview — is choices, not a wall of markdown.
  */
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, Inbox, Play, Plus } from "lucide-react";
@@ -11,7 +12,9 @@ import { postOperatorAction } from "../../operator-ui/client.ts";
 const FACE_LABELS = ["wontfix"] as const;
 import { isLaunchNext, type AttentionNext, type AttentionRow, type AttentionSnapshot } from "../snapshot.ts";
 import { featureOf, type Overview, type OverviewComment } from "../../operator-ui/model.ts";
+import type { GrillRound } from "../../operator-ui/round.ts";
 import { GraphPane } from "./GraphPane.tsx";
+import { Grill } from "./Grill.tsx";
 import {
 	Badge,
 	Button,
@@ -46,8 +49,7 @@ function nextLabel(next: AttentionNext): string {
 	return "Read or decline in a session";
 }
 
-function launchIntent(next: AttentionNext): "start" | "grill" | undefined {
-	if (next === "grill") return "grill";
+function launchIntent(next: AttentionNext): "start" | undefined {
 	if (next === "drain" || next === "inquiry" || next === "experiment") return "start";
 	return undefined;
 }
@@ -197,32 +199,30 @@ function InboxPage({ attention }: { attention: PageAttention }) {
 				<Panel id="detail-panel" defaultSize="18rem" minSize="14rem" className="min-h-0 overflow-hidden">
 					<aside className="h-full overflow-y-auto bg-card p-4">
 						{selected !== undefined ? (
-							<ItemDetail
+							<IssueDetail
+								id={selected.id}
+								handle={selected.handle}
+								title={selected.title}
+								status={selected.status}
 								row={selected}
 								comments={overviewIssue?.comments ?? []}
+								round={overviewIssue?.round ?? null}
 								held={snapshot.run.held}
 								endpoint={attention.commentEndpoint}
 								onWrote={refresh}
 							/>
 						) : overviewIssue !== undefined ? (
-							<div id="detail" className="flex flex-col gap-2">
-								<p className="font-medium">{overviewIssue.handle ?? overviewIssue.id}</p>
-								<p className="text-sm text-muted-foreground">{overviewIssue.title}</p>
-								<p className="text-sm text-muted-foreground">
-									{overviewIssue.status === "pinned"
-										? "A map is a pinned direction, not a ticket. Close it when the way is clear."
-										: "Not in this attention list."}
-								</p>
-								<CommentList comments={overviewIssue.comments} />
-								{overviewIssue.status === "closed" ? null : overviewIssue.status === "pinned" ? (
-									<CloseMapButton id={overviewIssue.id} endpoint={attention.commentEndpoint} onWrote={refresh} />
-								) : overviewIssue.status === "deferred" ? (
-									<RunReadingButton id={overviewIssue.id} endpoint={attention.commentEndpoint} onWrote={refresh} />
-								) : (
-									<TriageButtons id={overviewIssue.id} endpoint={attention.commentEndpoint} onWrote={refresh} />
-								)}
-								<CommentForm issueId={overviewIssue.id} endpoint={attention.commentEndpoint} onWrote={refresh} />
-							</div>
+							<IssueDetail
+								id={overviewIssue.id}
+								handle={overviewIssue.handle ?? overviewIssue.id}
+								title={overviewIssue.title}
+								status={overviewIssue.status}
+								comments={overviewIssue.comments}
+								round={overviewIssue.round}
+								held={snapshot.run.held}
+								endpoint={attention.commentEndpoint}
+								onWrote={refresh}
+							/>
 						) : (
 							<p className="text-sm text-muted-foreground">Pick a row.</p>
 						)}
@@ -328,39 +328,72 @@ function RunBanner({ run }: { run: AttentionSnapshot["run"] }) {
 	);
 }
 
-function ItemDetail(props: {
-	row: AttentionRow;
+function IssueDetail(props: {
+	id: string;
+	handle: string;
+	title: string;
+	status: string;
+	row?: AttentionRow;
 	comments: OverviewComment[];
+	round: GrillRound | null;
 	held: boolean;
 	endpoint: string | null;
 	onWrote: () => void;
 }) {
 	const row = props.row;
 	const waiting =
-		row.waiting_on === undefined || row.waiting_on.length === 0
+		row?.waiting_on === undefined || row.waiting_on.length === 0
 			? ""
 			: row.waiting_on.map((item) => `${item.handle} (${item.why})`).join(", ");
+	const aside =
+		row !== undefined
+			? null
+			: props.status === "pinned"
+				? "A map is a pinned direction, not a ticket. Close it when the way is clear."
+				: "Not in this attention list.";
 	return (
 		<div id="detail" className="flex flex-col gap-3">
 			<div>
-				<p className="font-medium">{row.handle}</p>
-				<p className="text-sm text-muted-foreground">{row.title}</p>
+				<p className="font-medium">{props.handle}</p>
+				<p className="text-sm text-muted-foreground">{props.title}</p>
 			</div>
-			<div className="flex flex-wrap gap-1">
-				<Badge>{row.next}</Badge>
-				{row.contract === "missing" ? <Badge className="border-warning-border bg-warning">contract missing</Badge> : null}
-				{row.contract === "present" ? <Badge>contract present</Badge> : null}
-				{row.attempts_failed !== undefined && row.attempts_failed > 0 ? (
-					<Badge>attempts {row.attempts_failed}</Badge>
-				) : null}
-			</div>
+			{row === undefined ? null : (
+				<div className="flex flex-wrap gap-1">
+					<Badge>{row.next}</Badge>
+					{row.contract === "missing" ? <Badge className="border-warning-border bg-warning">contract missing</Badge> : null}
+					{row.contract === "present" ? <Badge>contract present</Badge> : null}
+					{row.attempts_failed !== undefined && row.attempts_failed > 0 ? (
+						<Badge>attempts {row.attempts_failed}</Badge>
+					) : null}
+				</div>
+			)}
 			{waiting === "" ? null : <p className="text-sm">Waiting on {waiting}</p>}
+			{aside === null ? null : <p className="text-sm text-muted-foreground">{aside}</p>}
+			<Grill
+				issueId={props.id}
+				round={props.round}
+				closed={props.status === "closed"}
+				held={props.held}
+				endpoint={props.endpoint}
+				onWrote={props.onWrote}
+			/>
 			<CommentList comments={props.comments} />
 			<Separator />
-			<PrimaryAct row={row} held={props.held} endpoint={props.endpoint} onWrote={props.onWrote} />
-			<CommentForm issueId={row.id} endpoint={props.endpoint} onWrote={props.onWrote} />
+			{row === undefined ? (
+				<GraphActs id={props.id} status={props.status} endpoint={props.endpoint} onWrote={props.onWrote} />
+			) : (
+				<PrimaryAct row={row} held={props.held} endpoint={props.endpoint} onWrote={props.onWrote} />
+			)}
+			<CommentForm issueId={props.id} endpoint={props.endpoint} onWrote={props.onWrote} />
 		</div>
 	);
+}
+
+function GraphActs(props: { id: string; status: string; endpoint: string | null; onWrote: () => void }) {
+	if (props.status === "closed") return null;
+	if (props.status === "pinned") return <CloseMapButton id={props.id} endpoint={props.endpoint} onWrote={props.onWrote} />;
+	if (props.status === "deferred") return <RunReadingButton id={props.id} endpoint={props.endpoint} onWrote={props.onWrote} />;
+	return <TriageButtons id={props.id} endpoint={props.endpoint} onWrote={props.onWrote} />;
 }
 
 /** A node's comments are `bd comment` on the bead; this is that same store text, read back. */
@@ -434,6 +467,7 @@ function PrimaryAct(props: {
 			</p>
 		);
 	}
+	if (row.next === "grill") return null;
 	const launch = launchIntent(row.next);
 	if (launch !== undefined) {
 		return (
