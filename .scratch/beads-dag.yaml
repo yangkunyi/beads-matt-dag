@@ -17,6 +17,9 @@ model: packy/deepseek-flash
 thinkingLevel: high
 concurrency: 1
 
-# SANDBOX: postMerge is empty. `bun tools/flow.ts install` from this clone would retarget the
-# machine pack away from the live lab. Refresh the machine from /data3/yky/beads-matt-dag only.
-postMerge: ""
+# The Target's post-merge act (pack README, "The post-merge act"): one command this repository runs
+# itself after a merge lands, so the machine's copies of the flow never describe work Main does not
+# have. It was parked empty while the loom and the attention UI lived in the beads-attention clone
+# (operator switch 2026-09-20); the clone merged back 2026-09-22, so the act is live again and a
+# merge from that clone must not reappear on top of it.
+postMerge: bun tools/flow.ts install
