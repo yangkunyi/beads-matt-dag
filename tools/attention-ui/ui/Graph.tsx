@@ -21,6 +21,7 @@ import {
 	type Node,
 	type NodeChange,
 	type NodeProps,
+	type ReactFlowInstance,
 } from "@xyflow/react";
 import { postOperatorAction } from "../../operator-ui/client.ts";
 import { LANE_LABEL, projectGraph, proposeConnect, type ViewNodeData } from "../../operator-ui/graph-view.ts";
@@ -131,6 +132,8 @@ function GraphCanvas(props: {
 	const { overview, selectedId, onSelect, writeEndpoint, onWritten } = props;
 	const dragged = useRef<Record<string, { x: number; y: number }>>({});
 	const fitted = useRef(false);
+	const flow = useRef<ReactFlowInstance<CanvasNode, RelationEdge> | null>(null);
+	const fittedSelection = useRef<string | undefined | "boot">("boot");
 	const [showAll, setShowAll] = useState(false);
 	/** Memoised on the id: a fresh `[]`/`[id]` every render re-set React Flow's store forever. */
 	const selected = useMemo(() => (selectedId === undefined ? [] : [selectedId]), [selectedId]);
@@ -148,6 +151,26 @@ function GraphCanvas(props: {
 		);
 		setEdges(projected.edges);
 	}, [projected]);
+
+	useEffect(() => {
+		const inst = flow.current;
+		if (inst === null) return;
+		if (fittedSelection.current === "boot") {
+			fittedSelection.current = selectedId;
+			return;
+		}
+		if (fittedSelection.current === selectedId) return;
+		if (selectedId !== undefined && !nodes.some((node) => node.id === selectedId)) return;
+		fittedSelection.current = selectedId;
+		const id = selectedId;
+		requestAnimationFrame(() => {
+			if (id === undefined) {
+				void inst.fitView({ padding: 0.15 });
+				return;
+			}
+			void inst.fitView({ nodes: [{ id }], padding: 0.35, duration: 200 });
+		});
+	}, [selectedId, nodes]);
 
 	// `select` is dropped: the page owns selection, and applying it here fights the projection.
 	const onNodesChange = useCallback((changes: NodeChange<CanvasNode>[]) => {
@@ -228,7 +251,8 @@ function GraphCanvas(props: {
 		onSelect(undefined);
 	}, [onSelect]);
 
-	const onInit = useCallback((instance: { fitView: () => void }) => {
+	const onInit = useCallback((instance: ReactFlowInstance<CanvasNode, RelationEdge>) => {
+		flow.current = instance;
 		if (fitted.current) return;
 		fitted.current = true;
 		instance.fitView();

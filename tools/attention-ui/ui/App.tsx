@@ -1,6 +1,6 @@
 /**
- * Attention inbox: the human face of the same JSON a session boots from. First nonempty bucket is
- * the default focus. A row's `next` is the only primary act. The beads graph sits on the same page.
+ * Attention inbox: the human face of the same JSON a session boots from. The first row is the
+ * default selection. A row's `next` is the only primary act. The beads graph sits on the same page.
  */
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, Inbox, Play, Plus } from "lucide-react";
@@ -9,17 +9,7 @@ import { Group, Panel, Separator as ResizeSeparator } from "react-resizable-pane
 import { Toaster, toast } from "sonner";
 import { postOperatorAction } from "../../operator-ui/client.ts";
 const FACE_LABELS = ["wontfix"] as const;
-import {
-	BUCKET_ORDER,
-	bucketCounts,
-	firstNonempty,
-	isLaunchNext,
-	rowsIn,
-	type AttentionNext,
-	type AttentionRow,
-	type AttentionSnapshot,
-	type BucketKey,
-} from "../snapshot.ts";
+import { isLaunchNext, type AttentionNext, type AttentionRow, type AttentionSnapshot } from "../snapshot.ts";
 import { featureOf, type Overview, type OverviewComment } from "../../operator-ui/model.ts";
 import { GraphPane } from "./GraphPane.tsx";
 import {
@@ -30,9 +20,6 @@ import {
 	Label,
 	ScrollArea,
 	Separator,
-	Tabs,
-	TabsList,
-	TabsTrigger,
 	Textarea,
 	Tooltip,
 	TooltipProvider,
@@ -47,26 +34,15 @@ export type PageAttention = {
 	actor: string | null;
 };
 
-const BUCKET_LABEL: Record<BucketKey, string> = {
-	leftovers: "Leftovers",
-	stuck: "Stuck",
-	drafts: "Drafts",
-	"ready.development": "Ready · development",
-	"ready.inquiry": "Ready · inquiry",
-	"ready.experiments": "Ready · experiments",
-	unread_experiments: "Unread experiments",
-	braked: "Parked",
-};
-
 function nextLabel(next: AttentionNext): string {
 	if (next === "wait") return "Wait";
 	if (next === "drain") return "Start drain";
 	if (next === "inquiry") return "Start inquiry";
 	if (next === "experiment") return "Start experiment";
 	if (next === "grill") return "Start grill";
-	if (next === "triage") return "Drop";
-	if (next === "run") return "Run reading";
-	if (next === "accept-or-edit-or-reject") return "Accept, edit, or reject in a session";
+	if (next === "release") return "Run reading";
+	if (next === "accept-draft") return "Accept, edit, or reject in a session";
+	if (next === "unstick") return "Waiting on a blocker";
 	return "Read or decline in a session";
 }
 
@@ -111,11 +87,8 @@ function InboxPage({ attention }: { attention: PageAttention }) {
 		enabled: attention.attentionEndpoint !== null,
 	});
 	const snapshot = query.data ?? attention.snapshot;
-	const counts = bucketCounts(snapshot);
-	const boot = firstNonempty(snapshot);
-	const [focus, setFocus] = useState<BucketKey>(boot?.key ?? "leftovers");
-	const rows = rowsIn(snapshot, focus);
-	const [selectedId, setSelectedId] = useState<string | undefined>(boot?.rows[0]?.id);
+	const rows = snapshot.work;
+	const [selectedId, setSelectedId] = useState<string | undefined>(rows[0]?.id);
 	const selected = rows.find((row) => row.id === selectedId);
 	const [captureOpen, setCaptureOpen] = useState(false);
 
@@ -171,34 +144,11 @@ function InboxPage({ attention }: { attention: PageAttention }) {
 				</div>
 			</header>
 			<Group id="panels" className="min-h-0 flex-1" orientation="horizontal">
-				<Panel id="buckets-panel" defaultSize="14rem" minSize="10rem" className="min-h-0 overflow-hidden">
-					<nav id="buckets" className="h-full overflow-y-auto bg-card p-2" aria-label="Attention buckets">
-						<Tabs
-							value={focus}
-							onValueChange={(value) => {
-								const key = value as BucketKey;
-								setFocus(key);
-								setSelectedId(rowsIn(snapshot, key)[0]?.id);
-							}}
-							orientation="vertical"
-						>
-							<TabsList>
-								{BUCKET_ORDER.filter((key) => counts[key] > 0 || key === focus).map((key) => (
-									<TabsTrigger key={key} value={key} data-bucket={key} data-count={String(counts[key])}>
-										<span>{BUCKET_LABEL[key]}</span>
-										<Badge>{counts[key]}</Badge>
-									</TabsTrigger>
-								))}
-							</TabsList>
-						</Tabs>
-					</nav>
-				</Panel>
-				<ResizeSeparator className={resizeHandleClass} />
-				<Panel id="inbox-panel" defaultSize="16rem" minSize="12rem" className="min-h-0 overflow-hidden">
-					<main id="focus" data-focus={focus} className="h-full min-h-0 bg-muted/40">
+				<Panel id="inbox-panel" defaultSize="18rem" minSize="12rem" className="min-h-0 overflow-hidden">
+					<main id="focus" className="h-full min-h-0 bg-muted/40">
 						{rows.length === 0 ? (
 							<p id="empty" className="p-8 text-sm text-muted-foreground">
-								{boot === undefined ? "No work is waiting." : `${BUCKET_LABEL[focus]} is empty.`}
+								No work is waiting.
 							</p>
 						) : (
 							<ScrollArea className="h-full">
@@ -259,13 +209,12 @@ function InboxPage({ attention }: { attention: PageAttention }) {
 								<p className="font-medium">{overviewIssue.handle ?? overviewIssue.id}</p>
 								<p className="text-sm text-muted-foreground">{overviewIssue.title}</p>
 								<p className="text-sm text-muted-foreground">
-									{overviewIssue.status === "pinned" || overviewIssue.labels.includes("wayfinder:map")
+									{overviewIssue.status === "pinned"
 										? "A map is a pinned direction, not a ticket. Close it when the way is clear."
-										: "Not in this attention bucket."}
+										: "Not in this attention list."}
 								</p>
 								<CommentList comments={overviewIssue.comments} />
-								{overviewIssue.status === "closed" ? null : overviewIssue.status === "pinned" ||
-								  overviewIssue.labels.includes("wayfinder:map") ? (
+								{overviewIssue.status === "closed" ? null : overviewIssue.status === "pinned" ? (
 									<CloseMapButton id={overviewIssue.id} endpoint={attention.commentEndpoint} onWrote={refresh} />
 								) : overviewIssue.status === "deferred" ? (
 									<RunReadingButton id={overviewIssue.id} endpoint={attention.commentEndpoint} onWrote={refresh} />
@@ -395,7 +344,7 @@ function ItemDetail(props: {
 		<div id="detail" className="flex flex-col gap-3">
 			<div>
 				<p className="font-medium">{row.handle}</p>
-				<p className="text-sm text-muted-foreground">{row.title ?? row.type ?? row.bucket}</p>
+				<p className="text-sm text-muted-foreground">{row.title}</p>
 			</div>
 			<div className="flex flex-wrap gap-1">
 				<Badge>{row.next}</Badge>
@@ -404,9 +353,6 @@ function ItemDetail(props: {
 				{row.attempts_failed !== undefined && row.attempts_failed > 0 ? (
 					<Badge>attempts {row.attempts_failed}</Badge>
 				) : null}
-				{(row.labels ?? []).map((label) => (
-					<Badge key={label}>{label}</Badge>
-				))}
 			</div>
 			{waiting === "" ? null : <p className="text-sm">Waiting on {waiting}</p>}
 			<CommentList comments={props.comments} />
@@ -510,11 +456,8 @@ function PrimaryAct(props: {
 			</Tooltip>
 		);
 	}
-	if (row.next === "run") {
+	if (row.next === "release") {
 		return <RunReadingButton id={row.id} endpoint={endpoint} onWrote={onWrote} />;
-	}
-	if (row.next === "triage") {
-		return <TriageButtons id={row.id} endpoint={endpoint} onWrote={onWrote} />;
 	}
 	return (
 		<p id="act" data-act="comment" className="text-sm text-muted-foreground">

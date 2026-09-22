@@ -111,8 +111,7 @@ function openRun(root: string, artifacts: string): string {
 /** Publish one issue and land its brief as a commit on Main, before the run that will work it opens. */
 function publishAndCommit(root: string, handle: string, slug: string, title: string): ReturnType<typeof publishIssue> {
   const issue = publishIssue(root, { title, handle, slug, labels: [GATE_LABEL] });
-  gitC(root, "add", "-A");
-  gitC(root, "commit", "-m", `the published brief for ${handle}`);
+  commitFile(root, `${slug}.txt`, `${issue.brief}\n`, `the published brief for ${handle}`);
   return issue;
 }
 

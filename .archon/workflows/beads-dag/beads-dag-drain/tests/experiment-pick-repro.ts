@@ -66,7 +66,7 @@ try {
       type: "decision",
       handle: "exp/03",
       slug: "a-question",
-      labels: ["wayfinder:research"],
+      labels: ["leg:research"],
     });
     // An experiment ticket without the domain's label: the type is right, the ticket is not runnable as
     // one yet — `bd list -l experiment` is the one filter, so the label is the ticket's own statement.

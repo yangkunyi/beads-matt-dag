@@ -46,7 +46,6 @@ const NAMES = {
   slug: "the-locked-issue",
   branch: "beads/feat/01-the-locked-issue",
   worktreeRel: join("worktrees", "feat-01-the-locked-issue"),
-  bodyRel: join(".scratch", "feat", "issues", "01-the-locked-issue.md"),
 };
 
 /** Wait for a child that may already be gone by the time this is called. */

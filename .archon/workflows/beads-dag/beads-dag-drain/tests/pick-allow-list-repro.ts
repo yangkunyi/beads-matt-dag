@@ -30,7 +30,7 @@ import {
 } from "./target.ts";
 
 const REPORT = "pick-exclusions.json";
-const READING = "wayfinder:research";
+const READING = "leg:research";
 
 type ExclusionReport = {
   picked: { id: string; handle: string }[];
@@ -97,7 +97,7 @@ try {
     expectEqual("the report names what was claimed", report.picked, [{ id: selected.id, handle: "feat/01" }]);
     expectEqual("the left-out issue is outside the pool", ruleFor(report, other.id), "outside-allow-list");
     expectEqual("an id on the list without the gate is still missing-gate", ruleFor(report, unlabelled.id), "missing-gate-label");
-    expectEqual("an id on the list of the wrong type is still non-work", ruleFor(report, decision.id), "non-work-type");
+    expectEqual("a decision on the list never reaches this step", ruleFor(report, decision.id), undefined);
     expectEqual("a blocked id never reached this step", ruleFor(report, blocked.id), undefined);
   });
 
@@ -163,7 +163,7 @@ try {
       type: "decision",
       handle: "q/03",
       slug: "grilling",
-      labels: ["wayfinder:grilling"],
+      labels: ["leg:grilling"],
     });
     const otherLabels = labelsOf(root, other.id);
     const unlabelledLabels = labelsOf(root, unlabelled.id);

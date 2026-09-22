@@ -45,7 +45,7 @@ import { defaultAgent, type AgentRunner } from "../../scripts/agent.ts";
 import { loadConfig, type PackConfig } from "../../scripts/config.ts";
 import { commitDocuments, documentSubject, uncommittedUnder } from "../../scripts/doc-commit.ts";
 import { revParse } from "../../scripts/git.ts";
-import { bodyPath, issueNames } from "../../scripts/naming.ts";
+import { issueBrief, issueNames } from "../../scripts/naming.ts";
 import { runNode } from "../../scripts/node-entry.ts";
 import { FAILED, LANDED, nodeLine } from "../../scripts/node-outcomes.ts";
 import { roleAgent } from "../../scripts/roles.ts";
@@ -120,11 +120,7 @@ export async function readQuestion(target: string, issueHandle: string, opts: Re
       role: "read",
       args: {
         handle: names.handle,
-        bodyPath: (() => {
-          const file = bodyPath(target, names);
-          if (existsSync(file)) return file;
-          return issue.description !== undefined && issue.description !== "" ? issue.description : file;
-        })(),
+        brief: issueBrief(issue),
         corpusRel: paths.corpusRel,
         noteRel: paths.noteRel,
       },

@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
-import { documentsFor, bodyRel, issueNames, noteRel, recordRel } from "./documents";
+import { documentsFor, issueNames, noteRel, recordRel } from "./documents";
 import {
 	assembleLive,
 	assembleOverview,
@@ -229,34 +229,16 @@ expectEqual("a re-read shows the answers", answered.issues[0]?.round?.questions.
 
 const names = issueNames(work);
 expect("work issue has names", Boolean(names));
-if (names) {
-	expectEqual("body path is derived, not discovered", bodyRel(names), join(".scratch", "drain", "issues", "03-the-drain-work.md"));
-}
 const workDocs = documentsFor(work, probe);
-expectEqual(
-	"work documents are the body",
-	workDocs.map((doc) => doc.kind),
-	["body"],
-);
-expectEqual("body exists", workDocs[0]?.exists, true);
-expectEqual("body text is the file", workDocs[0]?.text, "# drain work\n");
+expectEqual("work has no sidecar brief", workDocs.map((doc) => doc.kind), []);
 
 const decisionDocs = documentsFor(blocker, probe);
-expectEqual(
-	"decision documents are body and note",
-	decisionDocs.map((doc) => doc.kind),
-	["body", "note"],
-);
-expectEqual("note path is derived", decisionDocs[1]?.rel, noteRel(issueNames(blocker)!));
+expectEqual("decision documents are the note", decisionDocs.map((doc) => doc.kind), ["note"]);
+expectEqual("note path is derived", decisionDocs[0]?.rel, noteRel(issueNames(blocker)!));
 
 const experimentDocs = documentsFor(experiment, probe);
-expectEqual(
-	"experiment documents are body and record",
-	experimentDocs.map((doc) => doc.kind),
-	["body", "record"],
-);
-expectEqual("record path is derived", experimentDocs[1]?.rel, recordRel(issueNames(experiment)!));
-expectEqual("missing body is listed as missing", experimentDocs[0]?.exists, false);
+expectEqual("experiment documents are the record", experimentDocs.map((doc) => doc.kind), ["record"]);
+expectEqual("record path is derived", experimentDocs[0]?.rel, recordRel(issueNames(experiment)!));
 
 const byType = filterOverview(overview, { types: new Set(["decision"]) });
 expectEqual("type filter keeps decisions", byType.issues.map((item) => item.id), ["a"]);
@@ -1257,22 +1239,9 @@ applyOperatorAction(
 	writeRunner,
 	JSON.stringify({ intent: "triage", id: "from-bd", label: "ready-for-agent" }),
 );
-expectEqual("ready-for-agent replaces the family", writes, [
+expectEqual("ready-for-agent replaces wontfix", writes, [
 	{
-		args: [
-			"update",
-			"from-bd",
-			"--add-label",
-			"ready-for-agent",
-			"--remove-label",
-			"needs-triage",
-			"--remove-label",
-			"needs-info",
-			"--remove-label",
-			"ready-for-human",
-			"--remove-label",
-			"wontfix",
-		],
+		args: ["update", "from-bd", "--add-label", "ready-for-agent", "--remove-label", "wontfix"],
 		stdin: undefined,
 	},
 ]);
@@ -1281,90 +1250,18 @@ expect(
 	writes.every((call) => call.args[0] === "update" && !call.args.includes("close") && !call.args.includes("closed")),
 );
 
-writes.length = 0;
-applyOperatorAction(writeRunner, JSON.stringify({ intent: "triage", id: "from-bd", label: "needs-info" }));
-expectEqual("needs-info brake replaces the family", writes, [
-	{
-		args: [
-			"update",
-			"from-bd",
-			"--add-label",
-			"needs-info",
-			"--remove-label",
-			"needs-triage",
-			"--remove-label",
-			"ready-for-agent",
-			"--remove-label",
-			"ready-for-human",
-			"--remove-label",
-			"wontfix",
-		],
-		stdin: undefined,
-	},
-]);
-
-writes.length = 0;
-applyOperatorAction(writeRunner, JSON.stringify({ intent: "triage", id: "from-bd", label: "needs-triage" }));
-expectEqual("needs-triage brake replaces the family", writes, [
-	{
-		args: [
-			"update",
-			"from-bd",
-			"--add-label",
-			"needs-triage",
-			"--remove-label",
-			"needs-info",
-			"--remove-label",
-			"ready-for-agent",
-			"--remove-label",
-			"ready-for-human",
-			"--remove-label",
-			"wontfix",
-		],
-		stdin: undefined,
-	},
-]);
-
-writes.length = 0;
-applyOperatorAction(writeRunner, JSON.stringify({ intent: "triage", id: "from-bd", label: "ready-for-human" }));
-expectEqual("ready-for-human replaces the family", writes, [
-	{
-		args: [
-			"update",
-			"from-bd",
-			"--add-label",
-			"ready-for-human",
-			"--remove-label",
-			"needs-triage",
-			"--remove-label",
-			"needs-info",
-			"--remove-label",
-			"ready-for-agent",
-			"--remove-label",
-			"wontfix",
-		],
-		stdin: undefined,
-	},
-]);
+for (const retired of ["needs-info", "needs-triage", "ready-for-human"]) {
+	writes.length = 0;
+	const refused = refusedAction(JSON.stringify({ intent: "triage", id: "from-bd", label: retired }));
+	expect(`${retired} is not a label anymore`, refused.refused);
+	expectEqual(`${retired} does not write`, writes, []);
+}
 
 writes.length = 0;
 applyOperatorAction(writeRunner, JSON.stringify({ intent: "triage", id: "from-bd", label: "wontfix" }));
-expectEqual("wontfix replaces the family", writes, [
+expectEqual("wontfix replaces the gate", writes, [
 	{
-		args: [
-			"update",
-			"from-bd",
-			"--add-label",
-			"wontfix",
-			"--remove-label",
-			"needs-triage",
-			"--remove-label",
-			"needs-info",
-			"--remove-label",
-			"ready-for-agent",
-			"--remove-label",
-			"ready-for-human",
-		],
+		args: ["update", "from-bd", "--add-label", "wontfix", "--remove-label", "ready-for-agent"],
 		stdin: undefined,
 	},
 ]);

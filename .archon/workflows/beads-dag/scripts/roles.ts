@@ -67,30 +67,29 @@ export const GRILL_WALL_MS = 60 * 60 * 1000;
 
 /**
  * What each role is called with: the role's own arguments and nothing else. The handle keys the issue
- * roles' sessions; the body's path is the issue roles' whole brief. The reading role's arguments add the
- * two paths its brief carries, and the drain-end readers' arguments are what their brief is built from -
- * the range, its commit menu, and, for the summary, the review to merge.
+ * roles' sessions; the brief is the bead's description. The reading role's arguments add the two paths
+ * its product uses, and the drain-end readers' arguments are what their brief is built from - the
+ * range, its commit menu, and, for the summary, the review to merge.
  */
 export type RoleShape = {
-  implement: { handle: string; bodyPath: string };
+  implement: { handle: string; brief: string };
   /** The same issue, the same brief: a conflict is the implementer's work meeting a Main that moved. */
-  conflict: { handle: string; bodyPath: string };
+  conflict: { handle: string; brief: string };
   /**
-   * One question's reading. The body's path is the issue roles' whole brief; the reading's own two
-   * paths are what this role's arguments add - the corpus it writes and the note the node commits.
+   * One question's reading. The brief is the bead's description; the reading's own two paths are what
+   * this role's arguments add - the corpus it writes and the note the node commits.
    */
-  read: { handle: string; bodyPath: string; corpusRel: string; noteRel: string };
+  read: { handle: string; brief: string; corpusRel: string; noteRel: string };
   /**
-   * One experiment's run turn. The body's path is the ticket's plan; the record path is what this
-   * role's arguments add - the document the node checks and commits.
+   * One experiment's run turn. The brief is the ticket's plan; the record path is what this role's
+   * arguments add - the document the node checks and commits.
    */
-  experiment: { handle: string; bodyPath: string; recordRel: string };
+  experiment: { handle: string; brief: string; recordRel: string };
   /**
-   * One seed's next grilling round. The body's path is the issue roles' whole brief; the seed id and
-   * the next round number are what this role's arguments add - the issue the round is written onto,
-   * and which round this turn is.
+   * One seed's next grilling round. The brief is the bead's description; the seed id and the next round
+   * number are what this role's arguments add.
    */
-  grill: { handle: string; bodyPath: string; seedId: string; nextRound: number };
+  grill: { handle: string; brief: string; seedId: string; nextRound: number };
   /** One axis of the drain-end review, over the range this run merged. */
   review: { axisIndex: number; base: string; axis: string; head: string; log: string };
   /** The one report over the review, for the human who reads the run afterwards. */
@@ -116,7 +115,7 @@ export const ROLES: { [K in AgentRole]: RoleSpec<RoleShape[K]> } = {
   implement: {
     sessionKey: (args) => args.handle,
     persona: () => implementPersona(),
-    prompt: (args) => args.bodyPath,
+    prompt: (args) => args.brief,
     wallMs: AGENT_WALL_MS,
   },
   conflict: {
@@ -127,7 +126,7 @@ export const ROLES: { [K in AgentRole]: RoleSpec<RoleShape[K]> } = {
     // its own file resumed.
     sessionKey: (args) => args.handle,
     persona: () => conflictPersona(),
-    prompt: (args) => args.bodyPath,
+    prompt: (args) => args.brief,
     wallMs: AGENT_WALL_MS,
   },
   read: {
@@ -135,7 +134,7 @@ export const ROLES: { [K in AgentRole]: RoleSpec<RoleShape[K]> } = {
     // the reading it started, and two questions never share a conversation.
     sessionKey: (args) => args.handle,
     persona: () => readPersona(),
-    prompt: (args) => readTask(args.bodyPath, args.corpusRel, args.noteRel),
+    prompt: (args) => readTask(args.brief, args.corpusRel, args.noteRel),
     wallMs: READ_WALL_MS,
   },
   experiment: {
@@ -143,7 +142,7 @@ export const ROLES: { [K in AgentRole]: RoleSpec<RoleShape[K]> } = {
     // the turn it started, and two tickets never share a conversation.
     sessionKey: (args) => args.handle,
     persona: () => experimentPersona(),
-    prompt: (args) => experimentTask(args.bodyPath, args.recordRel),
+    prompt: (args) => experimentTask(args.brief, args.recordRel),
     wallMs: EXPERIMENT_WALL_MS,
   },
   grill: {
@@ -151,7 +150,7 @@ export const ROLES: { [K in AgentRole]: RoleSpec<RoleShape[K]> } = {
     // grilling it started, and two seeds never share a conversation.
     sessionKey: (args) => args.handle,
     persona: () => grillPersona(),
-    prompt: (args) => grillTask(args.bodyPath, args.seedId, args.nextRound),
+    prompt: (args) => grillTask(args.brief, args.seedId, args.nextRound),
     wallMs: GRILL_WALL_MS,
   },
   review: {

@@ -8,8 +8,8 @@
  * here - or above it - lists a directory looking for a candidate, and an issue whose metadata cannot
  * name a place fails loudly rather than starting work somewhere nobody can name.
  *
- * One issue, one set of names, one function. The branch, the worktree and the body's path cannot drift
- * apart, because nothing else spells them.
+ * One issue, one set of names, one function. The branch and the worktree cannot drift apart,
+ * because nothing else spells them. The brief is the bead's `description`, not a path.
  */
 import { join } from "node:path";
 
@@ -30,8 +30,6 @@ export type IssueNames = {
   branch: string;
   /** The worktree's directory, relative to the Target. */
   worktreeRel: string;
-  /** The issue's published body, relative to the Target. */
-  bodyRel: string;
 };
 
 /**
@@ -82,17 +80,14 @@ export function issueNames(issue: IssueIdentity): IssueNames {
     slug,
     branch: `beads/${feature}/${number}-${slug}`,
     worktreeRel: join("worktrees", `${feature}-${number}-${slug}`),
-    bodyRel: join(".scratch", feature, "issues", `${number}-${slug}.md`),
   };
 }
 
-/**
- * The brief: the published body's absolute path.
- *
- * Absolute because the worker's working directory is the issue's worktree, not the Target - and the
- * Target's own copy is the one the tracker published and froze, not a checkout of it that a commit
- * could move. One path, readable from wherever the worker runs.
- */
-export function bodyPath(target: string, names: IssueNames): string {
-  return join(target, names.bodyRel);
+/** The brief is the bead's description. A missing description is not a file to go looking for. */
+export function issueBrief(issue: { id: string; description?: string }): string {
+  const text = issue.description ?? "";
+  if (text.trim() === "") {
+    throw new Error(`issue ${issue.id} has no description; the brief lives on the bead, not in a file`);
+  }
+  return text;
 }

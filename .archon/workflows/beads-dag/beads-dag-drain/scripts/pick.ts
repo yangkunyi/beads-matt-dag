@@ -71,7 +71,10 @@ if (import.meta.main) {
     run: ({ target, artifactsDir, config, allowList }) => {
       const store = preflightStore(target, config);
       const attempted = readAttempted(artifactsDir);
-      const composed = composeDevelopmentFrontier(readyIssues(store, target), attempted);
+      const composed = composeDevelopmentFrontier(
+        readyIssues(store, target, ["--exclude-type", "decision,experiment,epic"]),
+        attempted,
+      );
       const { kept: candidates, dropped } = applyAllowList(composed.candidates, allowList);
       const excluded = [...composed.excluded, ...dropped];
       // The graph preflight again, behind the frontier read and ahead of every claim this cycle makes. It

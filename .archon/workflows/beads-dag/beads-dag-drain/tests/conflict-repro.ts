@@ -206,7 +206,7 @@ try {
       "conflict",
     ]);
     expectEqual("the conflict turn ran in the issue's worktree", turns[1]?.cwd, join(root, worktree));
-    expectEqual("was handed the same brief", turns[1]?.prompt, issue.bodyPath);
+    expectEqual("was handed the same brief", turns[1]?.prompt, issue.brief);
     expectEqual("and the issue's own session key", turns[1]?.sessionKey, issue.handle);
     expectEqual("the merge stood for it", conflictedWhenTheTurnStarted, true);
     expectEqual(

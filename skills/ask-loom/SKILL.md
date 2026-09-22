@@ -25,8 +25,7 @@ merge onto it. Everything else is standalone, or a vocabulary layer underneath.
   bun / bd / Archon at the pinned versions, then `loom install`. `archon setup` for credentials.
 - New repo: `git init` then `loom init`. Store, yaml knobs, AGENTS.md pointers. No contract copy.
 - Already a Target: skip init. Boot with `loom attention --json` (from the loom checkout:
-  `bun tools/flow.ts attention --json`). Take the first nonempty bucket — leftovers, stuck, drafts,
-  ready development, ready inquiry, ready experiments, unread experiments, braked — and stop. Do not
+  `bun tools/flow.ts attention --json`). Take the first row of `work` and stop. Do not
   open `issue-tracker.md` to find work. Product words: this repo's `docs/CONTEXT.md`.
 
 ## Which domain

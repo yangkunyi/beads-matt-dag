@@ -21,16 +21,16 @@ export function GraphPane(props: GraphPaneProps) {
 	useEffect(() => {
 		setMounted(true);
 	}, []);
-	if (!mounted) return <section id="graph" />;
+	if (!mounted) return <section id="graph" className="h-full min-h-0" />;
 	if (props.overview === undefined) {
 		return (
-			<section id="graph">
+			<section id="graph" className="h-full min-h-0">
 				<p className="p-4 text-sm text-muted-foreground">{props.error ? "Graph failed to load." : "Loading graph…"}</p>
 			</section>
 		);
 	}
 	return (
-		<section id="graph">
+		<section id="graph" className="h-full min-h-0">
 			<Suspense fallback={<p className="p-4 text-sm text-muted-foreground">Loading graph…</p>}>
 				<Graph
 					overview={props.overview}

@@ -1,8 +1,7 @@
 #!/usr/bin/env bun
 /**
- * The attention inbox seams: parse the public JSON, walk boot order, render the first nonempty
- * bucket, launch one id through the existing write door, refuse closed/held. Does not compose a
- * frontier and does not import pack modules.
+ * The attention inbox seams: parse the public JSON, render the first row, launch one id through
+ * the existing write door, refuse closed/held. Does not compose a frontier and does not import pack modules.
  *
  *   bun tools/attention-ui/attention-ui-test.ts
  */
@@ -11,16 +10,9 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { RunLaunch } from "../operator-ui/start";
 import type { BdWriteRunner } from "../operator-ui/store";
-import {
-	bucketCounts,
-	doorIssues,
-	emptySnapshot,
-	firstNonempty,
-	parseAttentionSnapshot,
-	type AttentionSnapshot,
-} from "./snapshot";
+import { doorIssues, emptySnapshot, parseAttentionSnapshot, type AttentionRow, type AttentionSnapshot } from "./snapshot";
 import { handleAttentionRequest } from "./serve";
-import { pageCarriesHandle, pageFocusesBucket, pageIsReactApp, pageOffersCreate, renderAttentionPage } from "./page";
+import { pageCarriesHandle, pageIsReactApp, pageOffersCreate, renderAttentionPage } from "./page";
 
 let failed = 0;
 
@@ -36,41 +28,32 @@ function expectEqual(label: string, actual: unknown, expected: unknown): void {
 	expect(label, a === b, { actual, expected });
 }
 
-function snapshotWith(partial: Partial<AttentionSnapshot["buckets"]> & { run?: AttentionSnapshot["run"]; target?: string }): AttentionSnapshot {
-	const base = emptySnapshot(partial.target ?? "/tmp/target");
+function row(partial: Partial<AttentionRow> & Pick<AttentionRow, "id" | "handle" | "next">): AttentionRow {
 	return {
-		...base,
-		run: partial.run ?? base.run,
-		buckets: { ...base.buckets, ...partial },
+		title: partial.title ?? partial.handle,
+		type: partial.type ?? "task",
+		status: partial.status ?? "open",
+		...partial,
 	};
 }
 
-const leftoverReady = snapshotWith({
-	leftovers: [{ id: "id-left", handle: "feat/04", type: "task", domain: "development", next: "drain" }],
-	ready: {
-		development: [{ id: "id-ready", handle: "feat/09", title: "ready work", contract: "present", attempts_failed: 0, next: "drain" }],
-		inquiry: [],
-		experiments: [],
-	},
-});
+function snapshotWith(work: AttentionRow[], run?: AttentionSnapshot["run"]): AttentionSnapshot {
+	return { ...emptySnapshot(), ...(run === undefined ? {} : { run }), work };
+}
 
-expectEqual("empty has no first bucket", firstNonempty(emptySnapshot()), undefined);
-expectEqual("leftovers beat ready", firstNonempty(leftoverReady)?.key, "leftovers");
-expectEqual("leftovers beat ready handle", firstNonempty(leftoverReady)?.rows[0]?.handle, "feat/04");
+const leftoverReady = snapshotWith([
+	row({ id: "id-left", handle: "feat/04", type: "task", domain: "development", status: "in_progress", next: "drain" }),
+	row({ id: "id-ready", handle: "feat/09", title: "ready work", contract: "present", attempts_failed: 0, next: "drain" }),
+]);
 
-const onlyReady = snapshotWith({
-	ready: {
-		development: [{ id: "id-ready", handle: "feat/09", title: "ready work", contract: "missing", attempts_failed: 2, next: "drain" }],
-		inquiry: [],
-		experiments: [],
-	},
-});
-expectEqual("ready.development is after leftovers/stuck/drafts", firstNonempty(onlyReady)?.key, "ready.development");
-expectEqual("counts leftovers empty", bucketCounts(onlyReady).leftovers, 0);
-expectEqual("counts ready.development", bucketCounts(onlyReady)["ready.development"], 1);
+expectEqual("empty work is an empty list", emptySnapshot().work, []);
+expectEqual("the first row is what a session takes", leftoverReady.work[0]?.handle, "feat/04");
 
+const onlyReady = snapshotWith([
+	row({ id: "id-ready", handle: "feat/09", title: "ready work", contract: "missing", attempts_failed: 2, next: "drain" }),
+]);
 const parsed = parseAttentionSnapshot(JSON.stringify({ ...onlyReady, extra: true }));
-expectEqual("parse keeps ready handle", parsed.buckets.ready.development[0]?.handle, "feat/09");
+expectEqual("parse keeps the row", parsed.work[0]?.handle, "feat/09");
 
 let threw = false;
 try {
@@ -86,35 +69,27 @@ try {
 } catch {
 	threw = true;
 }
-expect("parse rejects a missing buckets object", threw);
+expect("parse rejects a missing work list", threw);
 
-expectEqual("door issues type development leftovers as their type", doorIssues(leftoverReady), [
+expectEqual("door issues type rows from the list", doorIssues(leftoverReady), [
 	{ id: "id-left", type: "task" },
 	{ id: "id-ready", type: "task" },
 ]);
 
-const inquirySnap = snapshotWith({
-	ready: {
-		development: [],
-		inquiry: [{ id: "q1", handle: "q/01", title: "a question", next: "inquiry" }],
-		experiments: [],
-	},
-});
+const inquirySnap = snapshotWith([row({ id: "q1", handle: "q/01", title: "a question", type: "decision", next: "inquiry" })]);
 expectEqual("door issues type inquiry as decision", doorIssues(inquirySnap), [{ id: "q1", type: "decision" }]);
 
 const html = renderAttentionPage(leftoverReady, { commentEndpoint: "/comment", attentionEndpoint: "/attention" });
 expect("page is a React shadcn app", pageIsReactApp(html));
-expect("page focuses leftovers", pageFocusesBucket(html, "leftovers"));
+expect("page has no bucket tabs", !html.includes('data-bucket='));
 expect("page carries leftover handle", pageCarriesHandle(html, "feat/04"));
 expect("page names leftover next", html.includes('data-next="drain"'));
-expect("leftovers still offer a comment form", html.includes('id="comment-form"'));
-const brakedHtml = renderAttentionPage(
-	snapshotWith({
-		braked: [{ id: "id-brake", handle: "feat/10", next: "triage", labels: ["needs-triage"] }],
-	}),
+expect("rows still offer a comment form", html.includes('id="comment-form"'));
+const releaseHtml = renderAttentionPage(
+	snapshotWith([row({ id: "id-park", handle: "q/04", type: "decision", status: "deferred", next: "release" })]),
 	{ commentEndpoint: "/comment" },
 );
-expect("triage still offers a comment form", brakedHtml.includes('id="comment-form"') && brakedHtml.includes('data-act="triage"'));
+expect("a deferred row offers run reading", releaseHtml.includes('data-act="run-reading"') && releaseHtml.includes('id="comment-form"'));
 expect("page offers create without a YAML fence", pageOffersCreate(html));
 expect("create form has no type picker", !html.includes('id="create-type"'));
 expect("SSR does not mount the canvas", !html.includes('data-graph="react-flow"'));
@@ -143,10 +118,10 @@ expect("columns are resizable", appSrc.includes('from "react-resizable-panels"')
 const emptyHtml = renderAttentionPage(emptySnapshot(), { commentEndpoint: "/comment" });
 expect("empty page says nothing is waiting", emptyHtml.includes("No work is waiting."));
 
-const held = snapshotWith({
-	run: { held: true, runId: "run-1", kind: "drain" },
-	leftovers: [{ id: "id-left", handle: "feat/04", type: "task", domain: "development", next: "wait" }],
-});
+const held = snapshotWith(
+	[row({ id: "id-left", handle: "feat/04", type: "task", domain: "development", status: "in_progress", next: "wait" })],
+	{ held: true, runId: "run-1", kind: "drain" },
+);
 const heldHtml = renderAttentionPage(held);
 expect("held page names the run", heldHtml.includes("run-1") && heldHtml.includes("drain"));
 
@@ -173,7 +148,7 @@ expect("GET / is html", getPage.headers["content-type"]?.includes("text/html") =
 
 const getJson = await handleAttentionRequest({ method: "GET", url: "/attention" }, "", handler);
 expectEqual("GET /attention is 200", getJson.status, 200);
-expectEqual("GET /attention is the snapshot", JSON.parse(getJson.body).buckets.leftovers[0].handle, "feat/04");
+expectEqual("GET /attention is the snapshot", JSON.parse(getJson.body).work[0].handle, "feat/04");
 
 const startPost = await handleAttentionRequest(
 	{ method: "POST", url: "/comment" },

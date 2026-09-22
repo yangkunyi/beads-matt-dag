@@ -16,7 +16,7 @@
  *                                                  channel is the frontier itself
  *
  * **Only this executor's own claims are repaired.** The store holds claimed `decision` issues of every
- * leg - a wayfinder session claims a `wayfinder:grilling` ticket and records itself as the assignee - and
+ * leg - a wayfinder session claims a `leg:grilling` ticket and records itself as the assignee - and
  * a reading run has no business reopening one it never took. The line is the domain's own vocabulary: a
  * claim of this executor's is a question carrying the reading leg's label (what the frontier requires), or
  * one carrying the draft label (what a landing stamps). Anything else `in_progress` is left exactly where

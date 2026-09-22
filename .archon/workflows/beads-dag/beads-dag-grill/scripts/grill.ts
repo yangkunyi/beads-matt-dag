@@ -22,7 +22,7 @@ import { join } from "node:path";
 import { defaultAgent, type AgentRunner } from "../../scripts/agent.ts";
 import { loadConfig, type PackConfig } from "../../scripts/config.ts";
 import { commitDocuments, documentSubject } from "../../scripts/doc-commit.ts";
-import { bodyPath, issueNames } from "../../scripts/naming.ts";
+import { issueBrief, issueNames } from "../../scripts/naming.ts";
 import { runNode } from "../../scripts/node-entry.ts";
 import { DONE, FAILED, ROUND, WAITING, nodeLine } from "../../scripts/node-outcomes.ts";
 import { roleAgent } from "../../scripts/roles.ts";
@@ -111,7 +111,7 @@ export async function grillSeed(target: string, seedId: string, opts: GrillOpts)
       role: "grill",
       args: {
         handle: names.handle,
-        bodyPath: bodyPath(target, names),
+        brief: issueBrief(issue),
         seedId: issue.id,
         nextRound,
       },

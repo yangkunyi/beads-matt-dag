@@ -16,26 +16,19 @@ import { existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { EFFORT_ROOT_REL } from "../../beads-dag-read/scripts/reading.ts";
 
-/**
- * The reading gate: `bd set-state <id> leg=research` writes this label as the fast cache.
- * `wayfinder:research` is the previous spelling; both still count so a live Target is not stranded.
- */
+/** The reading gate: `bd set-state <id> leg=research` writes this label as the fast cache. */
 export const READING_LEG_LABEL = "leg:research";
-export const LEGACY_READING_LEG_LABEL = "wayfinder:research";
 
-/** The grilling leg. A reading run leaves these claims alone; attention names them as grill leftovers. */
-export const GRILL_LABEL = "wayfinder:grilling";
-export const LEGACY_MAP_LABEL = "wayfinder:map";
-/** @deprecated Use isMapContainer. Kept so existing tests and exclusions can name the old label. */
-export const MAP_LABEL = LEGACY_MAP_LABEL;
+/** The grilling leg: `bd set-state <id> leg=grilling`. A reading run leaves these claims alone. */
+export const GRILL_LABEL = "leg:grilling";
 
-/** A map is a pinned decision (legacy: labelled wayfinder:map). It is a container, not a ticket. */
-export function isMapContainer(issue: { status: string; labels: readonly string[] }): boolean {
-  return issue.status === "pinned" || issue.labels.includes(LEGACY_MAP_LABEL);
+/** A map is a pinned decision. It is a direction, not a ticket. */
+export function isMapContainer(issue: { status: string }): boolean {
+  return issue.status === "pinned";
 }
 
 export function hasReadingLeg(issue: { labels: readonly string[] }): boolean {
-  return issue.labels.includes(READING_LEG_LABEL) || issue.labels.includes(LEGACY_READING_LEG_LABEL);
+  return issue.labels.includes(READING_LEG_LABEL);
 }
 
 /** The Target's copy of the reading tools, relative to it. Copied in, never installed. */

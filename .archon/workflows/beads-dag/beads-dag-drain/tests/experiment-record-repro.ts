@@ -201,7 +201,7 @@ try {
       expectEqual("keyed by the ticket's handle", turn.sessionKey, "exp/01");
       expectEqual("running where the Target is", turn.cwd, root);
       expectEqual("with the store read-only", turn.env({})[READONLY_ENV], "1");
-      expect("its brief is the body's path", turn.prompt.startsWith(bodyPath), turn.prompt);
+      expect("its brief is the description", turn.prompt.startsWith("# exp/01 - pilot"), turn.prompt);
       expect("plus the record path", turn.prompt.includes(`Record: ${recordRel}`), turn.prompt);
 
       expect("the experiment turn tried to write the store", turnWrite !== undefined);

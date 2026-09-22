@@ -15,19 +15,18 @@ export function composeMessage(persona: string, task: string): string {
 }
 
 /**
- * The implementer. It is handed a path and a worktree, and nothing else about the issue: the body is
- * the brief, the worktree is where the work goes, and state is not its to write.
+ * The implementer. It is handed the bead's description and a worktree, and nothing else about the
+ * issue: the description is the brief, the worktree is where the work goes, and state is not its to write.
  */
 export function implementPersona(): string {
   return [
     "You are the implementer of exactly one issue in a Target repository.",
     "",
-    "Your whole brief is the path you were handed. Read that file first: it is the issue's published",
-    "body, and it is the issue - the store holds the issue's state, the file holds what to build. If",
-    "the body begins with a YAML document, that head is the contract: `goal` and `acceptance` are what",
-    "done looks like. The prose below the head is disclosed - open it only when the head is not enough.",
-    "A body with no head is still the brief; read the whole file. It does not change under you, and you",
-    "do not edit it.",
+    "Your whole brief is the text you were handed. It is the issue's description, and it is what to",
+    "build - the store holds the issue's state, this text holds the work. If it begins with a YAML",
+    "document, that head is the contract: `goal` and `acceptance` are what done looks like. The prose",
+    "below the head is disclosed - open it only when the head is not enough. A brief with no head is",
+    "still the brief. It does not change under you, and you do not edit it.",
     "",
     "Work only in the worktree you were started in, on the branch it has checked out. Commit your",
     "changes there before you stop: those commits are the issue's work, and nothing else carries it.",
@@ -75,7 +74,7 @@ export function conflictPersona(): string {
     "the conflicting hunks in the files and did not commit: the merge is standing, and completing it is",
     "your whole turn.",
     "",
-    "Your brief is the path you were handed; read it first, for what the issue is about. If it begins",
+    "Your brief is the text you were handed; read it first, for what the issue is about. If it begins",
     "with a YAML document, the head is the contract (`goal`, `acceptance`); the prose below is disclosed.",
     "The two sides of the conflict are already in front of you: the worktree's branch is the issue's",
     "work, and Main is what landed while it was being worked on.",
@@ -147,13 +146,12 @@ export function readPersona(): string {
 }
 
 /**
- * The reading's brief: the body's path, then the one thing this role's arguments add. Both paths are
- * relative to the Target, which is where the turn runs, and both are the paths the node will check and
- * commit - so the reader is told exactly what the run is about to do with its work.
+ * The reading's brief: the bead's description, then the paths this role writes. Both paths are
+ * relative to the Target, which is where the turn runs.
  */
-export function readTask(bodyPath: string, corpusRel: string, noteRel: string): string {
+export function readTask(brief: string, corpusRel: string, noteRel: string): string {
   return [
-    bodyPath,
+    brief,
     "",
     "The reading's own paths, relative to this Target:",
     `Corpus: ${corpusRel}`,
@@ -198,9 +196,9 @@ export function experimentPersona(): string {
  * The experiment's brief: the body's path, then the record path the node will check and commit. Both
  * are relative to the Target, which is where the turn runs.
  */
-export function experimentTask(bodyPath: string, recordRel: string): string {
+export function experimentTask(brief: string, recordRel: string): string {
   return [
-    bodyPath,
+    brief,
     "",
     "The experiment's own paths, relative to this Target:",
     `Record: ${recordRel}`,
@@ -254,9 +252,9 @@ export function grillPersona(): string {
  * The grill's brief: the body's path, the seed id the comments live on, and which round this turn is.
  * The body path is absolute; the seed id is what `bd comments` and `bd show` take.
  */
-export function grillTask(bodyPath: string, seedId: string, nextRound: number): string {
+export function grillTask(brief: string, seedId: string, nextRound: number): string {
   return [
-    bodyPath,
+    brief,
     "",
     "The grill's own facts:",
     `Seed: ${seedId}`,

@@ -240,11 +240,13 @@ export type PublishOpts = {
   slug: string;
   type?: string;
   labels?: string[];
-  /** The issue's prose. Unset, a short body naming the issue - the tracker always publishes one. */
+  /** The issue's prose, stored as description. Unset, a short brief naming the issue. */
   body?: string;
+  /** Parking. Unset leaves the store's default status. */
+  status?: "pinned" | "deferred";
 };
 
-export type PublishedIssue = { id: string; handle: string; slug: string; bodyPath: string };
+export type PublishedIssue = { id: string; handle: string; slug: string; brief: string };
 
 /**
  * Where the tracker publishes an issue's body: `.scratch/<feature>/issues/<NN>-<slug>.md`. The fixture
@@ -282,26 +284,26 @@ export function experimentRecordRel(handle: string, slug: string): string {
 }
 
 /**
- * Publish one issue the way the tracker integration will: type, gate label, the two metadata keys the
- * pack consumes, and the body file it hands the implementer by path. Nothing in this build publishes
- * issues, so the fixture stands in for the tracker.
+ * Publish one issue the way the tracker does: type, labels, the two metadata keys, and the brief as
+ * `description`. Nothing in this build publishes issues, so the fixture stands in for the tracker.
  */
 export function publishIssue(root: string, opts: PublishOpts): PublishedIssue {
+  const brief = opts.body ?? `# ${opts.handle} - ${opts.title}\n\n${opts.title}\n`;
   const args = [
     "create",
     opts.title,
     "--type",
     opts.type ?? "task",
     "--silent",
+    "--description",
+    brief,
     "--metadata",
     JSON.stringify({ handle: opts.handle, slug: opts.slug }),
   ];
   if (opts.labels?.length) args.push("--labels", opts.labels.join(","));
   const id = bd(root, ...args);
-  const bodyPath = publishedBodyPath(root, opts.handle, opts.slug);
-  mkdirSync(dirname(bodyPath), { recursive: true });
-  writeFileSync(bodyPath, opts.body ?? `# ${opts.handle} - ${opts.title}\n\n${opts.title}\n`);
-  return { id, handle: opts.handle, slug: opts.slug, bodyPath };
+  if (opts.status !== undefined) bd(root, "update", id, "-s", opts.status);
+  return { id, handle: opts.handle, slug: opts.slug, brief };
 }
 
 /** The store's answer to "what can start": ready, gate-labelled, decision issues excluded. */

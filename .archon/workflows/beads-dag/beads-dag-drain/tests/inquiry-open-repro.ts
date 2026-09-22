@@ -129,7 +129,7 @@ try {
       type: "decision",
       handle: "q/01",
       slug: "waiting-for-the-drain",
-      labels: ["wayfinder:research"],
+      labels: ["leg:research"],
     });
     const drainRun = join(artifacts, "the-drain");
     const opened = runScript(drain.script("open"), root, { ARTIFACTS_DIR: drainRun });

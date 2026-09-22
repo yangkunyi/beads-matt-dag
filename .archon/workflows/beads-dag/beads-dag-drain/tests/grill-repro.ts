@@ -141,7 +141,7 @@ try {
     expectEqual("keyed by the seed's handle", turn.sessionKey, "idea/01");
     expectEqual("running where the Target is", turn.cwd, root);
     expectEqual("with the store read-only", turn.env({})[READONLY_ENV], "1");
-    expect("its brief is the body's path", turn.prompt.startsWith(bodyPath), turn.prompt);
+    expect("its brief is the description", turn.prompt.startsWith(seed.brief), turn.prompt);
     expect("plus the seed id", turn.prompt.includes(`Seed: ${seed.id}`), turn.prompt);
     expect("plus next round 1", turn.prompt.includes("Next round: 1"), turn.prompt);
     expect("the turn tried to write the store", turnWrite !== undefined);

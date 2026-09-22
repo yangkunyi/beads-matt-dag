@@ -102,8 +102,8 @@ Three acts. Not eight buckets, not five chips, not five wayfinder legs.
 | **Run** | one button | Question → `bd undefer` + `set-state leg=research`. Implementation → `/to-tickets` writes work types with `ready-for-agent`. |
 | **Turn a map off** | Close on the selected map | `bd unpin` + `bd close --reason "way is clear"`. Description stays in Dolt history. |
 
-Inbox shows the next non-empty act (leftover / stuck / draft / ready-to-run / parked). Empty means
-empty. The eight JSON keys remain the session boot contract; the UI does not draw empty tabs.
+Inbox is one ordered `work` list: leftovers, stuck, drafts, ready work, unread results, then deferred
+questions. Empty means empty. There are no bucket keys.
 
 Canvas: every `open` or `pinned` issue; closed only as one-hop neighbours of the selection (existing
 frame spec). Maps never show the five triage chips.

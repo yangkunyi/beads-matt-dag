@@ -245,8 +245,7 @@ function issueIdOf(record: Record<string, unknown>, need: string): string {
 }
 
 function isMapIssue(issue: OperatorIssue): boolean {
-	if (issue.status === "pinned") return true;
-	return (issue.labels ?? []).includes("wayfinder:map");
+	return issue.status === "pinned";
 }
 
 function applyRunReading(bd: BdWriteRunner, id: string, issues: ReadonlyArray<OperatorIssue>): void {
@@ -256,7 +255,6 @@ function applyRunReading(bd: BdWriteRunner, id: string, issues: ReadonlyArray<Op
 	if (isMapIssue(issue)) throw new OperatorActionRefused("run-reading refuses a map");
 	bd(["update", id, "-s", "open"]);
 	bd(["set-state", id, "leg=research", "--reason", "operator run"]);
-	bd(["update", id, "--remove-label", "needs-triage", "--remove-label", "needs-info", "--remove-label", "ready-for-human"]);
 }
 
 function applyCloseMap(bd: BdWriteRunner, id: string, issues: ReadonlyArray<OperatorIssue>): void {

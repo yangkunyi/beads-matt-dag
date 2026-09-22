@@ -27,9 +27,8 @@ A session opens with one command in the Target:
 loom attention --json
 ```
 
-From this checkout: `bun tools/flow.ts attention --json`. The JSON is leftovers, stuck chains, drafts,
-the three ready frontiers, unread experiment results, and braked issues. Take the first nonempty bucket
-and stop. Empty arrays mean that bucket is clear. This contract is disclosed reference — open it when a
+From this checkout: `bun tools/flow.ts attention --json`. The JSON is one ordered `work` list. Take the
+first row and stop. An empty list means nothing is waiting. This contract is disclosed reference — open it when a
 command fails or a domain rule is in doubt, not at boot.
 
 `bd prime` and the generic beads skill are beads' own help, not this flow: they teach `bd close` and
@@ -507,7 +506,7 @@ this run is the griller. The round travels as the run's own tool call (`submit_r
 an empty frontier) rather than as prose, and the comment it writes is the shape that surface renders as
 choices — sibling skill `grill-round` is that contract, `grill` is the same interview in conversation.
 
-- **Map**: one issue of type `decision` with status `pinned` (legacy label `wayfinder:map` still counts).
+- **Map**: one issue of type `decision` with status `pinned`.
   Destination / Notes / Fog live in `description`. Optional `spec_id` may point at a git product map.
   Turn it off with unpin then `bd close` (the attention UI's Close map). Not an `epic`.
 - **Child issue**: a bead of type `decision`. The reading gate is `leg:research`. Capture parks a

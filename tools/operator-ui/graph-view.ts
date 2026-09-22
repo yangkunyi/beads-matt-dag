@@ -4,8 +4,8 @@
  * Nodes and edges here are a projection of beads issues and dependencies. Coordinates are computed
  * for the canvas and are not a store field. Issues sit in three domain lanes; intra-domain `blocks`
  * lay out inside a lane, and a crossing `relates-to` / `discovered-from` is a handoff between lanes,
- * never another blocking column. The default frame is the neighbourhood of the selection — the issue
- * and one hop. The full graph is opt-in. A connect gesture proposes an edge into the write door; it
+ * never another blocking column. Open issues stay on the canvas; a closed issue appears only as a
+ * one-hop neighbour of the selection. Show all is the whole store. A connect gesture proposes an edge into the write door; it
  * is not itself a store write.
  */
 
@@ -233,9 +233,9 @@ export function layoutPositions(
 
 /** How the canvas frames the store graph. Positions still live in the view. */
 export type GraphFrame = {
-	/** The current selection. Empty shows all — pinned, so a first paint is not a blank canvas. */
+	/** The current selection. Empty shows every open issue, no closed. */
 	selected?: ReadonlyArray<string>;
-	/** Opt in to every issue. Default false: the neighbourhood of the selection. */
+	/** Opt in to the whole store, including closed. */
 	showAll?: boolean;
 };
 
@@ -255,20 +255,25 @@ export function neighbourhoodOf(overview: Overview, selected: ReadonlyArray<stri
 }
 
 /**
- * Which issues the canvas draws. An empty selection shows all (the pin); a selection without
- * `showAll` is that neighbourhood.
+ * Which issues the canvas draws. Show all is the whole store. Otherwise every issue that is not
+ * closed stays, and a selection adds its one-hop neighbourhood so a closed neighbour can appear.
  */
 export function framedIssueIds(overview: Overview, frame: GraphFrame = {}): Set<string> {
 	const known = new Set(overview.issues.map((issue) => issue.id));
+	if (frame.showAll === true) return known;
+	const visible = new Set(
+		overview.issues.filter((issue) => issue.status !== "closed").map((issue) => issue.id),
+	);
 	const selected = (frame.selected ?? []).filter((id) => known.has(id));
-	if (frame.showAll === true || selected.length === 0) return known;
-	return neighbourhoodOf(overview, selected);
+	if (selected.length === 0) return visible;
+	for (const id of neighbourhoodOf(overview, selected)) visible.add(id);
+	return visible;
 }
 
 /**
  * Project the store snapshot into canvas nodes, edges, and domain lanes. Coordinates come from
  * layout, not from the issue records. Passing a filtered overview drops hidden issues and dangling
- * edges; passing a frame drops everything outside the neighbourhood.
+ * edges; passing a frame drops everything outside the canvas frame.
  */
 export function projectGraph(overview: Overview, frame: GraphFrame = {}): GraphProjection {
 	const visible = framedIssueIds(overview, frame);

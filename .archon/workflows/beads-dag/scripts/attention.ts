@@ -1,28 +1,20 @@
 /**
- * Attention: the Target's one navigator, as a view.
+ * Attention: the Target's one navigator, as one ordered list.
  *
- * A session boots from this JSON. It writes nothing: the store runs read-only for the whole call, and
- * the run lock is inspected, never taken. Development, inquiry and experiment ready sets are each
- * domain's existing dry frontier with an empty attempted set and no allow-list, so attention and a
- * next run cannot describe two frontiers. Leftovers, drafts, unread, braked and stuck are the piles
- * the tracker already names; this module only puts them in one object.
- *
- * Stuck is derived from the same graph `allIssues` already holds: an open issue waiting on an open
- * `wontfix` blocker, or on a development blocker off the gate. Attention does not call `bd blocked`
- * and does not recompute blocked-ness (that write belongs to a run's open).
+ * A session boots from this JSON and takes the first row. It writes nothing: the store runs read-only
+ * for the whole call, and the run lock is inspected, never taken. Development, inquiry and experiment
+ * ready sets are each domain's existing dry frontier. Order is the priority: leftovers, then stuck,
+ * drafts, ready work, unread results, and deferred questions last. There are no bucket keys.
  */
-import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { DRAFT_LABEL } from "../beads-dag-read/scripts/reading.ts";
 import { composeReadingFrontier } from "../beads-dag-inquiry/scripts/frontier.ts";
-import { isMapContainer } from "../beads-dag-inquiry/scripts/inquiry.ts";
 import { isGrillClaim, isReadingClaim } from "../beads-dag-inquiry/scripts/leftovers.ts";
 import { loadConfig } from "./config.ts";
 import { contractPresence } from "./contract.ts";
 import { composeDevelopmentFrontier, GATE_LABEL, isDevelopmentLeftover } from "./dev-frontier.ts";
 import { blockingWaitIds, issueDomain, type IssueDomain } from "./domains.ts";
 import { composeExperimentFrontier, isExperimentLeftover } from "./experiment-frontier.ts";
-import { bodyPath, issueNames } from "./naming.ts";
 import { inspectRunLock, type RunKind } from "./run-lock.ts";
 import {
   allIssues,
@@ -37,7 +29,6 @@ import { READONLY_ENV } from "./worker-env.ts";
 
 const WONTFIX = "wontfix";
 const READING_NONE_LABEL = "reading:none";
-const BRAKE_LABELS = new Set(["needs-triage", "needs-info", "ready-for-human", WONTFIX]);
 
 export type AttentionNext =
   | "wait"
@@ -45,58 +36,30 @@ export type AttentionNext =
   | "inquiry"
   | "experiment"
   | "grill"
-  | "triage"
-  | "run"
-  | "accept-or-edit-or-reject"
-  | "read-or-decline";
+  | "release"
+  | "accept-draft"
+  | "read-result"
+  | "unstick";
 
 export type AttentionRun = { held: false } | { held: true; runId: string; kind?: RunKind };
 
-export type LeftoverItem = {
-  id: string;
-  handle: string;
-  type: string;
-  domain: IssueDomain;
-  next: AttentionNext;
-};
-
-export type StuckItem = {
-  id: string;
-  handle: string;
-  waiting_on: { handle: string; why: "wontfix" | "braked" }[];
-  next: AttentionNext;
-};
-
-export type DraftItem = { id: string; handle: string; title: string; next: AttentionNext };
-
-export type ReadyDevelopmentItem = {
+export type WorkItem = {
   id: string;
   handle: string;
   title: string;
-  contract: "present" | "missing";
-  attempts_failed: number;
   next: AttentionNext;
+  type: string;
+  status: string;
+  domain?: IssueDomain;
+  waiting_on?: { handle: string; why: "wontfix" | "ungated" }[];
+  contract?: "present" | "missing";
+  attempts_failed?: number;
 };
-
-export type ReadyItem = { id: string; handle: string; title: string; next: AttentionNext };
-
-export type BrakedItem = { id: string; handle: string; labels: string[]; next: AttentionNext };
 
 export type AttentionSnapshot = {
   target: string;
   run: AttentionRun;
-  buckets: {
-    leftovers: LeftoverItem[];
-    stuck: StuckItem[];
-    drafts: DraftItem[];
-    ready: {
-      development: ReadyDevelopmentItem[];
-      inquiry: ReadyItem[];
-      experiments: ReadyItem[];
-    };
-    unread_experiments: ReadyItem[];
-    braked: BrakedItem[];
-  };
+  work: WorkItem[];
 };
 
 function withReadonly<T>(fn: () => T): T {
@@ -114,8 +77,12 @@ function handleOf(issue: StoreIssue): string {
   return issue.handle ?? issue.id;
 }
 
-/** Next for an in-progress leftover: the executor whose leftover classify matches, not a parallel tag. */
-function leftoverNext(issue: StoreIssue): Exclude<AttentionNext, "wait" | "triage" | "accept-or-edit-or-reject" | "read-or-decline"> {
+function titleOf(issue: StoreIssue): string {
+  return issue.title;
+}
+
+/** Next for an in-progress leftover: the executor whose leftover classify matches. */
+function leftoverNext(issue: StoreIssue): AttentionNext {
   if (isExperimentLeftover(issue)) return "experiment";
   if (isGrillClaim(issue) && !isReadingClaim(issue)) return "grill";
   if (isReadingClaim(issue)) return "inquiry";
@@ -127,21 +94,15 @@ function startOrWait(next: AttentionNext, held: boolean): AttentionNext {
   return held ? "wait" : next;
 }
 
-function blockerWhy(blocker: StoreIssue): "wontfix" | "braked" | undefined {
+function blockerWhy(blocker: StoreIssue): "wontfix" | "ungated" | undefined {
   if (blocker.status === "closed") return undefined;
   if (blocker.labels.includes(WONTFIX)) return "wontfix";
-  if (issueDomain(blocker) === "development" && !blocker.labels.includes(GATE_LABEL)) return "braked";
+  if (issueDomain(blocker) === "development" && !blocker.labels.includes(GATE_LABEL)) return "ungated";
   return undefined;
 }
 
-function developmentContract(target: string, issue: StoreIssue): "present" | "missing" {
-  try {
-    const path = bodyPath(target, issueNames(issue));
-    if (!existsSync(path)) return "missing";
-    return contractPresence(readFileSync(path, "utf8"), "development");
-  } catch {
-    return "missing";
-  }
+function developmentContract(issue: StoreIssue): "present" | "missing" {
+  return contractPresence(issue.description ?? "", "development");
 }
 
 function attemptsFailed(store: Store, target: string, id: string): number {
@@ -150,6 +111,19 @@ function attemptsFailed(store: Store, target: string, id: string): number {
   } catch {
     return 0;
   }
+}
+
+function row(issue: StoreIssue, next: AttentionNext, extra: Partial<WorkItem> = {}): WorkItem {
+  return {
+    id: issue.id,
+    handle: handleOf(issue),
+    title: titleOf(issue),
+    next,
+    type: issue.type,
+    status: issue.status,
+    domain: issueDomain(issue),
+    ...extra,
+  };
 }
 
 function composeAttention(store: Store, target: string): AttentionSnapshot {
@@ -168,18 +142,14 @@ function composeAttention(store: Store, target: string): AttentionSnapshot {
   const leftoverIds = new Set(inProgress.map((issue) => issue.id));
   const emptyAttempted = new Set<string>();
 
-  const leftovers: LeftoverItem[] = inProgress.map((issue) => ({
-    id: issue.id,
-    handle: handleOf(issue),
-    type: issue.type,
-    domain: issueDomain(issue),
-    next: startOrWait(leftoverNext(issue), held),
-  }));
+  const leftovers: WorkItem[] = inProgress.map((issue) =>
+    row(issue, startOrWait(leftoverNext(issue), held)),
+  );
 
-  const stuck: StuckItem[] = [];
+  const stuck: WorkItem[] = [];
   for (const issue of all) {
     if (issue.status !== "open" || leftoverIds.has(issue.id)) continue;
-    const waiting_on: StuckItem["waiting_on"] = [];
+    const waiting_on: NonNullable<WorkItem["waiting_on"]> = [];
     for (const blockerId of blockingWaitIds(issue)) {
       const blocker = byId.get(blockerId);
       if (blocker === undefined) continue;
@@ -188,80 +158,43 @@ function composeAttention(store: Store, target: string): AttentionSnapshot {
       waiting_on.push({ handle: handleOf(blocker), why });
     }
     if (waiting_on.length === 0) continue;
-    stuck.push({ id: issue.id, handle: handleOf(issue), waiting_on, next: "triage" });
+    stuck.push(row(issue, "unstick", { waiting_on }));
   }
 
-  const drafts: DraftItem[] = all
+  const drafts: WorkItem[] = all
     .filter((issue) => issue.status === "open" && issue.type === "decision" && issue.labels.includes(DRAFT_LABEL))
-    .map((issue) => ({
-      id: issue.id,
-      handle: handleOf(issue),
-      title: issue.title,
-      next: "accept-or-edit-or-reject" as const,
-    }));
+    .map((issue) => row(issue, "accept-draft"));
 
-  const development = composeDevelopmentFrontier(ready, emptyAttempted).candidates.map((issue) => ({
-    id: issue.id,
-    handle: handleOf(issue),
-    title: issue.title,
-    contract: developmentContract(target, issue),
-    attempts_failed: attemptsFailed(store, target, issue.id),
-    next: startOrWait("drain", held),
-  }));
+  const development = composeDevelopmentFrontier(ready, emptyAttempted).candidates.map((issue) =>
+    row(issue, startOrWait("drain", held), {
+      contract: developmentContract(issue),
+      attempts_failed: attemptsFailed(store, target, issue.id),
+    }),
+  );
 
-  const inquiry = composeReadingFrontier(ready, inProgress, emptyAttempted).candidates.map((issue) => ({
-    id: issue.id,
-    handle: handleOf(issue),
-    title: issue.title,
-    next: startOrWait("inquiry", held),
-  }));
+  const inquiry = composeReadingFrontier(ready, inProgress, emptyAttempted).candidates.map((issue) =>
+    row(issue, startOrWait("inquiry", held)),
+  );
 
-  const experiments = composeExperimentFrontier(ready, emptyAttempted).candidates.map((issue) => ({
-    id: issue.id,
-    handle: handleOf(issue),
-    title: issue.title,
-    next: startOrWait("experiment", held),
-  }));
+  const experiments = composeExperimentFrontier(ready, emptyAttempted).candidates.map((issue) =>
+    row(issue, startOrWait("experiment", held)),
+  );
 
-  const unread_experiments: ReadyItem[] = all
+  const unread = all
     .filter(
       (issue) =>
         issue.status === "closed" && issue.type === "experiment" && issue.labels.includes(READING_NONE_LABEL),
     )
-    .map((issue) => ({
-      id: issue.id,
-      handle: handleOf(issue),
-      title: issue.title,
-      next: "read-or-decline" as const,
-    }));
+    .map((issue) => row(issue, "read-result"));
 
-  const braked: BrakedItem[] = all
-    .filter((issue) => {
-      if (isMapContainer(issue)) return false;
-      if (issue.labels.includes(GATE_LABEL)) return false;
-      if (issue.status === "deferred") return true;
-      return (
-        issue.status === "open" && issue.labels.some((label) => BRAKE_LABELS.has(label))
-      );
-    })
-    .map((issue) => ({
-      id: issue.id,
-      handle: handleOf(issue),
-      labels: issue.labels.filter((label) => BRAKE_LABELS.has(label)),
-      next: issue.status === "deferred" || issue.labels.includes("needs-triage") ? ("run" as const) : ("triage" as const),
-    }));
+  const parked = all
+    .filter((issue) => issue.status === "deferred")
+    .map((issue) => row(issue, "release"));
 
   return {
     target,
     run,
-    buckets: {
-      leftovers,
-      stuck,
-      drafts,
-      ready: { development, inquiry, experiments },
-      unread_experiments,
-      braked,
-    },
+    work: [...leftovers, ...stuck, ...drafts, ...development, ...inquiry, ...experiments, ...unread, ...parked],
   };
 }
 
@@ -280,39 +213,13 @@ function formatHuman(snapshot: AttentionSnapshot): string {
     const kind = snapshot.run.kind !== undefined ? ` ${snapshot.run.kind}` : "";
     lines.push(`run        held${kind} ${snapshot.run.runId}`);
   }
-  const { leftovers, stuck, drafts, ready, unread_experiments, braked } = snapshot.buckets;
-  const rows: [string, number, string[]][] = [
-    ["leftovers", leftovers.length, leftovers.map((item) => `  ${item.handle}  ${item.domain}  ${item.next}`)],
-    [
-      "stuck",
-      stuck.length,
-      stuck.map(
-        (item) =>
-          `  ${item.handle}  waiting on ${item.waiting_on.map((w) => `${w.handle} (${w.why})`).join(", ")}`,
-      ),
-    ],
-    ["drafts", drafts.length, drafts.map((item) => `  ${item.handle}  ${item.title}`)],
-    [
-      "ready.development",
-      ready.development.length,
-      ready.development.map((item) => `  ${item.handle}  ${item.contract}  attempts ${item.attempts_failed}`),
-    ],
-    ["ready.inquiry", ready.inquiry.length, ready.inquiry.map((item) => `  ${item.handle}  ${item.title}`)],
-    [
-      "ready.experiments",
-      ready.experiments.length,
-      ready.experiments.map((item) => `  ${item.handle}  ${item.title}`),
-    ],
-    [
-      "unread_experiments",
-      unread_experiments.length,
-      unread_experiments.map((item) => `  ${item.handle}  ${item.title}`),
-    ],
-    ["braked", braked.length, braked.map((item) => `  ${item.handle}  ${item.labels.join(",")}`)],
-  ];
-  for (const [name, count, body] of rows) {
-    lines.push(`${name.padEnd(20)} ${count}`);
-    if (count > 0) lines.push(...body);
+  lines.push(`work               ${snapshot.work.length}`);
+  for (const item of snapshot.work) {
+    const wait =
+      item.waiting_on === undefined
+        ? ""
+        : `  waiting on ${item.waiting_on.map((w) => `${w.handle} (${w.why})`).join(", ")}`;
+    lines.push(`  ${item.handle}  ${item.next}${wait}`);
   }
   return lines.join("\n");
 }
